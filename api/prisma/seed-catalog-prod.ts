@@ -19,6 +19,25 @@ const prisma = new PrismaClient({
 async function main() {
   console.log('--- SEEDING PRODUCTION CATEGORIES & CATALOG PRODUCTS (NON-DESTRUCTIVE) ---');
 
+  // 0. Seed Machine Work Centers
+  const machines = [
+    { name: 'HP Indigo 12000 Digital Press', code: 'HP_INDIGO_12000', type: 'DIGITAL_SHEET', hourlyCapacity: 2500 },
+    { name: 'Heidelberg Speedmaster XL 75', code: 'HEIDELBERG_XL75', type: 'OFFSET', hourlyCapacity: 15000 },
+    { name: 'Roland TrueVIS VG3-640 Wide Format', code: 'ROLAND_VG3', type: 'WIDE_FORMAT', hourlyCapacity: 80 },
+    { name: 'GMP Thermal Film Laminator', code: 'GMP_LAMINATOR', type: 'LAMINATION', hourlyCapacity: 3000 },
+    { name: 'Polar 115 High-Speed Programmable Guillotine', code: 'POLAR_115', type: 'CUTTER', hourlyCapacity: 5000 },
+    { name: 'Heidelberg Cylinder Die Cutter', code: 'CYLINDER_DIECUT', type: 'DIE_CUT', hourlyCapacity: 3500 },
+  ];
+
+  for (const m of machines) {
+    await prisma.machineWorkCenter.upsert({
+      where: { code: m.code },
+      update: {},
+      create: m,
+    });
+  }
+  console.log('✓ Seeded 6 Machine Work Centers');
+
   // 1. Categories
   const catVisitingCards = await prisma.productCategory.upsert({
     where: { slug: 'visiting-cards' },
