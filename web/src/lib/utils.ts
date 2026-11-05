@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { getApiHost } from './api';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -85,10 +86,8 @@ export function resolveArtworkUrl(rawUrl?: string | null): string | null {
     return str;
   }
 
-  // Get base API URL (pointing to localhost:4000)
-  const apiBase = (
-    process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1'
-  ).replace(/\/api\/v1\/?$/, '');
+  // Get base API host origin without /api/v1 or trailing slashes
+  const apiBase = getApiHost();
 
   if (str.startsWith('/uploads/')) {
     return `${apiBase}${str}`;

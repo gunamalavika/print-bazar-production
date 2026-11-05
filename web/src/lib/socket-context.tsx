@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { getApiHost } from '@/lib/api';
 
 interface SocketContextValue {
   socket: Socket | null;
@@ -27,10 +28,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
-    const apiHost = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1').replace(
-      /\/api\/v1\/?$/,
-      '',
-    );
+    const apiHost = getApiHost();
 
     const socket = io(apiHost, {
       transports: ['websocket', 'polling'],

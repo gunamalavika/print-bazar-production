@@ -19,7 +19,7 @@ import {
   RiShieldCheckLine,
   RiLoader4Line,
 } from 'react-icons/ri';
-import { KanbanCardDto } from '@/lib/api';
+import { KanbanCardDto, getApiHost } from '@/lib/api';
 
 interface ProductionJobCardProps {
   card: KanbanCardDto;
@@ -68,7 +68,7 @@ export function ProductionJobCard({
 
     setIsDownloading(true);
 
-    const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1').replace('/api/v1', '');
+    const apiBase = getApiHost();
     
     // Resolve absolute URL pointing to backend server on port 4000
     let targetPath = rawUrl;

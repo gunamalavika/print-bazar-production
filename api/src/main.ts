@@ -30,6 +30,27 @@ async function bootstrap() {
     fs.mkdirSync(referencesUploadsDir, { recursive: true });
   }
 
+  // Incoming Request URL Normalization & API Prefix Fallback Middleware
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    // 1. Collapse multiple consecutive slashes (e.g., //products/categories -> /products/categories)
+    if (req.url && req.url.includes('//')) {
+      req.url = req.url.replace(/\/{2,}/g, '/');
+    }
+
+    // 2. If an API request is made without /api/v1 prefix, rewrite req.url to include /api/v1
+    // (e.g. /products/categories, /products/site-settings, /products?featured=true)
+    const apiRoutePattern = /^\/(products|auth|orders|admin|qc|prepress|production|dispatch|packaging|finance|customers|notifications|job-cards|quotes)(\/|\?|$)/;
+    if (!req.url.startsWith('/api/v1/') && !req.url.startsWith('/uploads/') && apiRoutePattern.test(req.url)) {
+      const pathname = req.url.split('?')[0];
+      const hasFileExtension = /\.[a-zA-Z0-9]{2,5}$/.test(pathname);
+      if (!hasFileExtension) {
+        req.url = `/api/v1${req.url}`;
+      }
+    }
+
+    next();
+  });
+
   // Serve static uploaded assets
   app.use('/uploads', express.static(uploadsDir));
   app.use('/artwork', express.static(artworkUploadsDir));

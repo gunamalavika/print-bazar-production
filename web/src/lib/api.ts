@@ -485,14 +485,68 @@ export interface InventoryItemDto {
   movements?: any[];
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+/**
+ * Normalizes the base API URL:
+ * - Trims whitespace
+ * - Strips all trailing slashes
+ * - Automatically ensures /api/v1 is appended if the base URL points only to the domain/origin
+ */
+export function normalizeApiBaseUrl(rawBase?: string): string {
+  const fallback = 'http://localhost:4000/api/v1';
+  let base = (rawBase || process.env.NEXT_PUBLIC_API_URL || fallback).trim().replace(/\/+$/, '');
+  
+  // If user configured origin without /api/v1 (e.g. https://api-production-d4ed.up.railway.app)
+  if (!base.endsWith('/api/v1')) {
+    base = `${base}/api/v1`;
+  }
+  return base;
+}
+
+/**
+ * Returns the root API host origin without /api/v1 or trailing slashes.
+ * Used for static asset URLs (/uploads), downloads, and WebSocket connections.
+ */
+export function getApiHost(rawUrl?: string): string {
+  const fallback = 'http://localhost:4000';
+  const url = (rawUrl || process.env.NEXT_PUBLIC_API_URL || fallback).trim();
+  return url.replace(/\/+$/, '').replace(/\/api\/v1\/?$/, '');
+}
+
+/**
+ * Centrally constructs an authoritative API URL:
+ * - Normalizes base URL (ensuring exact /api/v1 root and no trailing slashes)
+ * - Normalizes endpoint path (collapses consecutive slashes, ensures single leading slash)
+ * - Prevents duplicate /api/v1 prefixes
+ * - Preserves full query parameters (?featured=true, pagination, etc.)
+ */
+export function buildApiUrl(endpoint: string, base?: string): string {
+  const baseUrl = normalizeApiBaseUrl(base);
+  
+  // Clean endpoint
+  let cleanEndpoint = (endpoint || '').trim().replace(/^\/+/, '');
+  
+  // Prevent duplicate /api/v1 if endpoint is passed with it
+  if (cleanEndpoint.startsWith('api/v1/')) {
+    cleanEndpoint = cleanEndpoint.replace(/^api\/v1\//, '');
+  }
+  
+  // Collapse any internal double slashes before query params
+  const [pathPart, ...queryParts] = cleanEndpoint.split('?');
+  const queryPart = queryParts.length > 0 ? queryParts.join('?') : undefined;
+  const normalizedPath = pathPart.replace(/\/{2,}/g, '/');
+  const fullPath = queryPart !== undefined ? `${normalizedPath}?${queryPart}` : normalizedPath;
+  
+  return `${baseUrl}/${fullPath}`;
+}
+
+const API_BASE = normalizeApiBaseUrl();
 
 export function resolveImageUrl(url?: string | null): string {
   if (!url) return 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=600&auto=format&fit=crop&q=80';
   if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
     return url;
   }
-  const apiHost = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1').replace('/api/v1', '');
+  const apiHost = getApiHost();
   let cleanUrl = url.trim();
   if (!cleanUrl.startsWith('/')) {
     cleanUrl = `/${cleanUrl}`;
@@ -554,7 +608,7 @@ export async function downloadFile(url?: string | null, suggestedFilename?: stri
 }
 
 export async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  const url = buildApiUrl(endpoint);
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('pb2_token') : null;
 
