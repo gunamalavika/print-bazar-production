@@ -21,11 +21,13 @@ import { OperationsModule } from './modules/operations/operations.module';
 import { EventsModule } from './modules/events/events.module';
 import { ShippingGstModule } from './modules/shipping-gst/shipping-gst.module';
 import { ShippingModule } from './modules/shipping/shipping.module';
+import { StorageModule } from './modules/storage/storage.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot(),
+    StorageModule,
     PrismaModule,
     AuditModule,
     AuthModule,

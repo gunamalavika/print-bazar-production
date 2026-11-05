@@ -47,6 +47,8 @@ import {
   SaveProductAdditionalPricingDto,
 } from './dto/catalogue.dto';
 
+import { SupabaseStorageService } from '../storage/supabase-storage.service';
+
 const productImageStorage = diskStorage({
   destination: (_req, _file, cb) => {
     const uploadPath = path.join(process.cwd(), 'uploads', 'products');
@@ -80,6 +82,7 @@ export class AdminCatalogueController {
   constructor(
     private readonly catalogueService: AdminCatalogueService,
     private readonly productsService: ProductsService,
+    private readonly storageService: SupabaseStorageService,
   ) {}
 
   // ==========================================
@@ -473,9 +476,9 @@ export class AdminCatalogueController {
     if (!file) {
       throw new BadRequestException('No file provided');
     }
-    const relativeUrl = `/uploads/products/${file.filename}`;
+    const uploadRes = await this.storageService.uploadFile(file, 'products');
     return {
-      url: relativeUrl,
+      url: uploadRes.fileUrl,
       filename: file.filename,
       originalName: file.originalname,
       size: file.size,

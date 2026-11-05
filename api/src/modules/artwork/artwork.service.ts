@@ -18,6 +18,7 @@ import {
 import { JwtPayload } from '../../common/types/roles';
 import * as crypto from 'crypto';
 import { extractDimensionsFromFile, extractImageDimensions } from '../../common/utils/image-dimensions.util';
+import { SupabaseStorageService } from '../storage/supabase-storage.service';
 
 export interface RegisterArtworkDto {
   orderItemId: string;
@@ -56,6 +57,7 @@ export class ArtworkService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly storageService: SupabaseStorageService,
   ) {}
 
   /**
@@ -441,9 +443,10 @@ export class ArtworkService {
       }
     }
 
-    const filename = file.filename || file.originalname;
-    const fileUrl = `/uploads/artwork/${filename}`;
-    const storageKey = `artwork/${filename}`;
+    // Upload to Supabase Storage (falls back to local uploads if not configured)
+    const uploadRes = await this.storageService.uploadFile(file, 'artwork');
+    const fileUrl = uploadRes.fileUrl;
+    const storageKey = uploadRes.storageKey;
 
     return {
       fileUrl,
@@ -466,10 +469,10 @@ export class ArtworkService {
    * Process customer reference image upload
    */
   async processReferenceImageUpload(file: Express.Multer.File) {
-    const filename = file.filename || file.originalname;
+    const uploadRes = await this.storageService.uploadFile(file, 'references');
     return {
-      fileUrl: `/uploads/references/${filename}`,
-      storageKey: `references/${filename}`,
+      fileUrl: uploadRes.fileUrl,
+      storageKey: uploadRes.storageKey,
       originalFileName: file.originalname,
       fileSize: file.size,
       mimeType: file.mimetype,

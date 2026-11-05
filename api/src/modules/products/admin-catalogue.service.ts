@@ -36,6 +36,7 @@ import {
   ProductAdditionalPricingTierDto,
 } from './dto/catalogue.dto';
 import { Prisma } from '@prisma/client';
+import { SupabaseStorageService } from '../storage/supabase-storage.service';
 
 @Injectable()
 export class AdminCatalogueService {
@@ -44,6 +45,7 @@ export class AdminCatalogueService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly storageService: SupabaseStorageService,
   ) {}
 
   // ==========================================
@@ -1921,7 +1923,8 @@ export class AdminCatalogueService {
     actorId?: string,
   ) {
     const product = await this.getProductById(productId);
-    const relativeUrl = `/uploads/products/${file.filename}`;
+    const uploadRes = await this.storageService.uploadFile(file, 'products');
+    const relativeUrl = uploadRes.fileUrl;
 
     return this.prisma.$transaction(async (tx) => {
       if (metadata?.isPrimary) {
@@ -1938,7 +1941,7 @@ export class AdminCatalogueService {
         data: {
           productId,
           url: relativeUrl,
-          storageKey: file.filename,
+          storageKey: uploadRes.storageKey,
           altText: metadata?.altText || product.name,
           caption: metadata?.caption,
           sortOrder: count,
