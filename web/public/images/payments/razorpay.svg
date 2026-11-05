@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 22" width="88" height="22" fill="none">
+  <!-- Razorpay lightning icon -->
+  <g transform="translate(1, 2)">
+    <path d="M12.5 0.5L3.8 8.8L7.8 9.3L1.5 17.5L14.2 8.5L9.8 8.1L12.5 0.5Z" fill="#0C2340"/>
+    <path d="M7.8 9.3L3.8 8.8L12.5 0.5L9.8 8.1L14.2 8.5L1.5 17.5L7.8 9.3Z" fill="#3395FF"/>
+  </g>
+  <!-- Razorpay Text -->
+  <text x="19" y="15.5" font-family="system-ui, -apple-system, sans-serif" font-size="12.5" font-weight="800" font-style="italic" fill="#0C2340" letter-spacing="-0.3">Razorpay</text>
+</svg>
+

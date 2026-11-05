@@ -1,0 +1,10 @@
+import { UserRole, Department, JwtPayload } from '../types/roles';
+export declare const ROLES_KEY = "roles";
+export declare const Roles: (...roles: UserRole[]) => import("@nestjs/common").CustomDecorator<string>;
+export declare const DEPARTMENT_KEY = "departments";
+export declare const Departments: (...departments: Department[]) => import("@nestjs/common").CustomDecorator<string>;
+export declare const PERMISSIONS_KEY = "permissions";
+export declare const RequirePermissions: (...permissions: string[]) => import("@nestjs/common").CustomDecorator<string>;
+export declare const IS_PUBLIC_KEY = "isPublic";
+export declare const Public: () => import("@nestjs/common").CustomDecorator<string>;
+export declare const CurrentUser: (...dataOrPipes: (keyof JwtPayload | import("@nestjs/common").PipeTransform<any, any> | import("@nestjs/common").Type<import("@nestjs/common").PipeTransform<any, any>> | undefined)[]) => ParameterDecorator;

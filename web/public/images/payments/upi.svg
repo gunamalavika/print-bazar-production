@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 54 22" width="54" height="22" fill="none">
+  <!-- Chevrons -->
+  <g transform="translate(0, 2)">
+    <polygon points="12,1 17,9 7,9" fill="#097939" />
+    <polygon points="8,9 13,17 3,17" fill="#F37021" />
+    <polygon points="17,1 22,9 12,9" fill="#097939" opacity="0.85" />
+    <polygon points="13,9 18,17 8,17" fill="#F37021" opacity="0.85" />
+  </g>
+  <!-- UPI Text -->
+  <text x="24" y="16.5" font-family="system-ui, -apple-system, sans-serif" font-size="14.5" font-weight="900" font-style="italic" fill="#097939" letter-spacing="-0.5">U</text>
+  <text x="34" y="16.5" font-family="system-ui, -apple-system, sans-serif" font-size="14.5" font-weight="900" font-style="italic" fill="#097939" letter-spacing="-0.5">P</text>
+  <text x="43.5" y="16.5" font-family="system-ui, -apple-system, sans-serif" font-size="14.5" font-weight="900" font-style="italic" fill="#097939" letter-spacing="-0.5">I</text>
+  <!-- Orange dot/accent -->
+  <circle cx="51" cy="5" r="1.5" fill="#F37021"/>
+</svg>
+

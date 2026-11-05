@@ -1,0 +1,36 @@
+{
+  "name": "print-bazzar-2-0",
+  "version": "2.0.0",
+  "private": true,
+  "description": "PRINT BAZZAR 2.0 - Customer-to-Production Operating System",
+  "workspaces": [
+    "api",
+    "web"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces",
+    "dev:api": "npm run start:dev --workspace=api",
+    "dev:web": "npm run dev --workspace=web",
+    "build": "npm run build --workspaces",
+    "build:api": "npm run build --workspace=api",
+    "build:web": "npm run build --workspace=web",
+    "test": "npm run test --workspaces",
+    "test:api": "npm run test --workspace=api",
+    "test:web": "npm run test --workspace=web",
+    "prisma:generate": "npm run prisma:generate --workspace=api",
+    "prisma:migrate": "npm run prisma:migrate --workspace=api",
+    "prisma:seed": "npm run prisma:seed --workspace=api",
+    "lint": "npm run lint --workspaces"
+  },
+  "keywords": [
+    "print-bazzar",
+    "web-to-print",
+    "erp",
+    "manufacturing",
+    "order-management",
+    "job-cards",
+    "workflow-engine"
+  ],
+  "author": "Print Bazzar Engineering Team",
+  "license": "UNLICENSED"
+}

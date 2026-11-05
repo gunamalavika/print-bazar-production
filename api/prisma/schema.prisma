@@ -1,0 +1,1319 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum UserRole {
+  CUSTOMER
+  SALES_OFFICE
+  DESIGNER_PREPRESS
+  PRE_PRODUCTION_QC // Historical records only - removed from active workflow
+  PRODUCTION_OPERATOR
+  FINAL_QC_INSPECTOR
+  PACKING_OPERATOR
+  DISPATCH_LOGISTICS
+  ACCOUNTS
+  ADMIN_MANAGER
+  OPERATIONAL_MANAGER
+}
+
+enum Department {
+  CUSTOMER_SERVICE
+  SALES
+  DESIGN_PREPRESS
+  QUALITY_ASSURANCE
+  PRODUCTION
+  PACKAGING
+  LOGISTICS
+  FINANCE
+  MANAGEMENT
+  OPERATIONS
+}
+
+enum OrderStatus {
+  ORDER_CREATED
+  PAYMENT_PENDING
+  PAYMENT_CONFIRMED
+  ORDER_REVIEW
+  ARTWORK_REVIEW
+  DESIGN_REQUIRED
+  ARTWORK_APPROVED
+  CUSTOMER_APPROVAL_REQUIRED
+  PRE_PRODUCTION_QC
+  PRODUCTION_QUEUE
+  PRINTING
+  FINISHING
+  QUALITY_CHECK
+  PACKING
+  READY_FOR_DISPATCH
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  ON_HOLD
+}
+
+enum CustomerVisibleStatus {
+  ORDER_CREATED
+  PAYMENT_PENDING
+  PAYMENT_CONFIRMED
+  ORDER_RECEIVED
+  ARTWORK_BEING_CHECKED
+  DESIGN_IN_PROGRESS
+  APPROVAL_REQUIRED
+  PREPARING_ORDER
+  IN_PRODUCTION
+  QUALITY_CHECK_AND_PACKING
+  READY_TO_SHIP
+  READY_FOR_PICKUP
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  ON_HOLD
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  PAID
+  PARTIALLY_PAID
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  RAZORPAY
+  CREDIT_CARD
+  DEBIT_CARD
+  UPI
+  NET_BANKING
+  BANK_TRANSFER_NEFT
+  CASH_ON_COUNTER
+  CORPORATE_CREDIT
+}
+
+enum OrderChannel {
+  WEBSITE
+  SALES_OFFICE
+  WALK_IN_POS
+  B2B_CORPORATE
+  QUOTATION
+}
+
+enum DeliveryMethod {
+  COURIER
+  STORE_PICKUP
+  LOCAL_EXPRESS_BIKE
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+  RUSH
+}
+
+enum SlaStatus {
+  ON_TIME
+  AT_RISK
+  DELAYED
+  BREACHED
+}
+
+enum ArtworkStatus {
+  PENDING_REVIEW
+  PREFLIGHT_PASSED
+  PREFLIGHT_FAILED
+  NEEDS_DESIGN
+  PROOF_GENERATED
+  PROOF_APPROVED
+  PROOF_REJECTED
+  SUPERSEDED
+}
+
+enum JobCardStatus {
+  QUEUED
+  ASSIGNED
+  PRINTING
+  PRINTING_COMPLETED
+  FINISHING
+  FINISHING_COMPLETED
+  QC_INSPECTION
+  PASSED
+  FAILED_REWORK
+  COMPLETED
+  ON_HOLD
+}
+
+enum QCInspectionType {
+  PRE_PRODUCTION
+  FINAL_QC
+}
+
+enum QCOutcome {
+  PASS
+  FAIL
+  CONDITIONALLY_PASSED
+}
+
+enum DefectCategory {
+  COLOR_MISMATCH
+  REGISTRATION_ERROR
+  BLEED_CUTTING_FAULT
+  LAMINATION_BUBBLE
+  PRINT_STREAKS
+  WRONG_PAPER_STOCK
+  DAMAGED_EDGES
+  QUANTITY_SHORT
+  CUSTOMER_FILE_ERROR
+  OTHER
+}
+
+enum PackageStatus {
+  PACKING
+  SEALED
+  LABEL_PRINTED
+  MANIFESTED
+  DISPATCHED
+  DELIVERED
+}
+
+enum ShipmentStatus {
+  CREATED
+  MANIFESTED
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  RTO_INITIATED
+  EXCEPTION
+}
+
+// ==========================================
+// MODELS
+// ==========================================
+
+model User {
+  id              String      @id @default(uuid())
+  email           String      @unique
+  passwordHash    String
+  fullName        String
+  phone           String?
+  role            UserRole    @default(CUSTOMER)
+  department      Department?
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  customerProfile Customer?
+  assignedJobs    JobCard[]   @relation("OperatorJobs")
+  qcInspections   QCChecklist[] @relation("InspectorQC")
+  statusChanges   OrderStatusHistory[]
+  auditLogs       AuditLog[]
+  assignedTasks   OrderAssignment[] @relation("AssignedToUser")
+  delegatedTasks  OrderAssignment[] @relation("AssignedByUser")
+  operationalNotes OperationalNote[]
+
+  @@index([email])
+  @@index([role])
+  @@index([department])
+}
+
+model Customer {
+  id            String    @id @default(uuid())
+  userId        String?   @unique
+  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  fullName      String
+  email         String
+  phone         String
+  companyName   String?
+  gstin         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  addresses     Address[]
+  orders        Order[]
+
+  @@index([email])
+  @@index([phone])
+}
+
+model Address {
+  id          String   @id @default(uuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type        String   @default("SHIPPING") // SHIPPING | BILLING
+  contactName String
+  phone       String
+  street      String
+  landmark    String?
+  city        String
+  state       String
+  postalCode  String
+  country     String   @default("India")
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  shippingOrders Order[] @relation("ShippingAddress")
+  billingOrders  Order[] @relation("BillingAddress")
+
+  @@index([customerId])
+}
+
+enum ProductStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ProductOptionRequirement {
+  REQUIRED
+  OPTIONAL
+  DISABLED
+}
+
+enum ProductFieldType {
+  TEXT
+  TEXTAREA
+  NUMBER
+  EMAIL
+  PHONE
+  DATE
+  TIME
+  SELECT
+  MULTI_SELECT
+  RADIO
+  CHECKBOX
+  TOGGLE
+  FILE
+  IMAGE
+  COLOR
+  RANGE
+}
+
+enum InventoryCategory {
+  SUBSTRATE
+  BOARD
+  FABRIC
+  VINYL
+  INK_CONSUMABLE
+  PACKAGING
+  FINISHED_GOODS
+}
+
+enum StockMovementType {
+  STOCK_IN
+  ADJUSTMENT
+  RESERVATION
+  RELEASE
+  CONSUMPTION
+  RETURN
+}
+
+model ProductCategory {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  description String?
+  image       String?
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  parentId    String?
+  parent      ProductCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children    ProductCategory[] @relation("CategoryHierarchy")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  products    Product[]
+
+  @@index([slug])
+  @@index([isActive])
+  @@index([parentId])
+}
+
+model Product {
+  id             String          @id @default(uuid())
+  categoryId     String
+  category       ProductCategory @relation(fields: [categoryId], references: [id])
+  name           String
+  slug           String          @unique
+  sku            String          @unique
+  description    String?
+  status         ProductStatus   @default(DRAFT)
+  pricingModel   String          @default("MATRIX") // MATRIX, FORMULA, TIERED, FLAT
+  basePrice      Decimal         @db.Decimal(12, 2)
+  minQuantity    Int             @default(1)
+  quantityStep   Int?            @default(100)
+  maxQuantity    Int             @default(100000)
+  productionDays Int             @default(2)
+  sortOrder      Int             @default(0)
+  isFeatured     Boolean         @default(false)
+  tags           String[]        @default([])
+  seoTitle       String?
+  seoDescription String?
+  trackInventory Boolean         @default(false)
+  stockQuantity  Int                      @default(0)
+  lowStockAlert  Int                      @default(10)
+  isActive       Boolean                  @default(true)
+  // Default Fixed Product Size (Admin-configured; read-only for customer storefront)
+  defaultSize    String?
+
+  // Dynamic Product Flow Engine Configuration (Admin-Controlled)
+  artworkRequirement         ProductOptionRequirement @default(OPTIONAL)
+  artworkPrice               Decimal?                 @default(0.00) @db.Decimal(12, 2)
+  artworkQualityVerification Boolean                  @default(true)
+  minimumArtworkMegapixels   Float?                   @default(1.0)
+  referenceImageRequirement  ProductOptionRequirement @default(DISABLED)
+  designServiceRequirement   ProductOptionRequirement @default(DISABLED)
+  designServicePrice         Decimal?                 @default(0.00) @db.Decimal(12, 2)
+
+  // Courier & Delivery Charges Configuration (Alongside Product Configuration)
+  shippingChargeType         String                   @default("DEFAULT") // DEFAULT, FIXED, FREE, QUANTITY_BASED, WEIGHT_BASED
+  unitWeightGrams            Float?                   @default(0)
+  courierCharge              Decimal?                 @default(100.00) @db.Decimal(12, 2)
+  perAdditionalQtyRate       Decimal?                 @default(0.00) @db.Decimal(12, 2)
+  freeShippingThreshold      Decimal?                 @default(1000.00) @db.Decimal(12, 2)
+  quantityCourierSlabs       Json?
+  allowCod                   Boolean                  @default(true)
+  codSurcharge               Decimal?                 @default(50.00) @db.Decimal(12, 2)
+
+  // Product Setup Studio Native Configurations
+  isStudioConfigured         Boolean                  @default(true)
+  configVersion              Int                      @default(1)
+  artworkFileFormats         String[]                 @default(["PDF", "AI", "PSD", "TIFF", "JPG"])
+  maxArtworkFileSizeMb       Int                      @default(100)
+  designServiceFee           Decimal?                 @default(0.00) @db.Decimal(12, 2)
+  allowMultipleVariants      Boolean                  @default(false)
+  variantDimensions          String[]                 @default([])
+
+  // Personalization Template System (Admin-Controlled & Reusable)
+  personalizationTemplateId   String?
+  personalizationTemplate     PersonalizationTemplate? @relation(fields: [personalizationTemplateId], references: [id], onDelete: SetNull)
+  personalizationConfig       Json?                    // Optional product overrides: { isEnabled: boolean, requiredOverrides?: Record<string, boolean> }
+
+  // Enterprise Shipping & Logistics Packaging & Slabs
+  packagingProfileId         String?
+  packagingProfile           ShippingPackagingProfile? @relation(fields: [packagingProfileId], references: [id], onDelete: SetNull)
+  isShippable                Boolean                  @default(true)
+  bulkTierWeights            Json?                    // Model B Bulk Range: [{ minQty: number, maxQty: number, unitWeightGrams: number }]
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  images             ProductImage[]
+  optionGroups       ProductOptionGroup[]
+  configurationRules ProductConfigurationRule[]
+  pricingSource      ProductPricingSource?
+  pricingMatrices    PricingMatrix[]
+  additionalPricings ProductAdditionalPricing[]
+  orderItems         OrderItem[]
+
+  @@index([slug])
+  @@index([sku])
+  @@index([categoryId])
+  @@index([status])
+  @@index([isActive])
+  @@index([personalizationTemplateId])
+}
+
+model ProductImage {
+  id         String   @id @default(uuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  storageKey String?
+  url        String
+  altText    String?
+  caption    String?
+  sortOrder  Int      @default(0)
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([productId])
+  @@index([isPrimary])
+  @@index([sortOrder])
+}
+
+model InventoryItem {
+  id                String            @id @default(uuid())
+  name              String            // e.g. "350 GSM Art Card Sheets 25x36", "Thermal Matte Film"
+  sku               String            @unique // e.g. "RAW-PAP-350-01"
+  category          InventoryCategory @default(SUBSTRATE)
+  unit              String            @default("SHEETS") // SHEETS, KG, ROLLS, PIECES, LITERS
+  currentStock      Decimal           @default(0) @db.Decimal(12, 2)
+  reservedStock     Decimal           @default(0) @db.Decimal(12, 2)
+  minStockThreshold Decimal           @default(100) @db.Decimal(12, 2)
+  costPerUnit       Decimal           @default(0) @db.Decimal(12, 2)
+  location          String?           // e.g. "Warehouse Bay A-12"
+  notes             String?
+  isActive          Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  movements         StockMovement[]
+
+  @@index([sku])
+  @@index([category])
+}
+
+model StockMovement {
+  id              String            @id @default(uuid())
+  inventoryItemId String
+  inventoryItem   InventoryItem     @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  type            StockMovementType
+  quantity        Decimal           @db.Decimal(12, 2) // positive for in, negative for out/consumption
+  balanceAfter    Decimal           @db.Decimal(12, 2)
+  referenceType   String?           // ORDER, JOB_CARD, PURCHASE_ORDER, MANUAL_AUDIT
+  referenceId     String?
+  notes           String?
+  performedById   String?
+  createdAt       DateTime          @default(now())
+
+  @@index([inventoryItemId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model ReusableOptionGroup {
+  id             String               @id @default(uuid())
+  name           String               // e.g. "Material", "Size", "Printing Location", "Printing Type", "Finish", "Design Service"
+  code           String               @unique // e.g. "material", "size", "printing_location", "printing_type", "finish", "design_service"
+  inputType      String               @default("SELECT") // SELECT, RADIO, CHECKBOX, TOGGLE
+  description    String?
+  defaultOptions Json?                // Suggested starter option templates
+  metadata       Json?
+  sortOrder      Int                  @default(0)
+  enableAdditionalPricing Boolean   @default(false)
+  selectionBehavior String              @default("SINGLE") // SINGLE, MULTIPLE, VARIANT_WISE
+  isActive       Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  productGroups  ProductOptionGroup[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+model ProductOptionGroup {
+  id                String               @id @default(uuid())
+  productId         String
+  product           Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  reusableGroupId   String?
+  reusableGroup     ReusableOptionGroup? @relation(fields: [reusableGroupId], references: [id], onDelete: SetNull)
+  name              String               // e.g. "Paper Stock", "Lamination", "Size"
+  code              String               // e.g. "paper_stock", "lamination", "size"
+  inputType         String               @default("SELECT") // SELECT, RADIO, CHECKBOX, TOGGLE, NUMBER, TEXT
+  description       String?
+  isRequired        Boolean              @default(true)
+  isCustomerVisible Boolean              @default(true)
+  sortOrder         Int                  @default(0)
+  enableAdditionalPricing Boolean      @default(false)
+  selectionBehavior String               @default("SINGLE") // SINGLE, MULTIPLE, VARIANT_WISE
+  isActive          Boolean              @default(true)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  options           ProductOption[]
+
+  @@unique([productId, code])
+  @@index([productId])
+  @@index([reusableGroupId])
+  @@index([sortOrder])
+}
+
+model ProductOption {
+  id                String              @id @default(uuid())
+  groupId           String
+  group             ProductOptionGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  label             String              // e.g. "350 GSM Art Card", "Thermal Matt"
+  value             String              // e.g. "350_gsm_art_card", "thermal_matt"
+  priceModifierType String              @default("FIXED") // FIXED, PERCENTAGE, PER_UNIT
+  priceModifier     Decimal             @default(0.0) @db.Decimal(12, 2)
+  sortOrder         Int                 @default(0)
+  isDefault         Boolean             @default(false)
+  isActive          Boolean             @default(true)
+  fileCount         Int?                @default(0)
+  fileSlotLabels    String[]            @default([])
+  minMegapixels     Float?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([groupId, value])
+  @@index([groupId])
+  @@index([sortOrder])
+}
+
+model ProductConfigurationRule {
+  id                   String   @id @default(uuid())
+  productId            String
+  product              Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name                 String   // e.g. "Double Sided Artwork Requirement"
+  conditionGroupCode   String   // e.g. "sides"
+  conditionOperator    String   @default("EQUALS") // EQUALS, NOT_EQUALS, IN
+  conditionOptionValue String   // e.g. "double_side"
+  actionType           String   @default("SHOW_OPTION") // SHOW_OPTION, HIDE_OPTION, REQUIRE_OPTION, SET_VALUE, REQUIRE_ARTWORK_FILES
+  targetGroupCode      String?
+  targetOptionValue    String?
+  actionPayload        Json?
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([productId])
+}
+
+model ProductPricingSource {
+  id            String                  @id @default(uuid())
+  productId     String                  @unique
+  product       Product                 @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sourceType    String                  @default("GOOGLE_SHEETS") // GOOGLE_SHEETS, MANUAL_MATRIX, FORMULA
+  spreadsheetId String?
+  worksheetName String?
+  apiKey        String?
+  schemaVersion String                  @default("v1")
+  columnMapping Json?
+  lastSyncAt    DateTime?
+  syncStatus    String                  @default("NOT_CONFIGURED") // NOT_CONFIGURED, SYNCED, FAILED, IN_PROGRESS
+  syncMessage   String?
+  syncRowCount  Int                     @default(0)
+  rawSyncedData Json?
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  syncLogs      ProductPricingSyncLog[]
+}
+
+model ProductPricingSyncLog {
+  id              String               @id @default(uuid())
+  pricingSourceId String
+  pricingSource   ProductPricingSource @relation(fields: [pricingSourceId], references: [id], onDelete: Cascade)
+  status          String               // SUCCESS, FAILED, WARNING
+  recordsParsed   Int                  @default(0)
+  recordsImported Int                  @default(0)
+  errorMessage    String?
+  errorDetails    Json?
+  triggeredBy     String?
+  createdAt       DateTime             @default(now())
+
+  @@index([pricingSourceId])
+  @@index([createdAt])
+}
+
+model PricingMatrix {
+  id                   String   @id @default(uuid())
+  productId            String
+  product              Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  minQty               Int
+  maxQty               Int
+  attributeCombination Json     // JSON mapping of option codes to value codes
+  unitPrice            Decimal  @db.Decimal(12, 4)
+  createdAt            DateTime @default(now())
+
+  @@index([productId, minQty, maxQty])
+}
+
+model ProductAdditionalPricing {
+  id          String   @id @default(uuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  groupCode   String   // Option group code (e.g. "paper_stock", "lamination")
+  optionValue String   // Option value code (e.g. "170_gsm", "velvet_matte")
+  minQty      Int
+  maxQty      Int
+  unitPrice   Decimal  @db.Decimal(12, 4) // Additional unit charge per piece (₹/pc)
+  chargeBasis String   @default("PER_UNIT") // PER_UNIT, FIXED
+  isExcluded  Boolean  @default(false) // Option excluded/unsupported at this quantity tier
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([productId, groupCode, optionValue, minQty, maxQty])
+  @@index([productId, groupCode])
+  @@index([productId, minQty, maxQty])
+}
+
+model Order {
+  id                String                @id @default(uuid())
+  orderNumber       String                @unique // e.g. PB-2026-0001
+  customerId        String
+  customer          Customer              @relation(fields: [customerId], references: [id])
+  sourceChannel     OrderChannel          @default(WEBSITE)
+  status            OrderStatus           @default(ORDER_CREATED)
+  customerStatus    CustomerVisibleStatus @default(ORDER_CREATED)
+  deliveryMethod    DeliveryMethod        @default(COURIER)
+  
+  subtotal          Decimal               @db.Decimal(12, 2)
+  taxAmount         Decimal               @db.Decimal(12, 2)
+  shippingAmount    Decimal               @db.Decimal(12, 2)
+  discountAmount    Decimal               @default(0.0) @db.Decimal(12, 2)
+  totalAmount       Decimal               @db.Decimal(12, 2)
+  paidAmount        Decimal               @default(0.0) @db.Decimal(12, 2)
+  balanceAmount     Decimal               @db.Decimal(12, 2)
+  paymentStatus     PaymentStatus         @default(PENDING)
+  
+  priority          Priority              @default(NORMAL)
+  slaStatus         SlaStatus             @default(ON_TIME)
+  dueAt             DateTime?
+  customerNotes     String?
+  internalNotes     String?
+
+  shippingAddressId String?
+  shippingAddress   Address?              @relation("ShippingAddress", fields: [shippingAddressId], references: [id])
+  billingAddressId  String?
+  billingAddress    Address?              @relation("BillingAddress", fields: [billingAddressId], references: [id])
+
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  items             OrderItem[]
+  payments          Payment[]
+  invoices          Invoice[]
+  packages          Package[]
+  statusHistory     OrderStatusHistory[]
+  auditLogs         AuditLog[]
+  slaRecords        SlaRecord[]
+  jobCards          JobCard[]
+  qcChecklists      QCChecklist[]
+  assignments       OrderAssignment[]
+  operationalNotes  OperationalNote[]
+
+  @@index([orderNumber])
+  @@index([customerId])
+  @@index([status])
+  @@index([customerStatus])
+  @@index([paymentStatus])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id                       String           @id @default(uuid())
+  orderId                  String
+  order                    Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId                String
+  product                  Product          @relation(fields: [productId], references: [id])
+  sku                      String
+  productName              String
+  quantity                 Int
+  unitPrice                Decimal          @db.Decimal(12, 2)
+  totalPrice               Decimal          @db.Decimal(12, 2)
+  specifications           Json             // Immutable snapshot of all selected options & values
+  personalizationData      Json?            // Snapshot: { templateId, templateName, sharedValues, items }
+  approvedArtworkVersionId String?
+  designNotes              String?
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+
+  artworkVersions          ArtworkVersion[]
+  jobCards                 JobCard[]
+  variants                 OrderItemVariant[]
+  personalizationRecords   OrderItemPersonalization[]
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([approvedArtworkVersionId])
+}
+
+model OrderItemVariant {
+  id             String    @id @default(uuid())
+  orderItemId    String
+  orderItem      OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  sku            String?
+  combination    Json      // e.g. { "size": "M", "color": "black" }
+  quantity       Int
+  unitPrice      Decimal   @db.Decimal(12, 2)
+  totalPrice     Decimal   @db.Decimal(12, 2)
+  artworkUrl     String?
+  specifications Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([orderItemId])
+}
+
+model ArtworkVersion {
+  id               String        @id @default(uuid())
+  orderItemId      String
+  orderItem        OrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  versionNumber    Int           @default(1)
+  storageKey       String
+  originalFileName String
+  mimeType         String
+  fileSize         Int
+  checksum         String        // SHA-256 hash
+  status           ArtworkStatus @default(PENDING_REVIEW)
+  resolutionDpi    Int?
+  widthMm          Decimal?      @db.Decimal(10, 2)
+  heightMm         Decimal?      @db.Decimal(10, 2)
+  widthPixels      Int?
+  heightPixels     Int?
+  actualMegapixels Float?
+  qualityStatus    String?       // PASSED, WARNING, FAILED
+  warningAccepted  Boolean       @default(false)
+  hasBleed         Boolean?
+  colorProfile     String?
+  proofUrl         String?
+  isApproved       Boolean       @default(false)
+  customerNotes    String?
+  prepressNotes    String?
+  uploadedBy       String        // Customer ID or Staff User ID
+  approvedAt       DateTime?
+  createdAt        DateTime      @default(now())
+
+  jobCards         JobCard[]
+
+  @@unique([orderItemId, versionNumber])
+  @@index([orderItemId])
+}
+
+model JobCard {
+  id                       String             @id @default(uuid())
+  jobNumber                String             @unique // e.g. JC-2026-0001
+  orderId                  String
+  order                    Order              @relation(fields: [orderId], references: [id])
+  orderItemId              String
+  orderItem                OrderItem          @relation(fields: [orderItemId], references: [id])
+  approvedArtworkVersionId String?
+  approvedArtworkVersion   ArtworkVersion?    @relation(fields: [approvedArtworkVersionId], references: [id])
+  status                   JobCardStatus      @default(QUEUED)
+  preHoldStatus            JobCardStatus?
+  priority                 Priority           @default(NORMAL)
+  currentStation           String             @default("PREPRESS") // PREPRESS, PRINTING, FINISHING, FINAL_QC, PACKING
+  machineId                String?
+  machine                  MachineWorkCenter? @relation(fields: [machineId], references: [id])
+  operatorId               String?
+  operator                 User?              @relation("OperatorJobs", fields: [operatorId], references: [id])
+  operationSequence        Json               // Ordered steps: [{"station": "PRINTING", "machine": "HP_INDIGO_12000", "status": "PENDING"}]
+  technicalSpecs           Json               // Snapshot of exact substrate, GSM, print mode, finishing, cut size
+  startedAt                DateTime?
+  completedAt              DateTime?
+  dueAt                    DateTime
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+
+  issues                   JobIssue[]
+  qcChecklists             QCChecklist[]
+
+  @@index([jobNumber])
+  @@index([orderId])
+  @@index([status])
+  @@index([currentStation])
+  @@index([machineId])
+  @@index([operatorId])
+}
+
+model MachineWorkCenter {
+  id             String    @id @default(uuid())
+  name           String    // e.g. "HP Indigo 12000", "Heidelberg Speedmaster XL 75"
+  code           String    @unique // e.g. "HP_INDIGO_12000"
+  type           String    // OFFSET, DIGITAL_SHEET, WIDE_FORMAT, LAMINATION, DIE_CUT, CUTTER
+  hourlyCapacity Int       @default(1000)
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  jobCards       JobCard[]
+}
+
+model JobIssue {
+  id          String    @id @default(uuid())
+  jobCardId   String
+  jobCard     JobCard   @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  reasonCode  String    // e.g. "PAPER_STOCK_OUT", "MACHINE_JAM", "COLOR_CALIBRATION_FAIL"
+  description String
+  reportedBy  String    // User ID
+  isResolved  Boolean   @default(false)
+  resolvedBy  String?
+  createdAt   DateTime  @default(now())
+  resolvedAt  DateTime?
+
+  @@index([jobCardId])
+}
+
+model QCChecklist {
+  id          String           @id @default(uuid())
+  orderId     String
+  order       Order            @relation(fields: [orderId], references: [id])
+  jobCardId   String?
+  jobCard     JobCard?         @relation(fields: [jobCardId], references: [id])
+  type        QCInspectionType
+  outcome     QCOutcome        @default(PASS)
+  inspectorId String
+  inspector   User             @relation("InspectorQC", fields: [inspectorId], references: [id])
+  items       Json             // Array of checklist checks: [{"code": "BLEED_CHECK", "passed": true, "notes": "3mm bleed verified"}]
+  defects     DefectCategory[]
+  notes       String?
+  createdAt   DateTime         @default(now())
+
+  @@index([orderId])
+  @@index([jobCardId])
+  @@index([type])
+  @@index([outcome])
+}
+
+model Package {
+  id               String        @id @default(uuid())
+  orderId          String
+  order            Order         @relation(fields: [orderId], references: [id])
+  packageNumber    String        // e.g. PKG-2026-0001-01
+  sequenceNumber   Int           @default(1)
+  totalPackages    Int           @default(1)
+  grossWeightGrams Int           // In grams
+  lengthCm         Decimal       @db.Decimal(8, 2)
+  widthCm          Decimal       @db.Decimal(8, 2)
+  heightCm         Decimal       @db.Decimal(8, 2)
+  status           PackageStatus @default(PACKING)
+  labelUrl         String?
+  barcode          String        @unique
+  shipmentId       String?
+  shipment         Shipment?     @relation(fields: [shipmentId], references: [id])
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([orderId])
+  @@index([packageNumber])
+  @@index([barcode])
+  @@index([shipmentId])
+}
+
+model Shipment {
+  id             String         @id @default(uuid())
+  shipmentNumber String         @unique // e.g. SHP-2026-0001
+  courierName    String         // Delhivery, Bluedart, Shiprocket, Local Express
+  awbNumber      String         @unique
+  trackingUrl    String?
+  labelPdfUrl    String?
+  status         ShipmentStatus @default(CREATED)
+  manifestedAt   DateTime?
+  dispatchedAt   DateTime?
+  deliveredAt    DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  packages       Package[]
+
+  @@index([shipmentNumber])
+  @@index([awbNumber])
+  @@index([status])
+}
+
+model Payment {
+  id                 String        @id @default(uuid())
+  orderId            String
+  order              Order         @relation(fields: [orderId], references: [id])
+  transactionId      String        @unique
+  razorpayOrderId    String?       @unique
+  razorpayPaymentId  String?       @unique
+  razorpaySignature  String?
+  method             PaymentMethod @default(RAZORPAY)
+  status             PaymentStatus @default(PENDING)
+  amount             Decimal       @db.Decimal(12, 2)
+  currency           String        @default("INR")
+  idempotencyKey     String?       @unique
+  capturedAt         DateTime?
+  failureReason      String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([orderId])
+  @@index([transactionId])
+  @@index([razorpayOrderId])
+  @@index([status])
+}
+
+model Invoice {
+  id            String   @id @default(uuid())
+  invoiceNumber String   @unique // e.g. INV-2026-0001
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id])
+  customerGstin String?
+  subtotal      Decimal  @db.Decimal(12, 2)
+  shippingAmount Decimal @default(0.0) @db.Decimal(12, 2)
+  cgst          Decimal  @db.Decimal(12, 2)
+  sgst          Decimal  @db.Decimal(12, 2)
+  igst          Decimal  @db.Decimal(12, 2)
+  totalTax      Decimal  @db.Decimal(12, 2)
+  grandTotal    Decimal  @db.Decimal(12, 2)
+  pdfUrl        String?
+  issuedAt      DateTime @default(now())
+
+  @@index([invoiceNumber])
+  @@index([orderId])
+}
+
+model OrderStatusHistory {
+  id              String       @id @default(uuid())
+  orderId         String
+  order           Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromStatus      OrderStatus?
+  toStatus        OrderStatus
+  changedById     String?
+  changedBy       User?        @relation(fields: [changedById], references: [id])
+  department      Department?
+  reason          String?
+  notes           String?
+  durationMinutes Int?
+  createdAt       DateTime     @default(now())
+
+  @@index([orderId])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id            String      @id @default(uuid())
+  actorId       String?
+  actor         User?       @relation(fields: [actorId], references: [id])
+  actorType     String      @default("USER") // USER, SYSTEM, WEBHOOK, WORKER
+  action        String      // e.g. "OVERRIDE_PRE_PRODUCTION_QC", "CAPTURE_PAYMENT"
+  entity        String      // Order, JobCard, Payment, QCChecklist
+  entityId      String
+  previousState Json?
+  newState      Json?
+  reason        String?
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime    @default(now())
+  orderId       String?
+  order         Order?      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([entity, entityId])
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model SlaRecord {
+  id           String    @id @default(uuid())
+  orderId      String
+  order        Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  jobCardId    String?
+  entityType   String    // ORDER, JOB_CARD, PROOF_APPROVAL, QC
+  currentStatus SlaStatus @default(ON_TIME)
+  targetDueAt  DateTime
+  isBreached   Boolean   @default(false)
+  escalatedTo  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([orderId])
+  @@index([currentStatus])
+  @@index([isBreached])
+}
+
+enum ProductionColumnType {
+  SYSTEM
+  CUSTOM
+  HOLD
+  ARCHIVED
+}
+
+model ProductionColumn {
+  id            String               @id @default(uuid())
+  key           String               @unique
+  name          String
+  description   String?
+  type          ProductionColumnType @default(SYSTEM)
+  mappedStatus  OrderStatus?
+  mappedStation String?
+  sortOrder     Int                  @default(0)
+  color         String?
+  isActive      Boolean              @default(true)
+  createdById   String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([sortOrder])
+  @@index([isActive])
+}
+
+enum AssignmentTaskType {
+  DESIGN
+  PRODUCTION
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  REASSIGNED
+  COMPLETED
+  CANCELLED
+}
+
+model OrderAssignment {
+  id               String             @id @default(uuid())
+  orderId          String
+  order            Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  taskType         AssignmentTaskType
+  assignedUserId   String
+  assignedUser     User               @relation("AssignedToUser", fields: [assignedUserId], references: [id])
+  assignedByUserId String
+  assignedByUser   User               @relation("AssignedByUser", fields: [assignedByUserId], references: [id])
+  status           AssignmentStatus   @default(ACTIVE)
+  assignedAt       DateTime           @default(now())
+  completedAt      DateTime?
+  reason           String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([orderId])
+  @@index([assignedUserId])
+  @@index([taskType, status])
+}
+
+model OperationalNote {
+  id         String   @id @default(uuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id])
+  authorName String
+  authorRole UserRole
+  content    String
+  createdAt  DateTime @default(now())
+
+  @@index([orderId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model ShippingGstSetting {
+  id                    String   @id @default("default")
+  baseShippingFee       Decimal  @default(150.00) @db.Decimal(12, 2)
+  gstRate               Decimal  @default(18.00) @db.Decimal(5, 2)
+  freeShippingThreshold Decimal  @default(2000.00) @db.Decimal(12, 2)
+  isFreeShippingEnabled Boolean  @default(true)
+
+  // Weight-wise courier settings
+  enableWeightCharges   Boolean  @default(true)
+  baseWeightKg          Decimal  @default(1.00) @db.Decimal(8, 2)
+  weightRatePerKg       Decimal  @default(50.00) @db.Decimal(12, 2)
+
+  // Quantity-wise courier settings
+  enableQuantityCharges Boolean  @default(true)
+  quantityStep          Int      @default(500)
+  quantitySurchargePerStep Decimal @default(30.00) @db.Decimal(12, 2)
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model ShippingConfiguration {
+  id                           String   @id @default("default")
+  businessName                 String   @default("PRINT BAZAAR 2.0")
+  originAddress                String   @default("10/24 Industrial Estate, Peelamedu")
+  originCity                   String   @default("Coimbatore")
+  originState                  String   @default("Tamil Nadu")
+  originCountry                String   @default("India")
+  originPincode                String   @default("641004")
+  originPhone                  String?
+  originEmail                  String?
+  isWeightBasedEnabled         Boolean  @default(true)
+  isFixedShippingEnabled       Boolean  @default(false)
+  isPincodeZoneEnabled         Boolean  @default(true)
+  isVolumetricEnabled          Boolean  @default(false)
+  volumetricDivisor            Float    @default(5000.0)
+  weightUnit                   String   @default("GRAMS") // GRAMS or KILOGRAMS
+  weightRoundingMethod         String   @default("NEXT_SLAB") // NEXT_SLAB, NEAREST_INCREMENT, EXACT
+  minShippingCharge            Decimal  @default(40.00) @db.Decimal(12, 2)
+  freeShippingThreshold        Decimal  @default(2000.00) @db.Decimal(12, 2)
+  isFreeShippingEnabled        Boolean  @default(true)
+  defaultPackagingWeightGrams  Float    @default(200.0)
+  defaultPackagingProfileId    String?
+  gstRate                      Decimal  @default(18.00) @db.Decimal(5, 2)
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+}
+
+model ShippingZone {
+  id                     String              @id @default(uuid())
+  zoneCode               String?             @unique
+  zoneName               String
+  pincodePrefix          String?             @unique // Optional unique prefix for legacy fallback
+  shippingCharge         Decimal             @default(100.00) @db.Decimal(12, 2) // Base fallback rate
+  zoneSurcharge          Decimal             @default(0.00) @db.Decimal(12, 2)
+  description            String?
+  estimatedDeliveryDays  String?
+  isActive               Boolean             @default(true)
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  pincodes               ShippingPincode[]
+  rateCards              ShippingRateCard[]
+
+  @@index([zoneCode])
+  @@index([isActive])
+}
+
+model ShippingPincode {
+  id                    String       @id @default(uuid())
+  pincode               String       @unique
+  city                  String
+  district              String?
+  state                 String
+  country               String       @default("India")
+  zoneId                String
+  zone                  ShippingZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  isServiceable         Boolean      @default(true)
+  additionalSurcharge   Decimal      @default(0.00) @db.Decimal(12, 2)
+  deliveryRestrictions  String?
+  estimatedDays         String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  @@index([pincode])
+  @@index([city])
+  @@index([state])
+  @@index([zoneId])
+  @@index([isServiceable])
+}
+
+model ShippingRateCard {
+  id                    String              @id @default(uuid())
+  name                  String
+  zoneId                String
+  zone                  ShippingZone        @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  minShippingCharge     Decimal             @default(40.00) @db.Decimal(12, 2)
+  additionalWeightPerKg Decimal             @default(25.00) @db.Decimal(12, 2)
+  effectiveFrom         DateTime            @default(now())
+  effectiveTo           DateTime?
+  isActive              Boolean             @default(true)
+  priority              Int                 @default(1)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  slabs                 ShippingWeightSlab[]
+
+  @@index([zoneId])
+  @@index([isActive])
+}
+
+model ShippingWeightSlab {
+  id             String           @id @default(uuid())
+  rateCardId     String
+  rateCard       ShippingRateCard @relation(fields: [rateCardId], references: [id], onDelete: Cascade)
+  minWeightGrams Float
+  maxWeightGrams Float
+  rate           Decimal          @db.Decimal(12, 2)
+  sortOrder      Int              @default(0)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([rateCardId])
+  @@index([minWeightGrams, maxWeightGrams])
+}
+
+model ShippingPackagingProfile {
+  id                     String    @id @default(uuid())
+  name                   String
+  type                   String    @default("CARTON") // CARTON, BUNDLE, TUBE, ENVELOPE, CUSTOM
+  weightGrams            Float     @default(200.0)
+  lengthMm               Float?
+  widthMm                Float?
+  heightMm               Float?
+  maxWeightCapacityGrams Float?
+  packagingCharge        Decimal   @default(0.00) @db.Decimal(12, 2)
+  isActive               Boolean   @default(true)
+  isDefault              Boolean   @default(false)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  products               Product[]
+
+  @@index([isActive])
+  @@index([isDefault])
+}
+
+model ShippingCalculationSnapshot {
+  id                     String   @id @default(uuid())
+  orderId                String?
+  destinationPincode     String
+  zoneCode               String
+  productWeightGrams     Float
+  packagingWeightGrams   Float
+  actualWeightGrams      Float
+  volumetricWeightGrams  Float?
+  billableWeightGrams    Float
+  rateCardId             String?
+  matchedSlabId          String?
+  baseShippingCharge     Decimal  @db.Decimal(12, 2)
+  additionalWeightCharge Decimal  @default(0.00) @db.Decimal(12, 2)
+  surchargeTotal         Decimal  @default(0.00) @db.Decimal(12, 2)
+  isFreeShipping         Boolean  @default(false)
+  finalShippingAmount    Decimal  @db.Decimal(12, 2)
+  calculationBreakdown   Json?
+  createdAt              DateTime @default(now())
+
+  @@index([orderId])
+  @@index([destinationPincode])
+}
+
+// ==========================================
+// REUSABLE PERSONALIZATION TEMPLATE SYSTEM
+// ==========================================
+
+model PersonalizationTemplate {
+  id          String                 @id @default(uuid())
+  name        String                 // e.g. "Wedding Frame Template", "Birthday Keepsake", "Alumni Plaque"
+  code        String                 @unique // e.g. "wedding_frame_std", "birthday_gift_custom"
+  description String?
+  category    String?                // e.g. "FRAMES", "GIFTS", "AWARDS", "GENERAL"
+  isActive    Boolean                @default(true)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  fields      PersonalizationField[]
+  products    Product[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+model PersonalizationField {
+  id              String                  @id @default(uuid())
+  templateId      String
+  template        PersonalizationTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  name            String                  // Display label, e.g. "Bride Name", "Wedding Date", "Recipient Name"
+  code            String                  // Stable alphanumeric identifier, e.g. "bride_name", "wedding_date", "recipient_name"
+  inputType       String                  @default("TEXT") // TEXT, TEXTAREA, NUMBER, DATE, EMAIL, PHONE, SELECT
+  scope           String                  @default("PER_ORDER") // PER_ORDER (shared across order item), PER_ITEM (repeats per unit qty)
+  isRequired      Boolean                 @default(true)
+  placeholder     String?
+  helperText      String?
+  defaultValue    String?
+  validationRules Json?                   // { minLength?: number, maxLength?: number, pattern?: string, minValue?: number, maxValue?: number }
+  options         Json?                   // For SELECT: [{ label: string, value: string }]
+  sortOrder       Int                     @default(0)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@unique([templateId, code])
+  @@index([templateId])
+  @@index([sortOrder])
+}
+
+model OrderItemPersonalization {
+  id                 String    @id @default(uuid())
+  orderItemId        String
+  orderItem          OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  itemIndex          Int       // 1-indexed item number (1 to quantity, e.g. 1 to 50 for 50 frames)
+  variantCombination Json?     // Snapshot of variant combination for this specific item if multi-variant
+  fieldValues        Json      // Per-item field values: { recipient_name: "Aarav Sharma" }
+  sharedValues       Json?     // Snapshot of PER_ORDER shared values: { bride_name: "Priya", wedding_date: "2026-11-20" }
+  status             String    @default("PENDING") // PENDING, VERIFIED, PRINTED
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([orderItemId])
+  @@index([orderItemId, itemIndex])
+}
+
+
+
+

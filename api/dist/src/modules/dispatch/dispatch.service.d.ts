@@ -1,0 +1,102 @@
+import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+export interface CourierHandoverDto {
+    orderId: string;
+    courierName: string;
+    manifestReference?: string;
+    scannedBarcodes: string[];
+}
+export interface StorePickupHandoverDto {
+    orderId: string;
+    collectorName: string;
+    collectorPhone: string;
+    idProofType?: string;
+    idProofNumber?: string;
+    notes?: string;
+}
+export declare class DispatchService {
+    private readonly prisma;
+    private readonly auditService;
+    private readonly eventEmitter;
+    private readonly logger;
+    constructor(prisma: PrismaService, auditService: AuditService, eventEmitter: EventEmitter2);
+    confirmCourierHandover(dto: CourierHandoverDto, staffId: string): Promise<{
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        customerId: string;
+        status: import(".prisma/client").$Enums.OrderStatus;
+        orderNumber: string;
+        sourceChannel: import(".prisma/client").$Enums.OrderChannel;
+        customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+        deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+        subtotal: import("@prisma/client/runtime/library").Decimal;
+        taxAmount: import("@prisma/client/runtime/library").Decimal;
+        shippingAmount: import("@prisma/client/runtime/library").Decimal;
+        discountAmount: import("@prisma/client/runtime/library").Decimal;
+        totalAmount: import("@prisma/client/runtime/library").Decimal;
+        paidAmount: import("@prisma/client/runtime/library").Decimal;
+        balanceAmount: import("@prisma/client/runtime/library").Decimal;
+        paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
+        priority: import(".prisma/client").$Enums.Priority;
+        slaStatus: import(".prisma/client").$Enums.SlaStatus;
+        dueAt: Date | null;
+        customerNotes: string | null;
+        internalNotes: string | null;
+        shippingAddressId: string | null;
+        billingAddressId: string | null;
+    }>;
+    confirmStorePickup(dto: StorePickupHandoverDto, staffId: string): Promise<{
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        customerId: string;
+        status: import(".prisma/client").$Enums.OrderStatus;
+        orderNumber: string;
+        sourceChannel: import(".prisma/client").$Enums.OrderChannel;
+        customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+        deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+        subtotal: import("@prisma/client/runtime/library").Decimal;
+        taxAmount: import("@prisma/client/runtime/library").Decimal;
+        shippingAmount: import("@prisma/client/runtime/library").Decimal;
+        discountAmount: import("@prisma/client/runtime/library").Decimal;
+        totalAmount: import("@prisma/client/runtime/library").Decimal;
+        paidAmount: import("@prisma/client/runtime/library").Decimal;
+        balanceAmount: import("@prisma/client/runtime/library").Decimal;
+        paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
+        priority: import(".prisma/client").$Enums.Priority;
+        slaStatus: import(".prisma/client").$Enums.SlaStatus;
+        dueAt: Date | null;
+        customerNotes: string | null;
+        internalNotes: string | null;
+        shippingAddressId: string | null;
+        billingAddressId: string | null;
+    }>;
+    confirmCourierDelivery(orderId: string, receiverName?: string): Promise<{
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        customerId: string;
+        status: import(".prisma/client").$Enums.OrderStatus;
+        orderNumber: string;
+        sourceChannel: import(".prisma/client").$Enums.OrderChannel;
+        customerStatus: import(".prisma/client").$Enums.CustomerVisibleStatus;
+        deliveryMethod: import(".prisma/client").$Enums.DeliveryMethod;
+        subtotal: import("@prisma/client/runtime/library").Decimal;
+        taxAmount: import("@prisma/client/runtime/library").Decimal;
+        shippingAmount: import("@prisma/client/runtime/library").Decimal;
+        discountAmount: import("@prisma/client/runtime/library").Decimal;
+        totalAmount: import("@prisma/client/runtime/library").Decimal;
+        paidAmount: import("@prisma/client/runtime/library").Decimal;
+        balanceAmount: import("@prisma/client/runtime/library").Decimal;
+        paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
+        priority: import(".prisma/client").$Enums.Priority;
+        slaStatus: import(".prisma/client").$Enums.SlaStatus;
+        dueAt: Date | null;
+        customerNotes: string | null;
+        internalNotes: string | null;
+        shippingAddressId: string | null;
+        billingAddressId: string | null;
+    }>;
+}

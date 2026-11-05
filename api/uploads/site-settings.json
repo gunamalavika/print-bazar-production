@@ -1,0 +1,64 @@
+{
+  "heroImageUrl": "/uploads/products/Modern_Warehouse_Storage_Aisles_1793731996649.webp",
+  "heroAltText": "Modern Warehouse Storage Aisles.webp",
+  "heroBadgeText": "CALIBRATED TO ISO 12647",
+  "heroTitle": "Commercial Print Excellence,",
+  "heroHighlightText": "Engineered",
+  "heroTitleSuffix": "for Scale.",
+  "heroDescription": "Direct-to-press precision for visiting cards, luxury rigid boxes, roll-up displays, and marketing collateral. Dynamic live quoting, automated pre-flight checks, and ISO 12647 color calibration.",
+  "heroPrimaryBtnText": "START CUSTOM CONFIGURATION",
+  "heroPrimaryBtnHref": "/products/premium-visiting-cards",
+  "heroSecondaryBtnText": "EXPLORE 2026 CATALOGUE",
+  "heroSecondaryBtnHref": "/products",
+  "heroBannerLinkHref": "/products",
+  "showHeroTextOverlay": false,
+  "showHeroBadge": true,
+  "showHeroHeading": true,
+  "showHeroDescription": true,
+  "showHeroPrimaryBtn": true,
+  "showHeroSecondaryBtn": true,
+  "showHeroTrustPillars": true,
+  "heroAutoSlide": true,
+  "heroSlideIntervalSeconds": 5,
+  "heroStartingPrice": "₹199",
+  "heroStartingSubtitle": "Visiting Cards (100 units)",
+  "heroSlaTitle": "24-48h",
+  "heroSlaSubtitle": "Express Shop Floor Run",
+  "heroImages": [
+    {
+      "id": "hero-1793731996663",
+      "imageUrl": "/uploads/products/Modern_Warehouse_Storage_Aisles_1793731996649.webp",
+      "altText": "Modern Warehouse Storage Aisles.webp",
+      "badgeText": "CALIBRATED TO ISO 12647",
+      "isActive": true
+    },
+    {
+      "id": "hero-1793730423718",
+      "imageUrl": "/uploads/products/Corporate_Foundation__Vision_in_Action_1793730423640.png",
+      "altText": "Print Bazzar Commercial Products",
+      "badgeText": "",
+      "isActive": true
+    }
+  ],
+  "marqueeItems": [
+    {
+      "id": "shipping",
+      "text": "Free Shipping on Orders Over ₹999",
+      "icon": "truck",
+      "isActive": true
+    },
+    {
+      "id": "guarantee",
+      "text": "High Quality Print Guarantee",
+      "icon": "shield",
+      "isActive": true
+    },
+    {
+      "id": "turnaround",
+      "text": "Fast Turnaround (3-5 Business Days)",
+      "icon": "clock",
+      "isActive": true
+    }
+  ],
+  "updatedAt": "2026-11-03T19:04:45.784Z"
+}

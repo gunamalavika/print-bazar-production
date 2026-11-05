@@ -1,0 +1,62 @@
+import { OrderStatus } from '@prisma/client';
+export { OrderStatus };
+
+export enum CustomerVisibleStatus {
+  ORDER_CREATED = 'ORDER_CREATED',
+  PAYMENT_PENDING = 'PAYMENT_PENDING',
+  PAYMENT_CONFIRMED = 'PAYMENT_CONFIRMED',
+  ORDER_RECEIVED = 'ORDER_RECEIVED',
+  ARTWORK_BEING_CHECKED = 'ARTWORK_BEING_CHECKED',
+  DESIGN_IN_PROGRESS = 'DESIGN_IN_PROGRESS',
+  APPROVAL_REQUIRED = 'APPROVAL_REQUIRED',
+  PREPARING_ORDER = 'PREPARING_ORDER',
+  IN_PRODUCTION = 'IN_PRODUCTION',
+  QUALITY_CHECK_AND_PACKING = 'QUALITY_CHECK_AND_PACKING',
+  READY_TO_SHIP = 'READY_TO_SHIP',
+  READY_FOR_PICKUP = 'READY_FOR_PICKUP',
+  OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',
+  DELIVERED = 'DELIVERED',
+  CANCELLED = 'CANCELLED',
+  ON_HOLD = 'ON_HOLD',
+}
+
+export const STATUS_MAPPING: Record<OrderStatus, CustomerVisibleStatus> = {
+  [OrderStatus.ORDER_CREATED]: CustomerVisibleStatus.ORDER_CREATED,
+  [OrderStatus.PAYMENT_PENDING]: CustomerVisibleStatus.PAYMENT_PENDING,
+  [OrderStatus.PAYMENT_CONFIRMED]: CustomerVisibleStatus.PAYMENT_CONFIRMED,
+  [OrderStatus.ORDER_REVIEW]: CustomerVisibleStatus.ORDER_RECEIVED,
+  [OrderStatus.ARTWORK_REVIEW]: CustomerVisibleStatus.ARTWORK_BEING_CHECKED,
+  [OrderStatus.DESIGN_REQUIRED]: CustomerVisibleStatus.DESIGN_IN_PROGRESS,
+  [OrderStatus.ARTWORK_APPROVED]: CustomerVisibleStatus.PREPARING_ORDER,
+  [OrderStatus.CUSTOMER_APPROVAL_REQUIRED]: CustomerVisibleStatus.APPROVAL_REQUIRED,
+  [OrderStatus.PRE_PRODUCTION_QC]: CustomerVisibleStatus.PREPARING_ORDER,
+  [OrderStatus.PRODUCTION_QUEUE]: CustomerVisibleStatus.PREPARING_ORDER,
+  [OrderStatus.PRINTING]: CustomerVisibleStatus.IN_PRODUCTION,
+  [OrderStatus.FINISHING]: CustomerVisibleStatus.IN_PRODUCTION,
+  [OrderStatus.QUALITY_CHECK]: CustomerVisibleStatus.QUALITY_CHECK_AND_PACKING,
+  [OrderStatus.PACKING]: CustomerVisibleStatus.QUALITY_CHECK_AND_PACKING,
+  [OrderStatus.READY_FOR_DISPATCH]: CustomerVisibleStatus.READY_TO_SHIP,
+  [OrderStatus.OUT_FOR_DELIVERY]: CustomerVisibleStatus.OUT_FOR_DELIVERY,
+  [OrderStatus.DELIVERED]: CustomerVisibleStatus.DELIVERED,
+  [OrderStatus.CANCELLED]: CustomerVisibleStatus.CANCELLED,
+  [OrderStatus.ON_HOLD]: CustomerVisibleStatus.ON_HOLD,
+};
+
+export const CUSTOMER_STATUS_LABELS: Record<CustomerVisibleStatus, string> = {
+  [CustomerVisibleStatus.ORDER_CREATED]: 'Order Placed',
+  [CustomerVisibleStatus.PAYMENT_PENDING]: 'Payment Pending',
+  [CustomerVisibleStatus.PAYMENT_CONFIRMED]: 'Payment Confirmed',
+  [CustomerVisibleStatus.ORDER_RECEIVED]: 'Order Received & Under Review',
+  [CustomerVisibleStatus.ARTWORK_BEING_CHECKED]: 'Artwork Preflight Check',
+  [CustomerVisibleStatus.DESIGN_IN_PROGRESS]: 'Design in Progress',
+  [CustomerVisibleStatus.APPROVAL_REQUIRED]: 'Proof Approval Required',
+  [CustomerVisibleStatus.PREPARING_ORDER]: 'Preparing for Production',
+  [CustomerVisibleStatus.IN_PRODUCTION]: 'Printing & Finishing',
+  [CustomerVisibleStatus.QUALITY_CHECK_AND_PACKING]: 'Quality Inspection & Packing',
+  [CustomerVisibleStatus.READY_TO_SHIP]: 'Packed & Ready to Dispatch',
+  [CustomerVisibleStatus.READY_FOR_PICKUP]: 'Ready for Store Pickup',
+  [CustomerVisibleStatus.OUT_FOR_DELIVERY]: 'Out for Delivery',
+  [CustomerVisibleStatus.DELIVERED]: 'Delivered Successfully',
+  [CustomerVisibleStatus.CANCELLED]: 'Order Cancelled',
+  [CustomerVisibleStatus.ON_HOLD]: 'Order Temporarily on Hold',
+};

@@ -1,0 +1,22 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY package*.json ./
+COPY web/package*.json ./web/
+RUN npm install
+
+COPY web/ ./web/
+RUN cd web && npm run build
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=builder /app/web/.next ./web/.next
+COPY --from=builder /app/web/public ./web/public
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/web/package.json ./web/package.json
+
+EXPOSE 3000
+CMD ["npm", "run", "start:web"]
