@@ -216,12 +216,68 @@ export class AdminCatalogueService {
         : {}),
     };
 
-    const [total, products] = await Promise.all([
-      this.prisma.product.count({ where }),
-      this.prisma.product.findMany({
-        where,
+    const fetchProducts = () =>
+      Promise.all([
+        this.prisma.product.count({ where }),
+        this.prisma.product.findMany({
+          where,
+          include: {
+            category: { select: { id: true, name: true, slug: true } },
+            images: {
+              orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }],
+            },
+            optionGroups: {
+              include: {
+                options: {
+                  orderBy: { sortOrder: 'asc' },
+                },
+              },
+              orderBy: { sortOrder: 'asc' },
+            },
+            configurationRules: {
+              orderBy: { createdAt: 'asc' },
+            },
+            pricingSource: true,
+          },
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+          skip,
+          take: limit,
+        }),
+      ]);
+
+    let total: number;
+    let products: any[];
+
+    try {
+      [total, products] = await fetchProducts();
+    } catch (err: any) {
+      if (err?.message?.includes('keyPoints') || err?.message?.includes('column')) {
+        await this.prisma.$executeRawUnsafe(
+          'ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "keyPoints" text[] DEFAULT ARRAY[]::text[];'
+        );
+        [total, products] = await fetchProducts();
+      } else {
+        throw err;
+      }
+    }
+
+    return {
+      data: products,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async getProductById(id: string) {
+    const fetchProduct = () =>
+      this.prisma.product.findUnique({
+        where: { id },
         include: {
-          category: { select: { id: true, name: true, slug: true } },
+          category: true,
           images: {
             orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }],
           },
@@ -236,67 +292,43 @@ export class AdminCatalogueService {
           configurationRules: {
             orderBy: { createdAt: 'asc' },
           },
-          pricingSource: true,
+          pricingMatrices: {
+            orderBy: { minQty: 'asc' },
+          },
+          additionalPricings: {
+            orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
+          },
+          personalizationTemplate: {
+            include: {
+              fields: {
+                orderBy: { sortOrder: 'asc' },
+              },
+            },
+          },
+          pricingSource: {
+            include: {
+              syncLogs: {
+                take: 10,
+                orderBy: { createdAt: 'desc' },
+              },
+            },
+          },
         },
-        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
-        skip,
-        take: limit,
-      }),
-    ]);
+      });
 
-    return {
-      data: products,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
-  }
-
-  async getProductById(id: string) {
-    const product = await this.prisma.product.findUnique({
-      where: { id },
-      include: {
-        category: true,
-        images: {
-          orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }],
-        },
-        optionGroups: {
-          include: {
-            options: {
-              orderBy: { sortOrder: 'asc' },
-            },
-          },
-          orderBy: { sortOrder: 'asc' },
-        },
-        configurationRules: {
-          orderBy: { createdAt: 'asc' },
-        },
-        pricingMatrices: {
-          orderBy: { minQty: 'asc' },
-        },
-        additionalPricings: {
-          orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
-        },
-        personalizationTemplate: {
-          include: {
-            fields: {
-              orderBy: { sortOrder: 'asc' },
-            },
-          },
-        },
-        pricingSource: {
-          include: {
-            syncLogs: {
-              take: 10,
-              orderBy: { createdAt: 'desc' },
-            },
-          },
-        },
-      },
-    });
+    let product;
+    try {
+      product = await fetchProduct();
+    } catch (err: any) {
+      if (err?.message?.includes('keyPoints') || err?.message?.includes('column')) {
+        await this.prisma.$executeRawUnsafe(
+          'ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "keyPoints" text[] DEFAULT ARRAY[]::text[];'
+        );
+        product = await fetchProduct();
+      } else {
+        throw err;
+      }
+    }
 
     if (!product) {
       throw new NotFoundException(`Product with ID '${id}' not found`);

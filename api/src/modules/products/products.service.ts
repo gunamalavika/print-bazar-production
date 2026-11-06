@@ -134,37 +134,50 @@ export class ProductsService {
         : {}),
     };
 
-    return this.prisma.product.findMany({
-      where,
-      include: {
-        category: {
-          include: {
-            parent: {
-              select: { id: true, name: true, slug: true },
+    const queryProducts = () =>
+      this.prisma.product.findMany({
+        where,
+        include: {
+          category: {
+            include: {
+              parent: {
+                select: { id: true, name: true, slug: true },
+              },
             },
           },
-        },
-        images: {
-          orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }],
-        },
-        optionGroups: {
-          where: { isActive: true, isCustomerVisible: true },
-          include: {
-            options: {
-              where: { isActive: true },
-              orderBy: { sortOrder: 'asc' },
-            },
+          images: {
+            orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }],
           },
-          orderBy: { sortOrder: 'asc' },
+          optionGroups: {
+            where: { isActive: true, isCustomerVisible: true },
+            include: {
+              options: {
+                where: { isActive: true },
+                orderBy: { sortOrder: 'asc' },
+              },
+            },
+            orderBy: { sortOrder: 'asc' },
+          },
+          configurationRules: {
+            where: { isActive: true },
+            orderBy: { createdAt: 'asc' },
+          },
+          pricingSource: true,
         },
-        configurationRules: {
-          where: { isActive: true },
-          orderBy: { createdAt: 'asc' },
-        },
-        pricingSource: true,
-      },
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
-    });
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+      });
+
+    try {
+      return await queryProducts();
+    } catch (err: any) {
+      if (err?.message?.includes('keyPoints') || err?.message?.includes('column')) {
+        await this.prisma.$executeRawUnsafe(
+          'ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "keyPoints" text[] DEFAULT ARRAY[]::text[];'
+        );
+        return await queryProducts();
+      }
+      throw err;
+    }
   }
 
   async getProductBySlug(slugOrId: string) {
@@ -182,55 +195,70 @@ export class ProductsService {
     };
     const targetSlug = aliasMap[normalized] || normalized;
 
-    const product = await this.prisma.product.findFirst({
-      where: {
-        OR: [
-          { slug: targetSlug, status: 'PUBLISHED', isActive: true },
-          { slug: normalized, status: 'PUBLISHED', isActive: true },
-          { id: slugOrId, isActive: true },
-        ],
-      },
-      include: {
-        category: {
-          include: {
-            parent: {
-              select: { id: true, name: true, slug: true },
+    const queryProduct = () =>
+      this.prisma.product.findFirst({
+        where: {
+          OR: [
+            { slug: targetSlug, status: 'PUBLISHED', isActive: true },
+            { slug: normalized, status: 'PUBLISHED', isActive: true },
+            { id: slugOrId, isActive: true },
+          ],
+        },
+        include: {
+          category: {
+            include: {
+              parent: {
+                select: { id: true, name: true, slug: true },
+              },
             },
           },
-        },
-        images: {
-          orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }],
-        },
-        optionGroups: {
-          where: { isActive: true },
-          include: {
-            options: {
-              where: { isActive: true },
-              orderBy: { sortOrder: 'asc' },
+          images: {
+            orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }],
+          },
+          optionGroups: {
+            where: { isActive: true },
+            include: {
+              options: {
+                where: { isActive: true },
+                orderBy: { sortOrder: 'asc' },
+              },
+            },
+            orderBy: { sortOrder: 'asc' },
+          },
+          configurationRules: {
+            where: { isActive: true },
+            orderBy: { createdAt: 'asc' },
+          },
+          pricingMatrices: {
+            orderBy: { minQty: 'asc' },
+          },
+          additionalPricings: {
+            orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
+          },
+          personalizationTemplate: {
+            include: {
+              fields: {
+                orderBy: { sortOrder: 'asc' },
+              },
             },
           },
-          orderBy: { sortOrder: 'asc' },
+          pricingSource: true,
         },
-        configurationRules: {
-          where: { isActive: true },
-          orderBy: { createdAt: 'asc' },
-        },
-        pricingMatrices: {
-          orderBy: { minQty: 'asc' },
-        },
-        additionalPricings: {
-          orderBy: [{ minQty: 'asc' }, { groupCode: 'asc' }, { optionValue: 'asc' }],
-        },
-        personalizationTemplate: {
-          include: {
-            fields: {
-              orderBy: { sortOrder: 'asc' },
-            },
-          },
-        },
-        pricingSource: true,
-      },
-    });
+      });
+
+    let product;
+    try {
+      product = await queryProduct();
+    } catch (err: any) {
+      if (err?.message?.includes('keyPoints') || err?.message?.includes('column')) {
+        await this.prisma.$executeRawUnsafe(
+          'ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "keyPoints" text[] DEFAULT ARRAY[]::text[];'
+        );
+        product = await queryProduct();
+      } else {
+        throw err;
+      }
+    }
 
     if (!product) {
       throw new NotFoundException(`Product with slug or ID '${slugOrId}' not found or is currently unavailable`);
