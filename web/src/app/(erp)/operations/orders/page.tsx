@@ -163,6 +163,16 @@ export default function OrderAssignmentCenterPage() {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [liveToast, setLiveToast] = useState<string | null>(null);
 
+  // Candidate Artworks Review & Selection Modal state
+  const [candidateModalOpen, setCandidateModalOpen] = useState(false);
+  const [candidateOrder, setCandidateOrder] = useState<any | null>(null);
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [oeReviewNotes, setOeReviewNotes] = useState('');
+  const [isApprovingCandidate, setIsApprovingCandidate] = useState(false);
+  const [showCorrectionInput, setShowCorrectionInput] = useState(false);
+  const [oeCorrectionNotes, setOeCorrectionNotes] = useState('');
+  const [isReturningToDesigner, setIsReturningToDesigner] = useState(false);
+
   // Artwork Inspection Modal Viewer state
   const [artworkModalOpen, setArtworkModalOpen] = useState(false);
   const [artworkImageError, setArtworkImageError] = useState(false);
@@ -223,14 +233,9 @@ export default function OrderAssignmentCenterPage() {
           const item = bo.items?.[0] || {};
           const specs = item.specifications || {};
           const latestArt = item.artworkVersions?.[0];
-          const hasUploadedArt = Boolean(
-            latestArt?.storageKey ||
-            latestArt?.proofUrl ||
-            specs?.artworkUrl ||
-            specs?.artworkFile?.fileUrl ||
-            specs?.artworkFile?.storageKey ||
-            (item.artworkVersions && item.artworkVersions.length > 0)
-          );
+          const approvedArt = item.artworkVersions?.find((v: any) => v.isApproved);
+          const hasConfirmedWork = Boolean(item.approvedArtworkVersionId || approvedArt);
+          const hasUploadedCandidates = Boolean(item.artworkVersions && item.artworkVersions.length > 0);
 
           const isArtReady =
             bo.status === 'ARTWORK_APPROVED' ||
@@ -241,9 +246,7 @@ export default function OrderAssignmentCenterPage() {
             bo.status === 'PACKING' ||
             bo.status === 'READY_FOR_DISPATCH' ||
             bo.status === 'DELIVERED' ||
-            (hasUploadedArt &&
-              bo.status !== 'DESIGN_REQUIRED' &&
-              bo.status !== 'ARTWORK_REVIEW');
+            hasConfirmedWork;
 
           const isDesign =
             bo.status === 'DESIGN_REQUIRED' ||
@@ -254,9 +257,17 @@ export default function OrderAssignmentCenterPage() {
             specs?.artworkSource === 'DESIGN_TEAM' ||
             specs?.artworkSource === 'CUSTOMER_WITH_DESIGN_ASSISTANCE';
 
-          const artState = isArtReady ? 'READY' : isDesign ? 'DESIGN_REQUIRED' : 'NOT_READY';
+          const artState = isArtReady
+            ? 'READY'
+            : bo.status === 'ARTWORK_REVIEW' || hasUploadedCandidates
+            ? 'NEEDS_OE_CONFIRMATION'
+            : isDesign
+            ? 'DESIGN_REQUIRED'
+            : 'NOT_READY';
 
           const rawArtUrl =
+            approvedArt?.storageKey ||
+            approvedArt?.proofUrl ||
             latestArt?.proofUrl ||
             latestArt?.storageKey ||
             specs?.artworkUrl ||
@@ -270,17 +281,54 @@ export default function OrderAssignmentCenterPage() {
             bo.assignedOperator ||
             bo.productionAssignment?.assignedUser ||
             bo.assignments?.find((a: any) => a.taskType === 'PRODUCTION' && a.status === 'ACTIVE')?.assignedUser ||
+            bo.assignments?.find((a: any) => a.taskType === 'PRODUCTION')?.assignedUser ||
             null;
+
+          const activeDesignAssignment = bo.assignments?.find(
+            (a: any) => a.taskType === 'DESIGN' && a.status === 'ACTIVE',
+          );
+          const completedDesignAssignment = bo.assignments?.find(
+            (a: any) => a.taskType === 'DESIGN' && a.status === 'COMPLETED',
+          );
+          const anyDesignAssignment = bo.assignments?.find(
+            (a: any) => a.taskType === 'DESIGN',
+          );
 
           const designAssignee =
             bo.assignedDesigner ||
             bo.designAssignment?.assignedUser ||
-            bo.assignments?.find((a: any) => a.taskType === 'DESIGN' && a.status === 'ACTIVE')?.assignedUser ||
+            activeDesignAssignment?.assignedUser ||
+            completedDesignAssignment?.assignedUser ||
+            anyDesignAssignment?.assignedUser ||
             null;
+
+          const isDesignCompleted = Boolean(
+            completedDesignAssignment ||
+            bo.status === 'ARTWORK_REVIEW' ||
+            bo.status === 'ARTWORK_APPROVED' ||
+            hasUploadedCandidates ||
+            isArtReady,
+          );
+
+          const candidateArtworks = (item.artworkVersions || []).map((v: any) => ({
+            id: v.id,
+            versionNumber: v.versionNumber,
+            originalFileName: v.originalFileName || `Artwork_v${v.versionNumber || 1}.pdf`,
+            fileUrl: resolveArtworkUrl(v.proofUrl || v.storageKey),
+            storageKey: v.storageKey,
+            fileSize: v.fileSize ? `${(Number(v.fileSize) / (1024 * 1024)).toFixed(1)} MB` : '3.2 MB',
+            mimeType: v.mimeType || 'application/pdf',
+            isApproved: Boolean(v.isApproved),
+            prepressNotes: v.prepressNotes || null,
+            resolutionDpi: v.resolutionDpi || 300,
+            createdAt: v.createdAt,
+          }));
 
           return {
             id: bo.id,
             orderNumber: bo.orderNumber,
+            orderItemId: item.id || null,
+            candidateArtworks,
             customerName: bo.customer?.fullName || 'Direct Customer',
             productName: item.productName || 'Custom Print Job',
             thumbnailType: item.productName?.toLowerCase().includes('card')
@@ -300,7 +348,7 @@ export default function OrderAssignmentCenterPage() {
               : isDesign
               ? 'Custom prepress design requested by client'
               : 'No approved artwork version uploaded',
-            artworkFile: isArtReady || hasUploadedArt
+            artworkFile: isArtReady || hasUploadedCandidates
               ? {
                   fileName:
                     latestArt?.originalFileName ||
@@ -325,6 +373,7 @@ export default function OrderAssignmentCenterPage() {
             isUrgent: bo.priority === 'URGENT',
             assignedDesigner: designAssignee,
             assignedOperator: prodAssignee,
+            isDesignCompleted,
             status: bo.status,
           };
         });
@@ -519,6 +568,68 @@ export default function OrderAssignmentCenterPage() {
     });
     setArtworkImageError(false);
     setArtworkModalOpen(true);
+  };
+
+  // ─── CANDIDATE ARTWORKS REVIEW & APPROVAL HANDLERS ─────────────────────────
+  const handleOpenCandidateReviewModal = (order: any) => {
+    if (!order) return;
+    setCandidateOrder(order);
+    const approved = order.candidateArtworks?.find((v: any) => v.isApproved);
+    setSelectedCandidateId(approved?.id || order.candidateArtworks?.[0]?.id || null);
+    setOeReviewNotes('');
+    setOeCorrectionNotes('');
+    setShowCorrectionInput(false);
+    setCandidateModalOpen(true);
+  };
+
+  const handleApproveCandidateWork = async () => {
+    if (!candidateOrder || !selectedCandidateId) {
+      setLiveToast('Please select a candidate artwork to confirm.');
+      return;
+    }
+    setIsApprovingCandidate(true);
+    try {
+      const orderItemId = candidateOrder.orderItemId || candidateOrder.id;
+      await api.confirmArtworkWork({
+        orderItemId,
+        artworkVersionId: selectedCandidateId,
+        oeNotes: oeReviewNotes || 'Confirmed by Operations Manager for production',
+      });
+
+      setLiveToast(`✓ Authoritative work confirmed for Order #${candidateOrder.orderNumber}! Moved to Production Queue.`);
+      setCandidateModalOpen(false);
+      await loadData();
+    } catch (err: any) {
+      setLiveToast(`⚠️ Failed to approve artwork: ${err.message || 'Server error'}`);
+    } finally {
+      setIsApprovingCandidate(false);
+    }
+  };
+
+  const handleReturnToDesignerFromOperations = async () => {
+    if (!candidateOrder) return;
+    if (!oeCorrectionNotes.trim()) {
+      setLiveToast('Please enter correction directives for the designer.');
+      return;
+    }
+    setIsReturningToDesigner(true);
+    try {
+      const orderItemId = candidateOrder.orderItemId || candidateOrder.id;
+      await api.returnArtworkToDesigner({
+        orderItemId,
+        revisionFeedback: oeCorrectionNotes.trim(),
+      });
+
+      setLiveToast(`✓ Order #${candidateOrder.orderNumber} returned to designer for corrections.`);
+      setCandidateModalOpen(false);
+      setShowCorrectionInput(false);
+      setOeCorrectionNotes('');
+      await loadData();
+    } catch (err: any) {
+      setLiveToast(`⚠️ Failed to return to designer: ${err.message || 'Server error'}`);
+    } finally {
+      setIsReturningToDesigner(false);
+    }
   };
 
   // ─── EXECUTE ASSIGNMENT ────────────────────────────────────────────────────
@@ -1151,6 +1262,28 @@ export default function OrderAssignmentCenterPage() {
                             </button>
                           </div>
                         </div>
+                      ) : (order.candidateArtworks && order.candidateArtworks.length > 0) || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW' ? (
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">
+                              <span className="relative flex h-1.5 w-1.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
+                              </span>
+                              <span>{order.candidateArtworks?.length || 1} Candidate Work(s)</span>
+                            </span>
+                          </div>
+                          <div className="mt-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCandidateReviewModal(order)}
+                              className="text-[11px] font-bold text-amber-950 bg-amber-200/90 hover:bg-amber-300 border border-amber-400 px-2.5 py-1 rounded-md inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95"
+                            >
+                              <RiShieldCheckLine className="h-3.5 w-3.5 text-amber-800" />
+                              <span>Select & Approve Work →</span>
+                            </button>
+                          </div>
+                        </div>
                       ) : (
                         <div>
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-50 text-amber-700 border border-amber-200">
@@ -1245,27 +1378,39 @@ export default function OrderAssignmentCenterPage() {
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (order.artworkState !== 'READY') {
-                              setLiveToast('⚠️ Artwork must be approved before assigning Production Operator. Immediate task: Prepress Design.');
-                              handleOpenDrawer(order, 'DESIGN');
-                              return;
-                            }
-                            handleOpenDrawer(order, 'PRODUCTION');
-                          }}
-                          className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer shrink-0 ${
-                            order.artworkState !== 'READY'
-                              ? 'bg-slate-100 text-slate-400 hover:bg-slate-200 border border-slate-200'
-                              : order.assignedOperator
-                              ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
-                              : 'bg-blue-600 hover:bg-blue-700 text-white shadow-2xs'
-                          }`}
-                          title={order.artworkState !== 'READY' ? 'Artwork must be approved before assigning Operator' : undefined}
-                        >
-                          {order.artworkState !== 'READY' ? 'Artwork Req' : order.assignedOperator ? 'Change' : 'Assign'}
-                        </button>
+                        {(order.candidateArtworks && order.candidateArtworks.length > 0) || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW' ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCandidateReviewModal(order)}
+                            className="px-2.5 py-1 rounded text-[10.5px] font-bold bg-amber-500 hover:bg-amber-600 text-white transition cursor-pointer shadow-xs active:scale-95 flex items-center gap-1 shrink-0"
+                            title="Candidate works uploaded. Click to review and confirm."
+                          >
+                            <RiShieldCheckLine className="h-3 w-3" />
+                            <span>Select Work</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (order.artworkState !== 'READY') {
+                                setLiveToast('⚠️ Artwork must be approved before assigning Production Operator. Immediate task: Prepress Design.');
+                                handleOpenDrawer(order, 'DESIGN');
+                                return;
+                              }
+                              handleOpenDrawer(order, 'PRODUCTION');
+                            }}
+                            className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer shrink-0 ${
+                              order.artworkState !== 'READY'
+                                ? 'bg-slate-100 text-slate-400 hover:bg-slate-200 border border-slate-200'
+                                : order.assignedOperator
+                                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
+                                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-2xs'
+                            }`}
+                            title={order.artworkState !== 'READY' ? 'Artwork must be approved before assigning Operator' : undefined}
+                          >
+                            {order.artworkState !== 'READY' ? 'Artwork Req' : order.assignedOperator ? 'Change' : 'Assign'}
+                          </button>
+                        )}
                       </div>
 
                       {/* Three-Dot Menu */}
@@ -1347,6 +1492,23 @@ export default function OrderAssignmentCenterPage() {
                             <RiEyeLine className="h-3 w-3 text-emerald-700" />
                             <span>READY</span>
                           </button>
+                        ) : (order.candidateArtworks && order.candidateArtworks.length > 0) || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW' ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCandidateReviewModal(order)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[10.5px] font-mono font-bold bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 transition shadow-2xs cursor-pointer group active:scale-95"
+                            title="Candidate works uploaded by prepress designer. Click to review and select confirmed work."
+                          >
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                            </span>
+                            <RiShieldCheckLine className="h-3.5 w-3.5 text-amber-700" />
+                            <span>{order.candidateArtworks?.length > 1 ? `${order.candidateArtworks.length} Works` : 'OE Review'}</span>
+                            <span className="text-[9px] bg-amber-200 text-amber-900 px-1 rounded font-sans group-hover:bg-amber-300">
+                              Select →
+                            </span>
+                          </button>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200">
                             <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
@@ -1370,6 +1532,11 @@ export default function OrderAssignmentCenterPage() {
                               Edit
                             </button>
                           </div>
+                        ) : order.isDesignCompleted || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-semibold">
+                            <RiPaletteLine className="h-3 w-3 text-emerald-600" />
+                            <span>Work Uploaded</span>
+                          </span>
                         ) : (
                           <Button
                             variant="outline"
@@ -1397,6 +1564,17 @@ export default function OrderAssignmentCenterPage() {
                               Edit
                             </button>
                           </div>
+                        ) : (order.candidateArtworks && order.candidateArtworks.length > 0) || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW' ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCandidateReviewModal(order)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-600 text-white text-[10.5px] font-bold shadow-xs transition cursor-pointer active:scale-95"
+                            title="Review candidate artworks uploaded by designer and confirm for production."
+                          >
+                            <RiShieldCheckLine className="h-3.5 w-3.5" />
+                            <span>Select Work ({order.candidateArtworks?.length || 1})</span>
+                            <RiArrowRightLine className="h-3 w-3" />
+                          </button>
                         ) : (
                           <Button
                             variant="outline"
@@ -1932,6 +2110,281 @@ export default function OrderAssignmentCenterPage() {
                     Close Viewer
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── CANDIDATE ARTWORKS REVIEW & OE CONFIRMATION MODAL ────────────────── */}
+      {candidateModalOpen && candidateOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="relative w-full max-w-4xl max-h-[92vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <RiShieldCheckLine className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-black tracking-tight text-white font-display">
+                      Candidate Artworks Review & OE Sign-Off
+                    </h2>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                      Order #{candidateOrder.orderNumber}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    {candidateOrder.customerName} • {candidateOrder.productName} ({candidateOrder.specs.quantity.toLocaleString()} pcs • {candidateOrder.specs.dimensions})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCandidateModalOpen(false)}
+                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              >
+                <RiCloseLine className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Instruction banner */}
+            <div className="px-6 py-2.5 bg-amber-50/80 border-b border-amber-200/80 flex items-center justify-between text-xs text-amber-950 shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                <span className="font-medium">
+                  The Prepress Designer submitted <strong>{candidateOrder.candidateArtworks?.length || 1} candidate design work(s)</strong>. Select the confirmed master artwork to approve and move to production.
+                </span>
+              </div>
+              <span className="text-[11px] font-mono font-bold text-amber-900 bg-amber-200/80 px-2 py-0.5 rounded">
+                Role: Operations Manager
+              </span>
+            </div>
+
+            {/* Scrollable Content: Candidate Cards Grid */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {candidateOrder.candidateArtworks && candidateOrder.candidateArtworks.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {candidateOrder.candidateArtworks.map((cand: any, idx: number) => {
+                    const isSelected = selectedCandidateId === cand.id;
+                    const resolvedUrl = resolveArtworkUrl(cand.proofUrl || cand.storageKey);
+                    const formattedSize = cand.fileSize
+                      ? `${(Number(cand.fileSize) / (1024 * 1024)).toFixed(1)} MB`
+                      : 'High-Res Asset';
+
+                    return (
+                      <div
+                        key={cand.id || idx}
+                        onClick={() => setSelectedCandidateId(cand.id)}
+                        className={`relative rounded-xl border-2 transition-all p-3.5 flex flex-col justify-between cursor-pointer group ${
+                          isSelected
+                            ? 'border-amber-500 bg-amber-50/40 shadow-md ring-2 ring-amber-400/30'
+                            : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-xs'
+                        }`}
+                      >
+                        {/* Top badges */}
+                        <div className="flex items-center justify-between gap-1 mb-2">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10.5px] font-mono font-black ${
+                              isSelected
+                                ? 'bg-amber-500 text-slate-950'
+                                : 'bg-slate-100 text-slate-700 group-hover:bg-slate-200'
+                            }`}
+                          >
+                            Option V{cand.versionNumber || idx + 1}
+                          </span>
+                          {cand.isApproved && (
+                            <span className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              CURRENT APPROVED
+                            </span>
+                          )}
+                          <span className="text-[10px] font-mono text-slate-400">
+                            {cand.resolutionDpi ? `${cand.resolutionDpi} DPI` : '300 DPI'}
+                          </span>
+                        </div>
+
+                        {/* Thumbnail Preview */}
+                        <div className="relative aspect-4/3 w-full rounded-lg bg-slate-900 border border-slate-200 overflow-hidden flex items-center justify-center mb-3">
+                          {resolvedUrl ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img
+                              src={resolvedUrl}
+                              alt={cand.originalFileName || `Artwork Option ${idx + 1}`}
+                              className="h-full w-full object-contain group-hover:scale-105 transition duration-300"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            <div className="text-center p-4 text-slate-400">
+                              <RiImageLine className="h-8 w-8 mx-auto mb-1 opacity-50" />
+                              <span className="text-[10px] font-mono">No Preview</span>
+                            </div>
+                          )}
+                          {resolvedUrl && (
+                            <a
+                              href={resolvedUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute bottom-2 right-2 p-1.5 rounded-lg bg-slate-900/80 hover:bg-slate-900 text-white text-[10px] flex items-center gap-1 opacity-0 group-hover:opacity-100 transition shadow-sm"
+                              title="Open original proof"
+                            >
+                              <RiExternalLinkLine className="h-3 w-3" />
+                              <span>View</span>
+                            </a>
+                          )}
+                        </div>
+
+                        {/* File Details */}
+                        <div className="space-y-1.5 text-xs">
+                          <p
+                            className="font-bold text-slate-900 truncate text-[11.5px]"
+                            title={cand.originalFileName}
+                          >
+                            {cand.originalFileName || `Option_${idx + 1}_artwork.png`}
+                          </p>
+                          <div className="flex items-center justify-between text-[10.5px] font-mono text-slate-500">
+                            <span>{formattedSize}</span>
+                            <span>{cand.status || 'READY'}</span>
+                          </div>
+                          {cand.prepressNotes && (
+                            <p className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded border border-slate-200 italic line-clamp-2">
+                              &ldquo;{cand.prepressNotes}&rdquo;
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Radio selection indicator */}
+                        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <div
+                              className={`h-4 w-4 rounded-full border-2 flex items-center justify-center ${
+                                isSelected
+                                  ? 'border-amber-500 bg-amber-500'
+                                  : 'border-slate-300 bg-white'
+                              }`}
+                            >
+                              {isSelected && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+                            </div>
+                            <span
+                              className={`text-[11px] font-bold ${
+                                isSelected ? 'text-amber-950 font-black' : 'text-slate-500'
+                              }`}
+                            >
+                              {isSelected ? 'Selected for Production' : 'Choose this work'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="py-12 text-center text-slate-500">
+                  <RiAlertLine className="h-10 w-10 mx-auto text-amber-500 mb-2" />
+                  <p className="font-bold text-sm text-slate-800">No candidate artworks found</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    The designer has not uploaded candidate files yet.
+                  </p>
+                </div>
+              )}
+
+              {/* Optional OE Production Sign-off Notes */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                <label className="block text-xs font-bold text-slate-700">
+                  Manager Sign-off / Print Operator Directive (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={oeReviewNotes}
+                  onChange={(e) => setOeReviewNotes(e.target.value)}
+                  placeholder="e.g. Master artwork confirmed; ensure 350 GSM matte lamination and alignment on Roland TrueVIS."
+                  className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500 text-slate-800"
+                />
+              </div>
+
+              {/* Revision Directives Drawer (When returning to designer) */}
+              {showCorrectionInput && (
+                <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 space-y-3 animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-rose-900 flex items-center gap-1.5">
+                      <RiAlertLine className="h-4 w-4 text-rose-600" />
+                      Specific Directives for Prepress Designer:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowCorrectionInput(false)}
+                      className="text-[11px] font-bold text-slate-500 hover:text-slate-800"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={oeCorrectionNotes}
+                    onChange={(e) => setOeCorrectionNotes(e.target.value)}
+                    placeholder="Describe needed corrections (e.g., Increase bleed margin by 3mm, change font color to Pantone 286C, upload vector version)..."
+                    className="w-full text-xs p-3 rounded-lg border border-rose-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-rose-500 text-slate-800"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowCorrectionInput(false)}
+                      className="text-xs font-bold"
+                    >
+                      Dismiss
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleReturnToDesignerFromOperations}
+                      disabled={isReturningToDesigner || !oeCorrectionNotes.trim()}
+                      className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold"
+                    >
+                      {isReturningToDesigner ? 'Returning to Designer...' : 'Send Directives to Designer'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+              <div>
+                {!showCorrectionInput && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCorrectionInput(true)}
+                    className="text-xs font-bold text-rose-700 hover:text-rose-900 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Need corrections? Return to Designer</span>
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCandidateModalOpen(false)}
+                  className="text-xs font-bold text-slate-700"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleApproveCandidateWork}
+                  disabled={!selectedCandidateId || isApprovingCandidate}
+                  className="bg-[#FFED00] hover:bg-[#F2DE00] text-slate-950 font-black text-xs px-5 py-2.5 rounded-xl border border-[#E3A008]/40 shadow-xs flex items-center gap-2 cursor-pointer active:scale-95"
+                >
+                  <RiCheckLine className="h-4 w-4" />
+                  <span>
+                    {isApprovingCandidate
+                      ? 'Confirming & Moving to Production...'
+                      : 'APPROVE SELECTED WORK & MOVE TO PRODUCTION'}
+                  </span>
+                </Button>
               </div>
             </div>
           </div>

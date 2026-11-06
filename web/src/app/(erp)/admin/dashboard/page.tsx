@@ -116,10 +116,11 @@ export default function AdminDashboardPage() {
       const readyToDispatchCount = oe?.dispatchReady ?? board?.metrics?.readyForDispatch ?? 0;
 
       // 3. Blocked Orders / Exceptions
-      const rawBlockedList: any[] = Array.isArray(blocked)
-        ? blocked
-        : Array.isArray((blocked as any)?.data)
-          ? (blocked as any).data
+      const rawBlocked: any = blocked;
+      const rawBlockedList: any[] = Array.isArray(rawBlocked)
+        ? rawBlocked
+        : Array.isArray(rawBlocked?.data)
+          ? rawBlocked.data
           : [];
 
       const mappedBlocked = rawBlockedList.map((o: any) => {

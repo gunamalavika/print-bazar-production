@@ -492,10 +492,8 @@ export class ArtworkService {
     tab: 'active' | 'passed' | 'all' = 'all',
     scope: 'mine' | 'all' = 'mine',
   ) {
-    // Strict individual ownership:
-    // A DESIGNER_PREPRESS MUST ONLY see tasks assigned to them and designs that THEY completed/passed!
     const isDesignerRole = user?.role === UserRole.DESIGNER_PREPRESS;
-    const isDesignerOnly = isDesignerRole || scope === 'mine';
+    const filterByMine = scope === 'mine' && isDesignerRole && user?.sub;
 
     let statusCondition: any;
     if (tab === 'active') {
@@ -508,15 +506,28 @@ export class ArtworkService {
             OrderStatus.CUSTOMER_APPROVAL_REQUIRED,
           ],
         },
-        ...(isDesignerOnly && user?.sub
+        ...(filterByMine
           ? {
-              assignments: {
-                some: {
-                  assignedUserId: user.sub,
-                  taskType: AssignmentTaskType.DESIGN,
-                  status: AssignmentStatus.ACTIVE,
+              OR: [
+                {
+                  assignments: {
+                    some: {
+                      assignedUserId: user.sub,
+                      taskType: AssignmentTaskType.DESIGN,
+                    },
+                  },
                 },
-              },
+                // Allow unclaimed orders in DESIGN_REQUIRED to be seen by the designer
+                {
+                  status: OrderStatus.DESIGN_REQUIRED,
+                  assignments: {
+                    none: {
+                      taskType: AssignmentTaskType.DESIGN,
+                      status: AssignmentStatus.ACTIVE,
+                    },
+                  },
+                },
+              ],
             }
           : {}),
       };
@@ -528,7 +539,7 @@ export class ArtworkService {
               some: {
                 taskType: AssignmentTaskType.DESIGN,
                 status: AssignmentStatus.COMPLETED,
-                ...(isDesignerOnly && user?.sub ? { assignedUserId: user.sub } : {}),
+                ...(filterByMine ? { assignedUserId: user.sub } : {}),
               },
             },
           },
@@ -551,7 +562,7 @@ export class ArtworkService {
               some: {
                 taskType: AssignmentTaskType.DESIGN,
                 status: AssignmentStatus.COMPLETED,
-                ...(isDesignerOnly && user?.sub ? { assignedUserId: user.sub } : {}),
+                ...(filterByMine ? { assignedUserId: user.sub } : {}),
               },
             },
           },
@@ -571,15 +582,27 @@ export class ArtworkService {
                 OrderStatus.CUSTOMER_APPROVAL_REQUIRED,
               ],
             },
-            ...(isDesignerOnly && user?.sub
+            ...(filterByMine
               ? {
-                  assignments: {
-                    some: {
-                      assignedUserId: user.sub,
-                      taskType: AssignmentTaskType.DESIGN,
-                      status: AssignmentStatus.ACTIVE,
+                  OR: [
+                    {
+                      assignments: {
+                        some: {
+                          assignedUserId: user.sub,
+                          taskType: AssignmentTaskType.DESIGN,
+                        },
+                      },
                     },
-                  },
+                    {
+                      status: OrderStatus.DESIGN_REQUIRED,
+                      assignments: {
+                        none: {
+                          taskType: AssignmentTaskType.DESIGN,
+                          status: AssignmentStatus.ACTIVE,
+                        },
+                      },
+                    },
+                  ],
                 }
               : {}),
           },
@@ -589,7 +612,7 @@ export class ArtworkService {
               some: {
                 taskType: AssignmentTaskType.DESIGN,
                 status: AssignmentStatus.COMPLETED,
-                ...(isDesignerOnly && user?.sub ? { assignedUserId: user.sub } : {}),
+                ...(filterByMine ? { assignedUserId: user.sub } : {}),
               },
             },
           },
@@ -613,7 +636,7 @@ export class ArtworkService {
               some: {
                 taskType: AssignmentTaskType.DESIGN,
                 status: AssignmentStatus.COMPLETED,
-                ...(isDesignerOnly && user?.sub ? { assignedUserId: user.sub } : {}),
+                ...(filterByMine ? { assignedUserId: user.sub } : {}),
               },
             },
           },
@@ -703,12 +726,15 @@ export class ArtworkService {
       const allItemVersions = o.items.flatMap((it) => it.artworkVersions || []);
       const approvedArtworkVersion =
         allItemVersions.find((v) => v.isApproved || v.status === ArtworkStatus.PROOF_APPROVED) ||
-        allItemVersions[0] ||
         null;
 
+      const hasApprovedWork = Boolean(
+        approvedArtworkVersion?.isApproved ||
+        o.items.some((it) => it.approvedArtworkVersionId)
+      );
+
       const isPassedToProduction =
-        Boolean(completedDesignAssignment && completedDesignAssignment.status === AssignmentStatus.COMPLETED) ||
-        (approvedArtworkVersion?.status === ArtworkStatus.PROOF_APPROVED && o.status !== OrderStatus.DESIGN_REQUIRED) ||
+        hasApprovedWork &&
         [
           OrderStatus.ARTWORK_APPROVED,
           OrderStatus.PRE_PRODUCTION_QC,
@@ -725,7 +751,11 @@ export class ArtworkService {
       // Station / Stage handoff details
       let passedToStation = 'Design Studio';
       let passedToStageBadge = 'In Design';
-      if (isPassedToProduction) {
+
+      if (o.status === OrderStatus.ARTWORK_REVIEW || (allItemVersions.length > 0 && !hasApprovedWork)) {
+        passedToStation = 'OE Operations Command (Artwork Confirmation Required)';
+        passedToStageBadge = 'OE Confirmation';
+      } else if (isPassedToProduction) {
         switch (o.status) {
           case OrderStatus.ARTWORK_APPROVED:
           case OrderStatus.ORDER_REVIEW:
@@ -796,6 +826,21 @@ export class ArtworkService {
         approvedArtworkVersion?.prepressNotes ||
         null;
 
+      // Extract OE revision directives if this job was returned for corrections
+      const latestReturnEntry = o.statusHistory?.find(
+        (h) =>
+          h.toStatus === OrderStatus.DESIGN_REQUIRED &&
+          (h.reason?.toLowerCase().includes('return') ||
+            h.reason?.toLowerCase().includes('correction') ||
+            Boolean(h.notes)),
+      );
+      const revisionDirectives =
+        activeDesignAssignment?.reason?.startsWith('OE Revision Directives:')
+          ? activeDesignAssignment.reason.replace(/^OE Revision Directives:\s*/i, '').trim()
+          : latestReturnEntry?.notes || (latestReturnEntry?.reason?.includes('Directives:') ? latestReturnEntry.reason.split('Directives:')[1]?.trim() : null) || null;
+      const returnedBy = latestReturnEntry?.changedBy?.fullName || null;
+      const returnedAt = latestReturnEntry?.createdAt || null;
+
       return {
         id: o.id,
         orderId: o.id,
@@ -827,7 +872,9 @@ export class ArtworkService {
             personalizationRecords: it.personalizationRecords || null,
             designNotes: it.designNotes || itSpecs.designNotes || itSpecs.customerNotes || o.customerNotes || null,
             approvedArtworkVersion: itApprovedVersion,
+            approvedArtworkVersionId: it.approvedArtworkVersionId,
             latestArtworkVersion: it.artworkVersions?.[0] || null,
+            artworkVersions: it.artworkVersions || [],
           };
         }),
         customerName: o.customer?.fullName,
@@ -849,6 +896,8 @@ export class ArtworkService {
         dueAt: o.dueAt,
         latestArtworkVersion: approvedArtworkVersion || item?.artworkVersions?.[0] || null,
         approvedArtworkVersion,
+        approvedArtworkVersionId: item?.approvedArtworkVersionId || (approvedArtworkVersion?.isApproved ? approvedArtworkVersion.id : null),
+        allArtworkVersions: allItemVersions,
         assignedDesignerId: assignedDesigner?.id || null,
         assignedDesignerName: assignedDesigner?.fullName || null,
         assignedDesigner,
@@ -859,6 +908,9 @@ export class ArtworkService {
         passedAt,
         passedByDesigner,
         passedPrepressNotes,
+        revisionDirectives,
+        returnedBy,
+        returnedAt,
         statusHistory: o.statusHistory?.map((h) => ({
           id: h.id,
           fromStatus: h.fromStatus,
@@ -893,9 +945,30 @@ export class ArtworkService {
 
     if (!order) throw new NotFoundException(`Order '${orderId}' not found`);
 
+    // If there is an active assignment for someone else, close it out as REASSIGNED
     const activeAssignment = order.assignments[0];
-    if (activeAssignment && activeAssignment.assignedUserId !== userId && userRole !== UserRole.ADMIN_MANAGER && userRole !== UserRole.OPERATIONAL_MANAGER) {
-      throw new ForbiddenException('This design task is assigned to another designer.');
+    if (activeAssignment && activeAssignment.assignedUserId !== userId) {
+      await this.prisma.orderAssignment.update({
+        where: { id: activeAssignment.id },
+        data: {
+          status: AssignmentStatus.REASSIGNED,
+          reason: `Reassigned to designer ${userId} via job claim`,
+        },
+      });
+    }
+
+    // Ensure active assignment exists for this user
+    if (!activeAssignment || activeAssignment.assignedUserId !== userId) {
+      await this.prisma.orderAssignment.create({
+        data: {
+          orderId: order.id,
+          taskType: AssignmentTaskType.DESIGN,
+          assignedUserId: userId,
+          assignedByUserId: userId,
+          status: AssignmentStatus.ACTIVE,
+          reason: 'Claimed by designer in Prepress Studio',
+        },
+      });
     }
 
     await this.auditService.log({
@@ -942,11 +1015,19 @@ export class ArtworkService {
 
     if (!order) throw new NotFoundException(`Order '${orderId}' not found`);
 
-    // Security check: individual ownership
+    // Security check / handoff: reassign cleanly if currently assigned to a colleague
     if (userRole === UserRole.DESIGNER_PREPRESS) {
-      const isAssigned = order.assignments.some((a) => a.assignedUserId === userId);
-      if (!isAssigned) {
-        throw new ForbiddenException('You cannot complete a design task assigned to another designer.');
+      const activeOtherAssignment = order.assignments.find(
+        (a) => a.assignedUserId !== userId && a.status === AssignmentStatus.ACTIVE,
+      );
+      if (activeOtherAssignment) {
+        await this.prisma.orderAssignment.update({
+          where: { id: activeOtherAssignment.id },
+          data: {
+            status: AssignmentStatus.REASSIGNED,
+            reason: `Reassigned to submitting designer ${userId}`,
+          },
+        });
       }
     }
 
@@ -1039,6 +1120,474 @@ export class ArtworkService {
       orderId: order.id,
       orderNumber: order.orderNumber,
       artworkVersionId: result.artwork.id,
+    });
+
+    return result;
+  }
+
+  /**
+   * Prepress engineers upload multiple design candidate files / variations / images.
+   * Creates an immutable ArtworkVersion for each file attached to the line item.
+   * Routes order to ARTWORK_REVIEW so the OE can decide what is the confirmed work.
+   * Does NOT auto-release to production — OE confirmation is required!
+   */
+  async submitMultipleDesignWorks(
+    orderId: string,
+    dto: {
+      files: Array<{
+        storageKey: string;
+        originalFileName: string;
+        mimeType?: string;
+        fileSize?: number;
+        label?: string;
+        resolutionDpi?: number;
+      }>;
+      prepressNotes?: string;
+      resolutionDpi?: number;
+    },
+    user: JwtPayload | string,
+  ) {
+    const userId = typeof user === 'string' ? user : user.sub;
+    const userRole = typeof user === 'string' ? null : user.role;
+
+    const order = await this.prisma.order.findFirst({
+      where: {
+        OR: [{ id: orderId }, { orderNumber: orderId }],
+      },
+      include: {
+        items: { include: { artworkVersions: true } },
+        assignments: {
+          where: { taskType: AssignmentTaskType.DESIGN, status: AssignmentStatus.ACTIVE },
+        },
+      },
+    });
+
+    if (!order) throw new NotFoundException(`Order '${orderId}' not found`);
+
+    if (userRole === UserRole.DESIGNER_PREPRESS) {
+      const activeOtherAssignment = order.assignments.find(
+        (a) => a.assignedUserId !== userId && a.status === AssignmentStatus.ACTIVE,
+      );
+      if (activeOtherAssignment) {
+        await this.prisma.orderAssignment.update({
+          where: { id: activeOtherAssignment.id },
+          data: {
+            status: AssignmentStatus.REASSIGNED,
+            reason: `Reassigned to submitting prepress designer ${userId}`,
+          },
+        });
+      }
+    }
+
+    const item = order.items[0];
+    if (!item) throw new BadRequestException('Order contains no items to attach design artwork to.');
+
+    if (!dto.files || dto.files.length === 0) {
+      throw new BadRequestException('At least one artwork file is required.');
+    }
+
+    let currentMaxVersion = item.artworkVersions.reduce((max, v) => Math.max(max, v.versionNumber), 0);
+
+    const createdVersions: any[] = [];
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      for (let i = 0; i < dto.files.length; i++) {
+        const file = dto.files[i];
+        currentMaxVersion++;
+
+        const checksum = crypto
+          .createHash('sha256')
+          .update(`${file.storageKey}-${file.originalFileName}-${Date.now()}-${i}`)
+          .digest('hex');
+
+        const combinedNotes = file.label
+          ? `[${file.label}] ${dto.prepressNotes || ''}`.trim()
+          : dto.prepressNotes || 'Submitted by prepress studio team';
+
+        const artwork = await tx.artworkVersion.create({
+          data: {
+            orderItemId: item.id,
+            versionNumber: currentMaxVersion,
+            storageKey: file.storageKey,
+            originalFileName: file.originalFileName,
+            mimeType: file.mimeType || 'application/pdf',
+            fileSize: file.fileSize || 1024 * 1024,
+            checksum,
+            resolutionDpi: file.resolutionDpi || dto.resolutionDpi || 300,
+            status: ArtworkStatus.PENDING_REVIEW,
+            isApproved: false,
+            prepressNotes: combinedNotes,
+            uploadedBy: userId,
+          },
+        });
+
+        createdVersions.push(artwork);
+      }
+
+      // Mark any active DESIGN assignment as COMPLETED
+      await tx.orderAssignment.updateMany({
+        where: {
+          orderId: order.id,
+          taskType: AssignmentTaskType.DESIGN,
+          status: AssignmentStatus.ACTIVE,
+        },
+        data: {
+          status: AssignmentStatus.COMPLETED,
+          completedAt: new Date(),
+          reason: `Prepress uploaded ${dto.files.length} design work candidate(s). Routed for OE Confirmation.`,
+        },
+      });
+
+      // If user had no recorded design assignment, record one as COMPLETED for audit and ownership
+      const hasAssignmentForUser = order.assignments.some((a) => a.assignedUserId === userId);
+      if (!hasAssignmentForUser) {
+        await tx.orderAssignment.create({
+          data: {
+            orderId: order.id,
+            assignedUserId: userId,
+            assignedByUserId: userId,
+            taskType: AssignmentTaskType.DESIGN,
+            status: AssignmentStatus.COMPLETED,
+            completedAt: new Date(),
+            reason: `Prepress uploaded ${dto.files.length} design work candidate(s). Routed for OE Confirmation.`,
+          },
+        });
+      }
+
+      // Update Order Status to ARTWORK_REVIEW (meaning candidate works are ready for OE confirmation)
+      const updatedOrder = await tx.order.update({
+        where: { id: order.id },
+        data: {
+          status: OrderStatus.ARTWORK_REVIEW,
+          customerStatus: 'DESIGN_IN_PROGRESS',
+        },
+      });
+
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          fromStatus: order.status,
+          toStatus: OrderStatus.ARTWORK_REVIEW,
+          changedById: userId,
+          reason: `Prepress studio uploaded ${dto.files.length} artwork candidate(s). Awaiting OE confirmation.`,
+          notes: dto.prepressNotes,
+        },
+      });
+
+      return { versions: createdVersions, order: updatedOrder };
+    });
+
+    await this.auditService.log({
+      actorId: userId,
+      action: 'DESIGN_MULTIPLE_UPLOADED',
+      entity: 'Order',
+      entityId: order.id,
+      orderId: order.id,
+      newState: { status: OrderStatus.ARTWORK_REVIEW, fileCount: dto.files.length },
+      reason: `Prepress uploaded ${dto.files.length} artwork candidate files for OE review`,
+    });
+
+    this.eventEmitter.emit('design.submitted_multiple', {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      fileCount: dto.files.length,
+      versions: createdVersions,
+    });
+
+    return result;
+  }
+
+  /**
+   * Operations Coordinator (OE) or Admin confirms which uploaded ArtworkVersion
+   * is the authoritative, verified work that will move to production.
+   * Sets isApproved = true on that version, isApproved = false on all others,
+   * locks approvedArtworkVersionId on OrderItem, and marks order as ARTWORK_APPROVED.
+   */
+  async confirmArtworkWork(
+    orderItemId: string,
+    artworkVersionId: string,
+    user: JwtPayload | string,
+    oeNotes?: string,
+  ) {
+    const userId = typeof user === 'string' ? user : user.sub;
+    const userRole = typeof user === 'string' ? null : user.role;
+
+    // RBAC: Only OE, Admin, or Management can decide confirmed work
+    if (
+      userRole &&
+      userRole !== UserRole.OPERATIONAL_MANAGER &&
+      userRole !== UserRole.ADMIN_MANAGER
+    ) {
+      throw new ForbiddenException(
+        'Only the Operations Coordinator (OE) or Administrator can confirm artwork for production.',
+      );
+    }
+
+    const version = await this.prisma.artworkVersion.findUnique({
+      where: { id: artworkVersionId },
+      include: {
+        orderItem: {
+          include: {
+            order: true,
+            artworkVersions: true,
+          },
+        },
+      },
+    });
+
+    if (!version) {
+      throw new NotFoundException(`Artwork version '${artworkVersionId}' not found`);
+    }
+
+    const item = version.orderItem;
+    const order = item.order;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      // 1. Mark all other versions for this order item as NOT approved
+      await tx.artworkVersion.updateMany({
+        where: {
+          orderItemId: item.id,
+          id: { not: artworkVersionId },
+        },
+        data: {
+          isApproved: false,
+          status: ArtworkStatus.PENDING_REVIEW,
+        },
+      });
+
+      // 2. Mark this specific chosen version as APPROVED
+      const confirmedVersion = await tx.artworkVersion.update({
+        where: { id: artworkVersionId },
+        data: {
+          isApproved: true,
+          status: ArtworkStatus.PROOF_APPROVED,
+          approvedAt: new Date(),
+          prepressNotes: oeNotes
+            ? `${version.prepressNotes || ''} | OE Confirmed: ${oeNotes}`.trim()
+            : version.prepressNotes,
+        },
+      });
+
+      // 3. Lock this confirmed version ID on OrderItem
+      await tx.orderItem.update({
+        where: { id: item.id },
+        data: {
+          approvedArtworkVersionId: confirmedVersion.id,
+        },
+      });
+
+      // 4. Update order status to ARTWORK_APPROVED
+      const updatedOrder = await tx.order.update({
+        where: { id: order.id },
+        data: {
+          status: OrderStatus.ARTWORK_APPROVED,
+          customerStatus: 'PREPARING_ORDER',
+        },
+      });
+
+      // 5. Audit history
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          fromStatus: order.status,
+          toStatus: OrderStatus.ARTWORK_APPROVED,
+          changedById: userId,
+          reason: `OE confirmed Artwork Version v${version.versionNumber} (${version.originalFileName}) as authoritative work for production.`,
+          notes: oeNotes,
+        },
+      });
+
+      return { confirmedVersion, order: updatedOrder };
+    });
+
+    await this.auditService.log({
+      actorId: userId,
+      action: 'ARTWORK_OE_CONFIRMED',
+      entity: 'Order',
+      entityId: order.id,
+      orderId: order.id,
+      newState: { status: OrderStatus.ARTWORK_APPROVED, confirmedArtworkVersionId: artworkVersionId },
+      reason: `OE confirmed Artwork Version v${version.versionNumber} for production run`,
+    });
+
+    this.eventEmitter.emit('artwork.confirmed', {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      artworkVersionId,
+      versionNumber: version.versionNumber,
+    });
+
+    return result;
+  }
+
+  /**
+   * Operations Coordinator (OE) or Admin reviews candidate works and determines
+   * that corrections are needed.
+   * Returns order status to DESIGN_REQUIRED, reactivates/creates an active DESIGN assignment
+   * for the prepress designer with OE's feedback/notes, and clears any confirmed artwork flag.
+   */
+  async returnToDesigner(
+    orderItemId: string,
+    user: JwtPayload | string,
+    revisionFeedback?: string,
+  ) {
+    const userId = typeof user === 'string' ? user : user.sub;
+    const userRole = typeof user === 'string' ? null : user.role;
+
+    // RBAC: Only OE or Admin can return artwork for corrections
+    if (
+      userRole &&
+      userRole !== UserRole.OPERATIONAL_MANAGER &&
+      userRole !== UserRole.ADMIN_MANAGER
+    ) {
+      throw new ForbiddenException(
+        'Only the Operations Coordinator (OE) or Administrator can return artwork to the designer for corrections.',
+      );
+    }
+
+    // Find the item or order
+    const item = await this.prisma.orderItem.findFirst({
+      where: {
+        OR: [{ id: orderItemId }, { orderId: orderItemId }],
+      },
+      include: {
+        order: {
+          include: {
+            assignments: {
+              where: { taskType: AssignmentTaskType.DESIGN },
+              orderBy: { createdAt: 'desc' },
+              include: { assignedUser: true },
+            },
+          },
+        },
+        artworkVersions: {
+          orderBy: { versionNumber: 'desc' },
+        },
+      },
+    });
+
+    let order: any = item?.order;
+    let targetItem: any = item;
+
+    if (!order) {
+      order = await this.prisma.order.findFirst({
+        where: {
+          OR: [{ id: orderItemId }, { orderNumber: orderItemId }],
+        },
+        include: {
+          items: {
+            include: {
+              artworkVersions: { orderBy: { versionNumber: 'desc' } },
+            },
+          },
+          assignments: {
+            where: { taskType: AssignmentTaskType.DESIGN },
+            orderBy: { createdAt: 'desc' },
+            include: { assignedUser: true },
+          },
+        },
+      });
+
+      if (!order) {
+        throw new NotFoundException(`Order or Order Item '${orderItemId}' not found`);
+      }
+      targetItem = order.items?.[0] || null;
+    }
+
+    // Determine the designer to assign back to
+    const lastUploaderId = targetItem?.artworkVersions?.[0]?.uploadedBy;
+    const lastAssignedDesignerId = order.assignments?.[0]?.assignedUserId;
+    const targetDesignerId = lastUploaderId || lastAssignedDesignerId || null;
+
+    const feedbackNote = revisionFeedback?.trim() || 'OE requested corrections to candidate designs.';
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      // 1. Clear approvedArtworkVersionId on all order items
+      if (targetItem) {
+        await tx.orderItem.update({
+          where: { id: targetItem.id },
+          data: { approvedArtworkVersionId: null },
+        });
+      }
+
+      // 2. Mark candidate artwork versions as PROOF_REJECTED
+      if (targetItem?.id) {
+        await tx.artworkVersion.updateMany({
+          where: { orderItemId: targetItem.id },
+          data: {
+            isApproved: false,
+            status: ArtworkStatus.PROOF_REJECTED,
+            prepressNotes: `Returned for revision: ${feedbackNote}`,
+          },
+        });
+      }
+
+      // 3. Update Order status back to DESIGN_REQUIRED
+      const updatedOrder = await tx.order.update({
+        where: { id: order.id },
+        data: {
+          status: OrderStatus.DESIGN_REQUIRED,
+          customerStatus: 'DESIGN_IN_PROGRESS',
+        },
+      });
+
+      // 4. Create or reactivate active design assignment for the designer
+      if (targetDesignerId) {
+        await tx.orderAssignment.updateMany({
+          where: {
+            orderId: order.id,
+            taskType: AssignmentTaskType.DESIGN,
+            status: AssignmentStatus.ACTIVE,
+          },
+          data: {
+            status: AssignmentStatus.CANCELLED,
+            completedAt: new Date(),
+            reason: 'Superseded by OE revision request',
+          },
+        });
+
+        await tx.orderAssignment.create({
+          data: {
+            orderId: order.id,
+            assignedUserId: targetDesignerId,
+            assignedByUserId: userId,
+            taskType: AssignmentTaskType.DESIGN,
+            status: AssignmentStatus.ACTIVE,
+            reason: `OE Revision Directives: ${feedbackNote}`,
+          },
+        });
+      }
+
+      // 5. Create Status History entry
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          fromStatus: order.status,
+          toStatus: OrderStatus.DESIGN_REQUIRED,
+          changedById: userId,
+          reason: `OE returned order to designer for corrections. Directives: ${feedbackNote}`,
+          notes: feedbackNote,
+        },
+      });
+
+      return { order: updatedOrder, returnedToDesignerId: targetDesignerId };
+    });
+
+    await this.auditService.log({
+      actorId: userId,
+      action: 'DESIGN_RETURNED_FOR_CORRECTIONS',
+      entity: 'Order',
+      entityId: order.id,
+      orderId: order.id,
+      newState: { status: OrderStatus.DESIGN_REQUIRED, feedback: feedbackNote },
+      reason: feedbackNote,
+    });
+
+    this.eventEmitter.emit('design.returned_for_corrections', {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      targetDesignerId,
+      feedback: feedbackNote,
     });
 
     return result;

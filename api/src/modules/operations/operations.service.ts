@@ -457,20 +457,25 @@ export class OperationsService {
                   widthPixels: true,
                   heightPixels: true,
                   qualityStatus: true,
+                  prepressNotes: true,
+                  resolutionDpi: true,
+                  createdAt: true,
                 },
                 orderBy: { versionNumber: 'desc' },
-                take: 1,
+                take: 10,
               },
             },
           },
           assignments: {
-            where: { status: AssignmentStatus.ACTIVE },
             select: {
               id: true,
               taskType: true,
+              status: true,
               assignedUser: { select: { id: true, fullName: true, role: true } },
               assignedAt: true,
+              completedAt: true,
             },
+            orderBy: { createdAt: 'desc' },
           },
           jobCards: {
             select: { id: true, jobNumber: true, status: true, operatorId: true, currentStation: true },
@@ -1636,6 +1641,15 @@ export class OperationsService {
     }
 
     // 2. Automated Size Validation
+    const hasApprovedVersion = Boolean(
+      item.approvedArtworkVersionId || item.artworkVersions?.some((v) => v.isApproved),
+    );
+    if (!hasApprovedVersion && item.artworkVersions && item.artworkVersions.length > 0) {
+      throw new BadRequestException(
+        `RELEASE BLOCKED: Order #${order.orderNumber} has ${item.artworkVersions.length} uploaded artwork candidate(s), but no version has been confirmed by the Operations Coordinator (OE). Please review and confirm the approved work before releasing to production.`,
+      );
+    }
+
     const sizeValidation = this.validateArtworkSize(specs, latestArtwork);
 
     // 3. Customer Approval Status
@@ -1762,6 +1776,15 @@ export class OperationsService {
     if (item.approvedArtworkVersionId) {
       const explicitApproved = item.artworkVersions?.find((v) => v.id === item.approvedArtworkVersionId);
       if (explicitApproved) latestArtwork = explicitApproved;
+    }
+
+    const hasApprovedVersion = Boolean(
+      item.approvedArtworkVersionId || item.artworkVersions?.some((v) => v.isApproved),
+    );
+    if (!hasApprovedVersion && item.artworkVersions && item.artworkVersions.length > 0) {
+      throw new BadRequestException(
+        `RELEASE BLOCKED: Order #${order.orderNumber} has ${item.artworkVersions.length} uploaded artwork candidate(s), but no version has been confirmed by the Operations Coordinator (OE). Please review and confirm the approved work before releasing to production.`,
+      );
     }
 
     const sizeValidation = this.validateArtworkSize(specs, latestArtwork);

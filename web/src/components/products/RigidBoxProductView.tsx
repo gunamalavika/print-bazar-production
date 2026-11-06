@@ -247,6 +247,22 @@ export function RigidBoxProductView({ product }: RigidBoxProductViewProps) {
     selectedInsert,
   ]);
 
+  // Dynamic Key Points / Highlights with fallback
+  const displayedKeyPoints = useMemo(() => {
+    if (Array.isArray(product.keyPoints) && product.keyPoints.length > 0) {
+      const valid = product.keyPoints.filter((kp) => kp && kp.trim() !== '');
+      if (valid.length > 0) return valid;
+    }
+    return [
+      '157 GSM outer wrap & rigid greyboard core',
+      'Multiple box styles & sizes',
+      'Custom finishes: hot foil stamping, embossing, UV',
+      'Velvet, foam & custom inserts',
+      'Low MOQ & bulk discounts',
+      'Design support from experts',
+    ];
+  }, [product.keyPoints]);
+
   // Handle Preset Dimension Click
   const handleSelectPreset = (preset: PresetDimension) => {
     setSelectedPreset(preset.id);
@@ -721,37 +737,14 @@ export function RigidBoxProductView({ product }: RigidBoxProductViewProps) {
               </p>
             </div>
 
-            {/* Checklist: 6 points in 2 columns */}
+            {/* Checklist: Dynamic Key Points in 2 columns */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700 py-1">
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <RiCheckLine className="w-4 h-4 text-amber-500 stroke-[2] flex-shrink-0" />
-                  <span>157 GSM outer wrap & rigid greyboard core</span>
+              {displayedKeyPoints.map((point, idx) => (
+                <div key={idx} className="flex items-start gap-2">
+                  <RiCheckLine className="w-4 h-4 text-amber-500 stroke-[2] flex-shrink-0 mt-0.5" />
+                  <span className="leading-snug">{point}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <RiCheckLine className="w-4 h-4 text-amber-500 stroke-[2] flex-shrink-0" />
-                  <span>Multiple box styles & sizes</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RiCheckLine className="w-4 h-4 text-amber-500 stroke-[2] flex-shrink-0" />
-                  <span>Custom finishes: hot foil stamping, embossing, UV</span>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <RiCheckLine className="w-4 h-4 text-amber-500 stroke-[2] flex-shrink-0" />
-                  <span>Velvet, foam & custom inserts</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RiCheckLine className="w-4 h-4 text-amber-500 stroke-[2] flex-shrink-0" />
-                  <span>Low MOQ & bulk discounts</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RiCheckLine className="w-4 h-4 text-amber-500 stroke-[2] flex-shrink-0" />
-                  <span>Design support from experts</span>
-                </div>
-              </div>
+              ))}
             </div>
 
             {/* 3 Metric Cards */}

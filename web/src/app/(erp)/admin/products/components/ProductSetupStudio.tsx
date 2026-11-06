@@ -97,6 +97,7 @@ export function ProductSetupStudio({
   const [maxQuantity, setMaxQuantity] = useState<number>(initialProduct?.maxQuantity || 100000);
   const [productionDays, setProductionDays] = useState<number>(initialProduct?.productionDays || 2);
   const [description, setDescription] = useState(initialProduct?.description || '');
+  const [keyPoints, setKeyPoints] = useState<string[]>(initialProduct?.keyPoints || []);
   const [defaultSize, setDefaultSize] = useState(initialProduct?.defaultSize || '');
   const [isFeatured, setIsFeatured] = useState(initialProduct?.isFeatured || false);
 
@@ -300,6 +301,7 @@ export function ProductSetupStudio({
       maxQuantity: Number(maxQuantity) || 100000,
       productionDays: Number(productionDays) || 2,
       description: description.trim(),
+      keyPoints: keyPoints.map((kp) => kp.trim()).filter(Boolean),
       defaultSize: defaultSize.trim() || undefined,
       isFeatured,
 
@@ -602,6 +604,8 @@ export function ProductSetupStudio({
             setProductionDays={setProductionDays}
             description={description}
             setDescription={setDescription}
+            keyPoints={keyPoints}
+            setKeyPoints={setKeyPoints}
             defaultSize={defaultSize}
             setDefaultSize={setDefaultSize}
             isFeatured={isFeatured}

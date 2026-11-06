@@ -12,22 +12,26 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
-  // Ensure uploads directory exists
-  const uploadsDir = path.join(process.cwd(), 'uploads');
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  }
-  const productsUploadsDir = path.join(uploadsDir, 'products');
-  if (!fs.existsSync(productsUploadsDir)) {
-    fs.mkdirSync(productsUploadsDir, { recursive: true });
-  }
-  const artworkUploadsDir = path.join(uploadsDir, 'artwork');
-  if (!fs.existsSync(artworkUploadsDir)) {
-    fs.mkdirSync(artworkUploadsDir, { recursive: true });
-  }
-  const referencesUploadsDir = path.join(uploadsDir, 'references');
-  if (!fs.existsSync(referencesUploadsDir)) {
-    fs.mkdirSync(referencesUploadsDir, { recursive: true });
+  // Ensure uploads directories exist across potential working roots
+  const candidateUploadsDirs = [
+    path.join(process.cwd(), 'uploads'),
+    path.join(process.cwd(), 'api', 'uploads'),
+    path.join(__dirname, '..', 'uploads'),
+    path.join(__dirname, '..', '..', 'uploads'),
+  ];
+
+  for (const dir of candidateUploadsDirs) {
+    try {
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const artDir = path.join(dir, 'artwork');
+      if (!fs.existsSync(artDir)) fs.mkdirSync(artDir, { recursive: true });
+      const refDir = path.join(dir, 'references');
+      if (!fs.existsSync(refDir)) fs.mkdirSync(refDir, { recursive: true });
+      const prodDir = path.join(dir, 'products');
+      if (!fs.existsSync(prodDir)) fs.mkdirSync(prodDir, { recursive: true });
+    } catch {
+      // Ignore directory creation permissions if running in sandboxed container
+    }
   }
 
   // Incoming Request URL Normalization & API Prefix Fallback Middleware
@@ -37,7 +41,12 @@ async function bootstrap() {
       req.url = req.url.replace(/\/{2,}/g, '/');
     }
 
-    // 2. If an API request is made without /api/v1 prefix, rewrite req.url to include /api/v1
+    // 2. Normalize uploads double-timestamp requests (e.g., _1793901183099_1793901183126.png -> _1793901183099.png)
+    if (req.url && req.url.includes('/uploads/')) {
+      req.url = req.url.replace(/_(\d{10,14})_\d{10,14}(\.[a-zA-Z0-9]+)(\?.*)?$/, '_$1$2$3');
+    }
+
+    // 3. If an API request is made without /api/v1 prefix, rewrite req.url to include /api/v1
     // (e.g. /products/categories, /products/site-settings, /products?featured=true)
     const apiRoutePattern = /^\/(products|auth|orders|admin|qc|prepress|production|dispatch|packaging|finance|customers|notifications|job-cards|quotes)(\/|\?|$)/;
     if (!req.url.startsWith('/api/v1/') && !req.url.startsWith('/uploads/') && apiRoutePattern.test(req.url)) {
@@ -51,11 +60,33 @@ async function bootstrap() {
     next();
   });
 
-  // Serve static uploaded assets
-  app.use('/uploads', express.static(uploadsDir));
-  app.use('/artwork', express.static(artworkUploadsDir));
-  app.use('/references', express.static(referencesUploadsDir));
-  app.use('/products', express.static(productsUploadsDir));
+  // Serve static uploaded assets across all detected upload locations with fallback resolver
+  for (const baseDir of candidateUploadsDirs) {
+    if (fs.existsSync(baseDir)) {
+      app.use('/uploads', express.static(baseDir));
+      app.use('/artwork', express.static(path.join(baseDir, 'artwork')));
+      app.use('/references', express.static(path.join(baseDir, 'references')));
+      app.use('/products', express.static(path.join(baseDir, 'products')));
+    }
+  }
+
+  // Fallback explicit file resolver for /uploads (handles double timestamps and root differences)
+  app.use('/uploads', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const rawPath = decodeURIComponent(req.path.replace(/^\/+/, ''));
+    const strippedDoubleTimestamp = rawPath.replace(/_(\d{10,14})_\d{10,14}(\.[a-zA-Z0-9]+)$/, '_$1$2');
+
+    const searchNames = [rawPath, strippedDoubleTimestamp];
+
+    for (const base of candidateUploadsDirs) {
+      for (const name of searchNames) {
+        const fullCandidate = path.join(base, name);
+        if (fs.existsSync(fullCandidate) && fs.statSync(fullCandidate).isFile()) {
+          return res.sendFile(path.resolve(fullCandidate));
+        }
+      }
+    }
+    next();
+  });
 
   app.setGlobalPrefix('api/v1');
 

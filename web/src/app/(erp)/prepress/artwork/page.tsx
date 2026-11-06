@@ -7,6 +7,8 @@ import {
   AlertTriangle,
   CheckCircle,
   CheckCircle2,
+  Check,
+  ShieldCheck,
   Eye,
   RefreshCw,
   Send,
@@ -22,13 +24,17 @@ import {
   Layers,
   Image as ImageIcon,
   Download,
+  Trash2,
+  Plus,
   MessageSquare,
   Phone,
   Mail,
   MessageCircle,
   History,
   Filter,
+  RotateCcw,
 } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import { api, resolveImageUrl, downloadFile } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 
@@ -37,6 +43,9 @@ interface DesignQueueItem {
   orderId?: string;
   orderNumber: string;
   currentStatus: string;
+  revisionDirectives?: string | null;
+  returnedBy?: string | null;
+  returnedAt?: string | null;
   customer?: {
     fullName: string;
     email: string;
@@ -57,7 +66,9 @@ interface DesignQueueItem {
     personalizationData?: any;
     personalizationRecords?: any;
     approvedArtworkVersion?: any;
+    approvedArtworkVersionId?: string | null;
     latestArtworkVersion?: any;
+    artworkVersions?: any[];
     designNotes?: string | null;
   }>;
   artworkUrl?: string | null;
@@ -78,6 +89,8 @@ interface DesignQueueItem {
   passedPrepressNotes?: string | null;
   latestArtworkVersion?: any;
   approvedArtworkVersion?: any;
+  approvedArtworkVersionId?: string | null;
+  allArtworkVersions?: any[];
   statusHistory?: Array<{
     id: string;
     fromStatus: string | null;
@@ -316,12 +329,23 @@ function getPersonalizationDetails(item: any) {
   };
 }
 
+interface StagedUploadFile {
+  id: string;
+  file: File;
+  label: string;
+  previewUrl?: string;
+}
+
 export default function ArtworkPrepressPage() {
   const { user: currentUser } = useAuth();
+  const searchParams = useSearchParams();
+  const urlSearch = searchParams?.get('search') || '';
+
   const isDesigner = currentUser?.role === 'DESIGNER_PREPRESS';
+  const isOE = currentUser?.role === 'OPERATIONAL_MANAGER' || currentUser?.role === 'ADMIN_MANAGER';
 
   const [activeTab, setActiveTab] = useState<'DESIGN_STUDIO' | 'PASSED_TO_PRODUCTION' | 'PREFLIGHT'>('DESIGN_STUDIO');
-  const [designSubFilter, setDesignSubFilter] = useState<'ALL' | 'ACTIVE' | 'PASSED'>('ALL');
+  const [designSubFilter, setDesignSubFilter] = useState<'ALL' | 'ACTIVE' | 'NEEDS_OE_CONFIRMATION' | 'PASSED'>('ALL');
   const [scopeFilter, setScopeFilter] = useState<'ALL' | 'MINE'>('MINE');
   
   // Design Queue State
@@ -331,12 +355,21 @@ export default function ArtworkPrepressPage() {
   const [designSearch, setDesignSearch] = useState('');
   const [showRawJson, setShowRawJson] = useState(false);
 
-  // Design Upload & Completion form
+  // Multi-File Staging & Upload form
+  const [stagedFiles, setStagedFiles] = useState<StagedUploadFile[]>([]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [prepressNotes, setPrepressNotes] = useState('');
   const [resolutionDpi, setResolutionDpi] = useState('300');
   const [isSubmittingDesign, setIsSubmittingDesign] = useState(false);
   const [isSpecsConfirmed, setIsSpecsConfirmed] = useState(false);
+
+  // OE Artwork Confirmation & Correction Return State
+  const [isConfirmingWork, setIsConfirmingWork] = useState(false);
+  const [confirmingVersionId, setConfirmingVersionId] = useState<string | null>(null);
+  const [oeConfirmNotes, setOeConfirmNotes] = useState('');
+  const [isReturningToDesigner, setIsReturningToDesigner] = useState(false);
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [returnFeedback, setReturnFeedback] = useState('');
 
   // Preflight State
   const [preflightJobs, setPreflightJobs] = useState<PreflightJob[]>(PREFLIGHT_JOBS);
@@ -345,8 +378,24 @@ export default function ArtworkPrepressPage() {
   const [actionError, setActionError] = useState('');
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
 
-  const activeOrders = designQueue.filter((o) => !o.isPassedToProduction);
-  const passedOrders = designQueue.filter((o) => o.isPassedToProduction);
+  const hasConfirmedWork = (o: DesignQueueItem) => {
+    return Boolean(
+      o.isPassedToProduction ||
+      o.approvedArtworkVersionId ||
+      o.items?.[0]?.approvedArtworkVersionId ||
+      (o.approvedArtworkVersion && o.approvedArtworkVersion.isApproved)
+    );
+  };
+
+  const hasCandidateWorks = (o: DesignQueueItem) => {
+    const itemVersions = o.items?.[0]?.artworkVersions || [];
+    const allVersions = o.allArtworkVersions || [];
+    return itemVersions.length > 0 || allVersions.length > 0 || Boolean(o.latestArtworkVersion);
+  };
+
+  const passedOrders = designQueue.filter((o) => hasConfirmedWork(o));
+  const needsConfirmationOrders = designQueue.filter((o) => hasCandidateWorks(o) && !hasConfirmedWork(o));
+  const activeOrders = designQueue.filter((o) => !hasConfirmedWork(o));
 
   const displayedOrders = (() => {
     if (activeTab === 'PASSED_TO_PRODUCTION' || designSubFilter === 'PASSED') {
@@ -354,6 +403,9 @@ export default function ArtworkPrepressPage() {
     }
     if (designSubFilter === 'ACTIVE') {
       return activeOrders;
+    }
+    if (designSubFilter === 'NEEDS_OE_CONFIRMATION') {
+      return needsConfirmationOrders;
     }
     return designQueue;
   })();
@@ -421,21 +473,36 @@ export default function ArtworkPrepressPage() {
   };
 
   useEffect(() => {
+    if (urlSearch) {
+      setDesignSearch(urlSearch);
+      setScopeFilter('ALL');
+    }
+  }, [urlSearch]);
+
+  useEffect(() => {
     fetchDesignQueue();
   }, [designSearch, scopeFilter, currentUser?.id]);
 
   useEffect(() => {
     if (displayedOrders.length > 0) {
-      const isStillSelected = displayedOrders.some(
-        (o) => (o.id || o.orderId) === (selectedDesignOrder?.id || selectedDesignOrder?.orderId),
+      const currentSelectedId = selectedDesignOrder?.id || (selectedDesignOrder as any)?.orderId;
+      const urlMatch = urlSearch
+        ? displayedOrders.find((o) => o.orderNumber.toLowerCase() === urlSearch.toLowerCase())
+        : null;
+      const freshMatch = displayedOrders.find(
+        (o) => (o.id || o.orderId) === currentSelectedId,
       );
-      if (!isStillSelected) {
+      if (urlMatch) {
+        setSelectedDesignOrder(urlMatch);
+      } else if (freshMatch) {
+        setSelectedDesignOrder(freshMatch);
+      } else {
         setSelectedDesignOrder(displayedOrders[0]);
       }
     } else {
       setSelectedDesignOrder(null);
     }
-  }, [activeTab, designSubFilter, designQueue]);
+  }, [activeTab, designSubFilter, designQueue, urlSearch]);
 
   const handleClaimJob = async (orderId: string) => {
     try {
@@ -446,6 +513,161 @@ export default function ArtworkPrepressPage() {
     } catch (err: any) {
       setActionError(err.message || 'Failed to claim job');
       setTimeout(() => setActionError(''), 4000);
+    }
+  };
+
+  const handleFilesSelected = (fileList: FileList | File[]) => {
+    const incoming = Array.from(fileList);
+    const newStaged: StagedUploadFile[] = incoming.map((f, idx) => {
+      const isImg = f.type.startsWith('image/');
+      const previewUrl = isImg ? URL.createObjectURL(f) : undefined;
+      const baseLabel = incoming.length > 1 ? `Option ${stagedFiles.length + idx + 1}` : 'Print-Ready Proof';
+      return {
+        id: `${f.name}_${Date.now()}_${idx}`,
+        file: f,
+        label: baseLabel,
+        previewUrl,
+      };
+    });
+    setStagedFiles((prev) => [...prev, ...newStaged]);
+  };
+
+  const handleRemoveStagedFile = (id: string) => {
+    setStagedFiles((prev) => {
+      const target = prev.find((item) => item.id === id);
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter((item) => item.id !== id);
+    });
+  };
+
+  const handleUpdateFileLabel = (id: string, label: string) => {
+    setStagedFiles((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, label } : item))
+    );
+  };
+
+  const handleSubmitMultipleDesigns = async () => {
+    if (!selectedDesignOrder) {
+      setActionError('Please select an order from the queue.');
+      return;
+    }
+    if (stagedFiles.length === 0 && !uploadFile) {
+      setActionError('Please select at least one finished artwork/proof file to upload.');
+      return;
+    }
+
+    setIsSubmittingDesign(true);
+    setActionError('');
+    try {
+      // Collect all files to upload (from staged list or fallback uploadFile)
+      const filesToProcess = stagedFiles.length > 0 
+        ? stagedFiles 
+        : uploadFile 
+          ? [{ id: 'single_file', file: uploadFile, label: 'Print-Ready Design' }] 
+          : [];
+
+      const uploadedFilesPayload: Array<{
+        storageKey: string;
+        originalFileName: string;
+        mimeType?: string;
+        fileSize?: number;
+        label?: string;
+        resolutionDpi?: number;
+      }> = [];
+
+      for (const staged of filesToProcess) {
+        const uploadRes = await api.uploadArtwork(staged.file);
+        uploadedFilesPayload.push({
+          storageKey: uploadRes.storageKey,
+          originalFileName: staged.file.name,
+          mimeType: staged.file.type || 'application/pdf',
+          fileSize: staged.file.size,
+          label: staged.label || staged.file.name,
+          resolutionDpi: Number(resolutionDpi) || 300,
+        });
+      }
+
+      const orderIdToSubmit = selectedDesignOrder.id || (selectedDesignOrder as any).orderId;
+      await api.submitMultipleDesignWorks(orderIdToSubmit, {
+        files: uploadedFilesPayload,
+        prepressNotes: prepressNotes || 'Design works prepared and submitted by Prepress Designer for OE review.',
+        resolutionDpi: Number(resolutionDpi) || 300,
+      });
+
+      setActionSuccess(
+        `✓ Successfully uploaded ${filesToProcess.length} design work(s) for Order #${selectedDesignOrder.orderNumber}! Routed to OE for confirmation.`
+      );
+
+      stagedFiles.forEach((f) => {
+        if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
+      });
+      setStagedFiles([]);
+      setUploadFile(null);
+      setPrepressNotes('');
+      setIsSpecsConfirmed(false);
+      await fetchDesignQueue();
+      setDesignSubFilter('NEEDS_OE_CONFIRMATION');
+      setTimeout(() => setActionSuccess(''), 6000);
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to upload and submit design works');
+    } finally {
+      setIsSubmittingDesign(false);
+    }
+  };
+
+  const handleConfirmArtworkWork = async (orderItemId: string, artworkVersionId: string) => {
+    setIsConfirmingWork(true);
+    setConfirmingVersionId(artworkVersionId);
+    setActionError('');
+    try {
+      await api.confirmArtworkWork({
+        orderItemId,
+        artworkVersionId,
+        oeNotes: oeConfirmNotes || 'Confirmed by OE for production release',
+      });
+
+      setActionSuccess(
+        `✓ Authoritative work confirmed for Order #${selectedDesignOrder?.orderNumber}! Locked for production queue.`
+      );
+      setOeConfirmNotes('');
+      setConfirmingVersionId(null);
+      await fetchDesignQueue();
+      setDesignSubFilter('PASSED');
+      setTimeout(() => setActionSuccess(''), 6000);
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to confirm artwork work');
+    } finally {
+      setIsConfirmingWork(false);
+      setConfirmingVersionId(null);
+    }
+  };
+
+  const handleReturnToDesigner = async () => {
+    if (!selectedDesignOrder) return;
+    setIsReturningToDesigner(true);
+    setActionError('');
+    try {
+      const firstItem = selectedDesignOrder.items?.[0];
+      const orderItemId = firstItem?.id || selectedDesignOrder.id;
+      await api.returnArtworkToDesigner({
+        orderItemId,
+        revisionFeedback: returnFeedback.trim() || 'OE requested corrections to candidate designs.',
+      });
+
+      setActionSuccess(
+        `✓ Order #${selectedDesignOrder.orderNumber} successfully returned to prepress designer with correction directives.`
+      );
+      setShowReturnModal(false);
+      setReturnFeedback('');
+      await fetchDesignQueue();
+      setDesignSubFilter('ACTIVE');
+      setTimeout(() => setActionSuccess(''), 6000);
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to return artwork to designer');
+    } finally {
+      setIsReturningToDesigner(false);
     }
   };
 
@@ -686,6 +908,20 @@ export default function ArtworkPrepressPage() {
                   </button>
                   <button
                     onClick={() => {
+                      setActiveTab('DESIGN_STUDIO');
+                      setDesignSubFilter('NEEDS_OE_CONFIRMATION');
+                    }}
+                    className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+                      activeTab === 'DESIGN_STUDIO' && designSubFilter === 'NEEDS_OE_CONFIRMATION'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Orders where prepress uploaded candidate works awaiting OE confirmation"
+                  >
+                    Awaiting OE ({needsConfirmationOrders.length})
+                  </button>
+                  <button
+                    onClick={() => {
                       setActiveTab('PASSED_TO_PRODUCTION');
                       setDesignSubFilter('PASSED');
                     }}
@@ -781,7 +1017,12 @@ export default function ArtworkPrepressPage() {
                             <span className="text-[13px] font-semibold text-slate-800">
                               {order.customer?.fullName || 'Customer'}
                             </span>
-                            {order.isPassedToProduction ? (
+                            {order.revisionDirectives ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1 shadow-2xs">
+                                <AlertTriangle className="h-3 w-3 text-rose-600" />
+                                REVISION NEEDED
+                              </span>
+                            ) : order.isPassedToProduction ? (
                               <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1 shadow-2xs">
                                 <CheckCircle className="h-3 w-3 text-emerald-600" />
                                 ROUTED TO OE
@@ -796,7 +1037,12 @@ export default function ArtworkPrepressPage() {
                             {item?.productName || 'Custom Print Job'} ({item?.quantity || 1} pcs)
                           </p>
 
-                          {order.isPassedToProduction && (
+                          {order.revisionDirectives ? (
+                            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-rose-900 bg-rose-50 border border-rose-200 rounded-md px-2.5 py-1 mt-1 truncate max-w-[280px]">
+                              <RotateCcw className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+                              <span className="truncate">OE Directive: {order.revisionDirectives}</span>
+                            </div>
+                          ) : order.isPassedToProduction && (
                             <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-800 bg-slate-100/90 border border-slate-200/90 rounded-md px-2.5 py-1 mt-1">
                               <ArrowRight className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                               <span>Current Stage: <strong className="text-emerald-950 font-bold">{order.passedToStation}</strong></span>
@@ -936,21 +1182,72 @@ export default function ArtworkPrepressPage() {
                     </div>
                   </div>
                 </div>
-                {selectedDesignOrder.isPassedToProduction ? (
-                  <span className="flex items-center gap-1.5 text-[11px] font-mono font-bold bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-lg border border-emerald-300 shadow-2xs shrink-0">
-                    <CheckCircle className="h-4 w-4 text-emerald-600" />
-                    <span>PASSED TO PRODUCTION</span>
-                  </span>
-                ) : (
-                  <button
-                    onClick={() => handleClaimJob(selectedDesignOrder.id || (selectedDesignOrder as any).orderId)}
-                    className="flex items-center gap-1 text-[12px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 px-3 py-1.5 rounded border border-slate-300 transition shrink-0"
-                  >
-                    <UserCheck className="h-3.5 w-3.5" />
-                    <span>Claim Job</span>
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {isOE && (
+                    <button
+                      type="button"
+                      onClick={() => setShowReturnModal(true)}
+                      disabled={isReturningToDesigner}
+                      className="flex items-center gap-1.5 text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-800 px-3 py-1.5 rounded-lg border border-rose-300 transition shrink-0 cursor-pointer shadow-2xs active:scale-95"
+                      title="Return order to prepress designer with correction directives"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5 text-rose-600" />
+                      <span>Return for Corrections</span>
+                    </button>
+                  )}
+                  {selectedDesignOrder.isPassedToProduction ? (
+                    <span className="flex items-center gap-1.5 text-[11px] font-mono font-bold bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-lg border border-emerald-300 shadow-2xs shrink-0">
+                      <CheckCircle className="h-4 w-4 text-emerald-600" />
+                      <span>PASSED TO PRODUCTION</span>
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => handleClaimJob(selectedDesignOrder.id || (selectedDesignOrder as any).orderId)}
+                      className="flex items-center gap-1 text-[12px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 px-3 py-1.5 rounded border border-slate-300 transition shrink-0"
+                    >
+                      <UserCheck className="h-3.5 w-3.5" />
+                      <span>Claim Job</span>
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {/* OE Revision Directives Alert Banner */}
+              {selectedDesignOrder.revisionDirectives && (
+                <div className="p-4 bg-gradient-to-r from-rose-50 via-rose-50/80 to-amber-50 rounded-xl border-2 border-rose-300 space-y-2.5 shadow-xs">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-rose-600 text-white shadow-xs">
+                        <AlertTriangle className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-[13px] font-black uppercase tracking-wider text-rose-950 font-display">
+                          OE Correction Directives — Revisions Required
+                        </h4>
+                        <span className="text-[10.5px] font-mono text-rose-800 font-bold block">
+                          Order #{selectedDesignOrder.orderNumber} returned by Operations Coordinator
+                        </span>
+                      </div>
+                    </div>
+                    {selectedDesignOrder.returnedBy && (
+                      <span className="text-[10.5px] font-mono font-bold bg-white text-rose-900 border border-rose-300 px-2.5 py-1 rounded shadow-2xs">
+                        Returned by: {selectedDesignOrder.returnedBy}
+                      </span>
+                    )}
+                  </div>
+                  <div className="bg-white/95 p-3 rounded-lg border border-rose-200 shadow-2xs space-y-1">
+                    <span className="text-[10px] font-mono uppercase font-bold text-rose-600 tracking-wider block">
+                      Instructions & Refinements:
+                    </span>
+                    <p className="text-[12.5px] text-slate-900 font-semibold whitespace-pre-wrap leading-relaxed">
+                      &quot;{selectedDesignOrder.revisionDirectives}&quot;
+                    </p>
+                  </div>
+                  <p className="text-[11.5px] text-rose-900/90 font-medium">
+                    ⚠️ Please update your design files according to the directives above, stage your corrected candidate files below, and click <strong>&quot;UPLOAD CANDIDATE WORK & ROUTE TO OE&quot;</strong>.
+                  </p>
+                </div>
+              )}
 
               {/* Product Specifications & References */}
               <div className="space-y-4">
@@ -1447,90 +1744,219 @@ export default function ArtworkPrepressPage() {
                     </div>
                   </div>
 
-                  {/* Final Approved Print-Ready Artwork Card */}
+                  {/* Candidate Artworks & Confirmation Hub */}
                   {(() => {
-                    const approvedArt =
+                    const firstItem = selectedDesignOrder.items?.[0];
+                    const itemVersions: any[] = firstItem?.artworkVersions || [];
+                    const allVersions: any[] = selectedDesignOrder.allArtworkVersions || [];
+                    const approvedArt: any =
                       selectedDesignOrder.approvedArtworkVersion ||
-                      selectedDesignOrder.latestArtworkVersion ||
-                      selectedDesignOrder.items?.[0]?.approvedArtworkVersion;
-                    const fileUrl = approvedArt?.storageKey || approvedArt?.fileUrl;
-                    const fileName = approvedArt?.originalFileName || (fileUrl ? fileUrl.split('/').pop() : 'PrintReady_Artwork.pdf');
-                    const isDocOrVector =
-                      fileName.toLowerCase().endsWith('.pdf') ||
-                      fileName.toLowerCase().endsWith('.ai') ||
-                      fileName.toLowerCase().endsWith('.eps') ||
-                      fileName.toLowerCase().endsWith('.psd');
+                      firstItem?.approvedArtworkVersion ||
+                      null;
+                    const latestArt: any = selectedDesignOrder.latestArtworkVersion || null;
+
+                    const rawVersions = [...allVersions, ...itemVersions];
+                    if (approvedArt) rawVersions.push(approvedArt);
+                    if (latestArt) rawVersions.push(latestArt);
+
+                    const uniqueVersions = rawVersions.filter(
+                      (v, idx, arr) => v?.id && arr.findIndex((x) => x?.id === v?.id) === idx,
+                    ).sort((a, b) => (b.versionNumber || 0) - (a.versionNumber || 0));
+
+                    const hasConfirmed = Boolean(approvedArt?.isApproved || uniqueVersions.some((v) => v.isApproved));
 
                     return (
-                      <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[12px] font-bold text-slate-900 flex items-center gap-1.5 uppercase tracking-wider">
-                            <CheckCircle className="h-4 w-4 text-emerald-600" />
-                            <span>Final Approved Print-Ready Artwork (Passed File)</span>
-                          </span>
-                          <span className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded border border-emerald-300">
-                            {approvedArt?.resolutionDpi || 300} DPI CMYK
-                          </span>
-                        </div>
-
-                        {fileUrl ? (
-                          <div className="space-y-2.5">
-                            {!isDocOrVector ? (
-                              <div className="relative rounded-lg overflow-hidden border border-emerald-200 bg-slate-50 flex items-center justify-center p-2">
-                                <img
-                                  src={resolveImageUrl(fileUrl)}
-                                  alt="Final Approved Proof"
-                                  className="max-h-60 w-auto object-contain rounded"
-                                />
-                              </div>
-                            ) : (
-                              <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <FileCode className="h-6 w-6 text-amber-600 shrink-0" />
-                                  <div>
-                                    <span className="text-[12px] font-bold text-slate-900 block truncate max-w-[220px]">
-                                      {fileName}
-                                    </span>
-                                    <span className="text-[10px] font-mono text-slate-500 block">
-                                      {approvedArt?.fileSize ? `${(approvedArt.fileSize / (1024 * 1024)).toFixed(2)} MB • ` : ''}
-                                      Print-Ready Document
-                                    </span>
-                                  </div>
-                                </div>
-                                <span className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-900 px-2 py-1 rounded">
-                                  PROOF LOCKED
-                                </span>
-                              </div>
-                            )}
-
-                            <div className="flex items-center gap-2 pt-1">
-                              <a
-                                href={resolveImageUrl(fileUrl)}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="flex-1 flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[12px] py-2 rounded-lg transition"
-                              >
-                                <ExternalLink className="h-3.5 w-3.5" />
-                                <span>Open Full Proof</span>
-                              </a>
+                      <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-3.5">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                          <div>
+                            <span className="text-[12px] font-bold text-slate-900 flex items-center gap-1.5 uppercase tracking-wider">
+                              <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                              <span>Artwork Versions & Candidate Works</span>
+                            </span>
+                            <span className="text-[11px] text-slate-500">
+                              {uniqueVersions.length} version(s) on file • {hasConfirmed ? 'Confirmed for Production' : 'Awaiting OE Decision'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isOE && (
                               <button
                                 type="button"
-                                onClick={() =>
-                                  downloadFile(
-                                    fileUrl,
-                                    fileName || `${selectedDesignOrder.orderNumber}_Approved_Artwork.png`,
-                                  )
-                                }
-                                className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[12px] py-2 rounded-lg transition cursor-pointer"
-                                title="Download Artwork to Files"
+                                onClick={() => setShowReturnModal(true)}
+                                disabled={isReturningToDesigner}
+                                className="text-[11px] font-bold px-2.5 py-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 flex items-center gap-1 transition cursor-pointer shadow-2xs active:scale-95"
+                                title="Return to prepress designer for corrections"
                               >
-                                <Download className="h-3.5 w-3.5" />
-                                <span>Download Artwork</span>
+                                <RotateCcw className="h-3 w-3 text-rose-600" />
+                                <span>Return for Corrections</span>
                               </button>
-                            </div>
+                            )}
+                            {hasConfirmed ? (
+                              <span className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full border border-emerald-300 flex items-center gap-1 shadow-2xs">
+                                <CheckCircle className="h-3 w-3 text-emerald-600" />
+                                CONFIRMED WORK
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-900 px-2.5 py-1 rounded-full border border-amber-300 flex items-center gap-1 shadow-2xs">
+                                <Clock className="h-3 w-3 text-amber-600" />
+                                OE DECISION PENDING
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {uniqueVersions.length > 0 ? (
+                          <div className="space-y-3">
+                            {uniqueVersions.map((art, vIdx) => {
+                              const fileUrl = art.fileUrl || art.storageKey;
+                              const fileName = art.originalFileName || (fileUrl ? fileUrl.split('/').pop() : `Artwork_V${art.versionNumber || vIdx + 1}`);
+                              const isDocOrVector =
+                                fileName.toLowerCase().endsWith('.pdf') ||
+                                fileName.toLowerCase().endsWith('.ai') ||
+                                fileName.toLowerCase().endsWith('.eps') ||
+                                fileName.toLowerCase().endsWith('.psd');
+                              const isThisConfirmed = Boolean(art.isApproved);
+                              const isProcessingThis = isConfirmingWork && confirmingVersionId === art.id;
+
+                              return (
+                                <div
+                                  key={art.id || vIdx}
+                                  className={`p-3 rounded-xl border transition-all ${
+                                    isThisConfirmed
+                                      ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300 shadow-xs'
+                                      : 'bg-slate-50/70 border-slate-200 hover:border-slate-300'
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-3 mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${
+                                          isThisConfirmed
+                                            ? 'bg-emerald-600 text-white'
+                                            : 'bg-slate-200 text-slate-700'
+                                        }`}
+                                      >
+                                        V{art.versionNumber || vIdx + 1}
+                                      </span>
+                                      <span className="text-[12px] font-bold text-slate-900 truncate max-w-[220px]" title={fileName}>
+                                        {fileName}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      {isThisConfirmed ? (
+                                        <span className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded border border-emerald-300 flex items-center gap-1">
+                                          <Check className="h-3 w-3 text-emerald-700" />
+                                          CONFIRMED WORK
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] font-mono text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
+                                          Candidate Option
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Media preview */}
+                                  {fileUrl && (
+                                    <div className="my-2">
+                                      {!isDocOrVector ? (
+                                        <div className="relative rounded-lg overflow-hidden border border-slate-200 bg-white flex items-center justify-center p-1.5 max-h-44">
+                                          <img
+                                            src={resolveImageUrl(fileUrl)}
+                                            alt={fileName}
+                                            className="max-h-40 w-auto object-contain rounded"
+                                          />
+                                        </div>
+                                      ) : (
+                                        <div className="p-2 bg-white rounded-lg border border-slate-200 flex items-center gap-2">
+                                          <FileCode className="h-5 w-5 text-amber-600 shrink-0" />
+                                          <div className="min-w-0 flex-1">
+                                            <span className="text-[11px] font-semibold text-slate-800 block truncate">
+                                              {fileName}
+                                            </span>
+                                            <span className="text-[9.5px] font-mono text-slate-400 block">
+                                              {art.fileSize ? `${(art.fileSize / (1024 * 1024)).toFixed(2)} MB • ` : ''}
+                                              {art.resolutionDpi || 300} DPI
+                                            </span>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Prepress direct notes or author */}
+                                  {(art.prepressNotes || art.uploadedBy) && (
+                                    <div className="text-[11px] text-slate-600 bg-white/90 p-2 rounded border border-slate-200/80 mb-2">
+                                      {art.prepressNotes && <p className="italic">&quot;{art.prepressNotes}&quot;</p>}
+                                      {art.uploadedBy && (
+                                        <span className="text-[9.5px] font-mono text-slate-400 block mt-0.5">
+                                          Uploaded by: {art.uploadedBy}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Actions */}
+                                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                                    {fileUrl && (
+                                      <>
+                                        <a
+                                          href={resolveImageUrl(fileUrl)}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-[11px] font-bold px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 flex items-center gap-1 transition shadow-2xs"
+                                        >
+                                          <ExternalLink className="h-3 w-3" />
+                                          <span>Open Proof</span>
+                                        </a>
+                                        <button
+                                          type="button"
+                                          onClick={() => downloadFile(fileUrl, fileName)}
+                                          className="text-[11px] font-bold px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 flex items-center gap-1 transition shadow-2xs cursor-pointer"
+                                        >
+                                          <Download className="h-3 w-3" />
+                                          <span>Download</span>
+                                        </button>
+                                      </>
+                                    )}
+
+                                    {/* OE Confirmation Button */}
+                                    {isOE && (
+                                      <div className="ml-auto">
+                                        {isThisConfirmed ? (
+                                          <span className="text-[10.5px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded flex items-center gap-1 shadow-2xs">
+                                            <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                                            <span>Active Production Work</span>
+                                          </span>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            disabled={isConfirmingWork}
+                                            onClick={() =>
+                                              handleConfirmArtworkWork(
+                                                firstItem?.id || selectedDesignOrder.id,
+                                                art.id,
+                                              )
+                                            }
+                                            className="text-[11px] font-bold px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white flex items-center gap-1 transition shadow-xs cursor-pointer active:scale-95"
+                                            title="Confirm this work as the definitive artwork to move to production"
+                                          >
+                                            <ShieldCheck className="h-3.5 w-3.5" />
+                                            <span>
+                                              {isProcessingThis ? 'Confirming...' : 'SET AS CONFIRMED WORK'}
+                                            </span>
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         ) : (
-                          <p className="text-[12px] text-slate-500 italic">No artwork version file attached.</p>
+                          <div className="p-4 bg-slate-50 rounded-lg text-center text-slate-500 text-[12px] italic border border-slate-200">
+                            No candidate artwork versions uploaded yet. Prepress designer can upload candidate works below.
+                          </div>
                         )}
                       </div>
                     );
@@ -1566,27 +1992,219 @@ export default function ArtworkPrepressPage() {
                   )}
                 </div>
               ) : (
-                /* ACTIVE DESIGN WORKFLOW FORM (SUBMIT & RELEASE) */
+                /* PREPRESS MULTI-FILE UPLOAD & SUBMISSION FORM */
                 <div className="border-t border-slate-200 pt-4 space-y-4">
+                  {/* OE Decision Section if candidates already exist */}
+                  {(() => {
+                    const firstItem = selectedDesignOrder.items?.[0];
+                    const itemVersions: any[] = firstItem?.artworkVersions || [];
+                    const allVersions: any[] = selectedDesignOrder.allArtworkVersions || [];
+                    const approvedArt: any =
+                      selectedDesignOrder.approvedArtworkVersion ||
+                      firstItem?.approvedArtworkVersion ||
+                      null;
+                    const latestArt: any = selectedDesignOrder.latestArtworkVersion || null;
+
+                    const rawVersions = [...allVersions, ...itemVersions];
+                    if (approvedArt) rawVersions.push(approvedArt);
+                    if (latestArt) rawVersions.push(latestArt);
+
+                    const uniqueVersions = rawVersions.filter(
+                      (v, idx, arr) => v?.id && arr.findIndex((x) => x?.id === v?.id) === idx,
+                    ).sort((a, b) => (b.versionNumber || 0) - (a.versionNumber || 0));
+
+                    if (uniqueVersions.length === 0) return null;
+
+                    return (
+                      <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[12px] font-bold text-amber-950 flex items-center gap-1.5 uppercase tracking-wider">
+                            <ShieldCheck className="h-4 w-4 text-amber-600" />
+                            <span>Candidate Artworks Uploaded ({uniqueVersions.length})</span>
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {isOE && (
+                              <button
+                                type="button"
+                                onClick={() => setShowReturnModal(true)}
+                                disabled={isReturningToDesigner}
+                                className="text-[10.5px] font-bold px-2 py-0.5 rounded bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1 transition cursor-pointer shadow-2xs active:scale-95"
+                                title="Return candidate works to prepress designer for corrections"
+                              >
+                                <RotateCcw className="h-3 w-3 text-rose-600" />
+                                <span>Return to Designer</span>
+                              </button>
+                            )}
+                            <span className="text-[10px] font-mono font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded">
+                              {isOE ? 'OE Decision Required' : 'Awaiting OE Confirmation'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <p className="text-[11.5px] text-amber-900/90 leading-relaxed">
+                          {isOE
+                            ? 'As Operations Coordinator, select which artwork candidate is the confirmed work for shop-floor production.'
+                            : 'The candidate works below have been prepared. The Operations Coordinator (OE) will review and select the confirmed work.'}
+                        </p>
+
+                        <div className="space-y-2.5">
+                          {uniqueVersions.map((art, idx) => {
+                            const fileUrl = art.fileUrl || art.storageKey;
+                            const fileName = art.originalFileName || `Option_${idx + 1}`;
+                            const isThisConfirmed = Boolean(art.isApproved);
+                            const isProcessingThis = isConfirmingWork && confirmingVersionId === art.id;
+
+                            return (
+                              <div
+                                key={art.id || idx}
+                                className={`p-2.5 rounded-lg border bg-white flex items-center justify-between gap-2.5 ${
+                                  isThisConfirmed ? 'border-emerald-400 ring-1 ring-emerald-300' : 'border-amber-200'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded shrink-0">
+                                    V{art.versionNumber || idx + 1}
+                                  </span>
+                                  <span className="text-[11.5px] font-semibold text-slate-800 truncate" title={fileName}>
+                                    {fileName}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {fileUrl && (
+                                    <a
+                                      href={resolveImageUrl(fileUrl)}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-[10.5px] font-bold text-slate-700 hover:text-slate-900 bg-slate-100 px-2 py-1 rounded"
+                                    >
+                                      View
+                                    </a>
+                                  )}
+
+                                  {isOE && (
+                                    <>
+                                      {isThisConfirmed ? (
+                                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-1 rounded flex items-center gap-1">
+                                          <Check className="h-3 w-3 text-emerald-600" />
+                                          CONFIRMED
+                                        </span>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          disabled={isConfirmingWork}
+                                          onClick={() =>
+                                            handleConfirmArtworkWork(
+                                              firstItem?.id || selectedDesignOrder.id,
+                                              art.id,
+                                            )
+                                          }
+                                          className="text-[10.5px] font-bold bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white px-2.5 py-1 rounded flex items-center gap-1 transition shadow-xs cursor-pointer active:scale-95"
+                                        >
+                                          <ShieldCheck className="h-3 w-3" />
+                                          <span>{isProcessingThis ? 'Confirming...' : 'CONFIRM FOR PRODUCTION'}</span>
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div>
-                    <h4 className="text-[12px] font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <h4 className="text-[12px] font-bold text-slate-800 uppercase tracking-wider mb-1 flex items-center gap-1.5">
                       <UploadCloud className="h-4 w-4 text-slate-700" />
-                      <span>Upload Final Print-Ready Artwork</span>
+                      <span>Upload Artwork Candidate Works (Multiple Files Supported)</span>
                     </h4>
-                    <p className="text-[12px] text-slate-500 mb-2">
-                      Submit the finished high-resolution artwork (PDF / AI / TIFF).
+                    <p className="text-[12px] text-slate-500 mb-2.5">
+                      Prepress designers can select and upload multiple candidate designs, variations, or proofs (PDF / AI / TIFF / PNG / JPG). The OE will review and choose the confirmed work.
                     </p>
-                    
-                    <input
-                      type="file"
-                      accept=".pdf,.ai,.eps,.psd,.tiff,.png,.jpg,.jpeg"
-                      onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                      className="block w-full text-[12px] text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-[12px] file:font-semibold file:bg-amber-300 file:text-slate-900 hover:file:bg-amber-400 cursor-pointer border border-slate-300 rounded-lg p-1.5 bg-slate-50"
-                    />
-                    {uploadFile && (
-                      <p className="text-[11px] font-mono text-emerald-700 font-semibold mt-1">
-                        ✓ Selected: {uploadFile.name} ({(uploadFile.size / (1024 * 1024)).toFixed(2)} MB)
-                      </p>
+
+                    {/* Multi-File Upload Input & Drag Area */}
+                    <div className="border-2 border-dashed border-slate-300 hover:border-amber-400 bg-slate-50/70 hover:bg-amber-50/30 rounded-xl p-3.5 text-center transition cursor-pointer relative">
+                      <input
+                        type="file"
+                        multiple
+                        accept=".pdf,.ai,.eps,.psd,.tiff,.png,.jpg,.jpeg"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files.length > 0) {
+                            handleFilesSelected(e.target.files);
+                            // Also set the single fallback
+                            setUploadFile(e.target.files[0]);
+                          }
+                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      <div className="flex flex-col items-center justify-center pointer-events-none">
+                        <UploadCloud className="h-6 w-6 text-slate-400 mb-1" />
+                        <span className="text-[12px] font-bold text-slate-700">
+                          Click or drag & drop artwork files here
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          Select one or multiple files (.pdf, .ai, .eps, .psd, .tiff, images)
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Staged files list with labels */}
+                    {stagedFiles.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+                          Staged Files for Upload ({stagedFiles.length}):
+                        </span>
+                        <div className="space-y-1.5">
+                          {stagedFiles.map((sf, sfIdx) => (
+                            <div
+                              key={sf.id}
+                              className="p-2.5 bg-white rounded-lg border border-slate-200 flex items-center justify-between gap-2 shadow-2xs"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                {sf.previewUrl ? (
+                                  <img
+                                    src={sf.previewUrl}
+                                    alt="Preview"
+                                    className="h-8 w-8 object-cover rounded border border-slate-200 shrink-0"
+                                  />
+                                ) : (
+                                  <FileCode className="h-7 w-7 text-amber-600 shrink-0" />
+                                )}
+                                <div className="min-w-0">
+                                  <span className="text-[11.5px] font-bold text-slate-800 block truncate max-w-[180px]">
+                                    {sf.file.name}
+                                  </span>
+                                  <span className="text-[10px] font-mono text-slate-400 block">
+                                    {(sf.file.size / (1024 * 1024)).toFixed(2)} MB
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={sf.label}
+                                  onChange={(e) => handleUpdateFileLabel(sf.id, e.target.value)}
+                                  placeholder={`Option ${sfIdx + 1}`}
+                                  className="text-[11px] px-2 py-1 rounded border border-slate-200 bg-slate-50 w-28 text-slate-700 focus:bg-white"
+                                  title="Custom label (e.g., Front, Back, Spot UV, Option 1)"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveStagedFile(sf.id)}
+                                  className="p-1 rounded text-red-500 hover:text-red-700 hover:bg-red-50 transition cursor-pointer"
+                                  title="Remove file"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
 
@@ -1624,7 +2242,7 @@ export default function ArtworkPrepressPage() {
                       rows={2}
                       value={prepressNotes}
                       onChange={(e) => setPrepressNotes(e.target.value)}
-                      placeholder="E.g., 3mm bleed added, fonts outlined, vector dieline on separate spot layer."
+                      placeholder="E.g., Option 1 includes 3mm bleed; Option 2 has spot UV layer on Page 2."
                       className="w-full text-[12px] p-2.5 rounded-lg border border-slate-300 bg-white placeholder:text-slate-400"
                     />
                   </div>
@@ -1639,22 +2257,26 @@ export default function ArtworkPrepressPage() {
                     />
                     <div>
                       <span className="font-bold block">
-                        I have reviewed and verified customer specifications for this design
+                        I have reviewed and verified customer specifications for these candidate designs
                       </span>
                       <span className="text-[11px] text-amber-800 block mt-0.5">
-                        Confirming that the artwork strictly adheres to customer-selected specifications before routing to OE for Production Assignment.
+                        Confirming that candidate artworks strictly adhere to customer specifications before routing to OE for confirmed work selection.
                       </span>
                     </div>
                   </label>
 
                   <button
-                    onClick={handleCompleteDesignJob}
-                    disabled={isSubmittingDesign || !uploadFile || !isSpecsConfirmed}
-                    className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-bold text-[13px] py-3 rounded-lg shadow-sm transition active:scale-[0.98]"
+                    onClick={handleSubmitMultipleDesigns}
+                    disabled={isSubmittingDesign || (stagedFiles.length === 0 && !uploadFile) || !isSpecsConfirmed}
+                    className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-bold text-[13px] py-3 rounded-lg shadow-sm transition active:scale-[0.98] cursor-pointer"
                   >
-                    <CheckCircle className="h-4 w-4" />
+                    <UploadCloud className="h-4 w-4" />
                     <span>
-                      {isSubmittingDesign ? 'Uploading & Routing...' : 'SUBMIT DESIGN & ROUTE TO OE'}
+                      {isSubmittingDesign
+                        ? 'Uploading & Routing Candidate Works...'
+                        : stagedFiles.length > 1
+                          ? `UPLOAD ${stagedFiles.length} CANDIDATE WORKS & ROUTE TO OE`
+                          : 'UPLOAD CANDIDATE WORK & ROUTE TO OE'}
                     </span>
                   </button>
                 </div>
@@ -1817,6 +2439,101 @@ export default function ArtworkPrepressPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Return to Designer for Corrections Modal */}
+      {showReturnModal && selectedDesignOrder && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shadow-xs">
+                  <RotateCcw className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base leading-snug">
+                    Return Artwork to Designer
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-mono">
+                    Order #{selectedDesignOrder.orderNumber} • Request Prepress Refinements
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReturnModal(false)}
+                className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-1.5 rounded-lg transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2.5">
+              <label className="text-[12px] font-bold text-slate-800 block">
+                OE Revision Directives & Feedback <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                rows={4}
+                value={returnFeedback}
+                onChange={(e) => setReturnFeedback(e.target.value)}
+                placeholder="Detail what needs correction (e.g. adjust bleed margin by 3mm, change font size on back side, correct logo placement)..."
+                className="w-full text-[12px] p-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:border-rose-500 transition shadow-2xs leading-relaxed"
+              />
+              <div className="space-y-1.5 pt-1">
+                <span className="text-[10.5px] text-slate-500 font-bold uppercase tracking-wider block">
+                  Quick Directives Presets:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    'Bleed margin cutoff - add 3mm',
+                    'Low resolution image - replace with 300 DPI asset',
+                    'Color mismatch - convert to CMYK profile',
+                    'Incorrect cut marks alignment',
+                    'Customer requested modification',
+                  ].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setReturnFeedback((prev) => (prev ? `${prev}. ${preset}` : preset))}
+                      className="text-[10.5px] px-2.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition cursor-pointer active:scale-95"
+                    >
+                      + {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowReturnModal(false)}
+                disabled={isReturningToDesigner}
+                className="px-4 py-2 text-[12px] font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleReturnToDesigner}
+                disabled={isReturningToDesigner || !returnFeedback.trim()}
+                className="px-4 py-2 text-[12px] font-bold bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 text-white rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                {isReturningToDesigner ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    <span>Returning...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    <span>Return to Designer</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

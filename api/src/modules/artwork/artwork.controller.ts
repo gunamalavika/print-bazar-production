@@ -192,4 +192,65 @@ export class ArtworkController {
   ) {
     return this.artworkService.completeDesignJob(orderId, body, user);
   }
+
+  @Post('design/:orderId/submit-multiple')
+  @Roles(UserRole.DESIGNER_PREPRESS, UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER)
+  @ApiOperation({ summary: 'Prepress uploads multiple design works for OE confirmation' })
+  async submitMultipleDesigns(
+    @Param('orderId') orderId: string,
+    @Body()
+    body: {
+      files: Array<{
+        storageKey: string;
+        originalFileName: string;
+        mimeType?: string;
+        fileSize?: number;
+        label?: string;
+        resolutionDpi?: number;
+      }>;
+      prepressNotes?: string;
+      resolutionDpi?: number;
+    },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.artworkService.submitMultipleDesignWorks(orderId, body, user);
+  }
+
+  @Post('confirm-work')
+  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER)
+  @ApiOperation({ summary: 'OE confirms which uploaded artwork version moves to production' })
+  async confirmArtworkWork(
+    @Body()
+    body: {
+      orderItemId: string;
+      artworkVersionId: string;
+      oeNotes?: string;
+    },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.artworkService.confirmArtworkWork(
+      body.orderItemId,
+      body.artworkVersionId,
+      user,
+      body.oeNotes,
+    );
+  }
+
+  @Post('return-to-designer')
+  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER)
+  @ApiOperation({ summary: 'OE returns artwork to designer for corrections with feedback' })
+  async returnToDesigner(
+    @Body()
+    body: {
+      orderItemId: string;
+      revisionFeedback?: string;
+    },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.artworkService.returnToDesigner(
+      body.orderItemId,
+      user,
+      body.revisionFeedback,
+    );
+  }
 }

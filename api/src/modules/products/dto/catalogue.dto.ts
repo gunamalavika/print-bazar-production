@@ -655,6 +655,11 @@ export class CreateProductDto {
   @IsOptional()
   tags?: string[];
 
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  keyPoints?: string[];
+
   @IsString()
   @IsOptional()
   seoTitle?: string;
@@ -875,6 +880,11 @@ export class UpdateProductDto {
   @IsString({ each: true })
   @IsOptional()
   tags?: string[];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  keyPoints?: string[];
 
   @IsString()
   @IsOptional()

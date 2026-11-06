@@ -421,6 +421,7 @@ export interface DynamicProduct {
   sortOrder: number;
   isFeatured: boolean;
   tags: string[];
+  keyPoints?: string[];
   seoTitle?: string;
   seoDescription?: string;
   trackInventory: boolean;
@@ -544,7 +545,8 @@ const API_BASE = normalizeApiBaseUrl();
 export function resolveImageUrl(url?: string | null): string {
   if (!url) return 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=600&auto=format&fit=crop&q=80';
   if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
-    return url;
+    // Strip redundant double timestamp if present in query or path
+    return url.replace(/_(\d{10,14})_\d{10,14}(\.[a-zA-Z0-9]+)(\?.*)?$/, '_$1$2$3');
   }
   const apiHost = getApiHost();
   let cleanUrl = url.trim();
@@ -556,6 +558,9 @@ export function resolveImageUrl(url?: string | null): string {
       cleanUrl = `/uploads${cleanUrl}`;
     }
   }
+  // Normalize redundant double timestamps (e.g. _1793901183099_1793901183126.png -> _1793901183099.png)
+  cleanUrl = cleanUrl.replace(/_(\d{10,14})_\d{10,14}(\.[a-zA-Z0-9]+)$/, '_$1$2');
+
   return `${apiHost}${cleanUrl}`;
 }
 
@@ -1124,6 +1129,27 @@ export const api = {
     prepressNotes?: string;
     resolutionDpi?: number;
   }) => fetchApi<any>(`/artwork/design/${orderId}/complete`, { method: 'POST', body: JSON.stringify(data) }),
+  submitMultipleDesignWorks: (orderId: string, data: {
+    files: Array<{
+      storageKey: string;
+      originalFileName: string;
+      mimeType?: string;
+      fileSize?: number;
+      label?: string;
+      resolutionDpi?: number;
+    }>;
+    prepressNotes?: string;
+    resolutionDpi?: number;
+  }) => fetchApi<any>(`/artwork/design/${orderId}/submit-multiple`, { method: 'POST', body: JSON.stringify(data) }),
+  confirmArtworkWork: (data: {
+    orderItemId: string;
+    artworkVersionId: string;
+    oeNotes?: string;
+  }) => fetchApi<any>('/artwork/confirm-work', { method: 'POST', body: JSON.stringify(data) }),
+  returnArtworkToDesigner: (data: {
+    orderItemId: string;
+    revisionFeedback?: string;
+  }) => fetchApi<any>('/artwork/return-to-designer', { method: 'POST', body: JSON.stringify(data) }),
   getArtworkVersions: (orderItemId: string) =>
     fetchApi<any[]>(`/artwork/item/${orderItemId}`),
   registerArtwork: (data: any) =>

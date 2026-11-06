@@ -658,6 +658,22 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
     return lines.length > 0 ? lines : undefined;
   }, [hasVariantWiseGroups, variantWiseGroups, variantQuantities]);
 
+  // Dynamic Key Points / Highlights with fallback
+  const displayedKeyPoints = useMemo(() => {
+    if (Array.isArray(product.keyPoints) && product.keyPoints.length > 0) {
+      const valid = product.keyPoints.filter((kp) => kp && kp.trim() !== '');
+      if (valid.length > 0) return valid;
+    }
+    return [
+      'Calibrated commercial-grade substrates & vibrant inks',
+      'Multiple sizes, styles & customization formats',
+      'Custom finishes: matte, gloss, UV, foil stamping',
+      'Precision die-cut trims & reinforced hardware',
+      'Low MOQ & progressive bulk discounts',
+      'Free pre-flight artwork proofing by experts',
+    ];
+  }, [product.keyPoints]);
+
   // Identify active matched tier (handles range brackets like 51–100)
   const activeMatchedTier = useMemo(() => {
     return (
@@ -1757,37 +1773,14 @@ function detectIsDesignServiceSelected(
               </p>
             </div>
 
-            {/* Checklist: 6 points in 2 columns */}
+            {/* Checklist: Dynamic Key Points in 2 columns */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700 py-1">
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <RiCheckLine className="w-4 h-4 text-amber-500 stroke-[2] flex-shrink-0" />
-                  <span>Calibrated commercial-grade substrates & vibrant inks</span>
+              {displayedKeyPoints.map((point, idx) => (
+                <div key={idx} className="flex items-start gap-2">
+                  <RiCheckLine className="w-4 h-4 text-amber-500 stroke-[2] flex-shrink-0 mt-0.5" />
+                  <span className="leading-snug">{point}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <RiCheckLine className="w-4 h-4 text-amber-500 stroke-[2] flex-shrink-0" />
-                  <span>Multiple sizes, styles & customization formats</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RiCheckLine className="w-4 h-4 text-amber-500 stroke-[2] flex-shrink-0" />
-                  <span>Custom finishes: matte, gloss, UV, foil stamping</span>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <RiCheckLine className="w-4 h-4 text-amber-500 stroke-[2] flex-shrink-0" />
-                  <span>Precision die-cut trims & reinforced hardware</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RiCheckLine className="w-4 h-4 text-amber-500 stroke-[2] flex-shrink-0" />
-                  <span>Low MOQ & progressive bulk discounts</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RiCheckLine className="w-4 h-4 text-amber-500 stroke-[2] flex-shrink-0" />
-                  <span>Free pre-flight artwork proofing by experts</span>
-                </div>
-              </div>
+              ))}
             </div>
 
             {/* 3 Metric Cards */}

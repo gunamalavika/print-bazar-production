@@ -16,6 +16,9 @@ import {
   RiEditLine,
   RiCloseLine,
   RiAlertLine,
+  RiArrowUpLine,
+  RiArrowDownLine,
+  RiListCheck2,
 } from 'react-icons/ri';
 import { ProductCategoryItem, ProductImageItem, ProductOptionRequirement, api } from '@/lib/api';
 import { generateProductSku, getNextAvailableProductSku } from '@/lib/utils';
@@ -49,6 +52,8 @@ export interface StudioTabBasicsProps {
   setProductionDays: (v: number) => void;
   description: string;
   setDescription: (v: string) => void;
+  keyPoints?: string[];
+  setKeyPoints?: React.Dispatch<React.SetStateAction<string[]>> | ((v: string[]) => void);
   defaultSize: string;
   setDefaultSize: (v: string) => void;
   isFeatured: boolean;
@@ -121,6 +126,8 @@ export function StudioTabBasics({
   setProductionDays,
   description,
   setDescription,
+  keyPoints = [],
+  setKeyPoints,
   defaultSize,
   setDefaultSize,
   isFeatured,
@@ -165,6 +172,17 @@ export function StudioTabBasics({
   const [editMin, setEditMin] = useState<number | ''>('');
   const [editMax, setEditMax] = useState<number | ''>('');
   const [editFixedQty, setEditFixedQty] = useState<number | ''>('');
+
+  // Key Points input state
+  const [newKeyPointInput, setNewKeyPointInput] = useState('');
+
+  const handleAddKeyPoint = () => {
+    const val = newKeyPointInput.trim();
+    if (!val || !setKeyPoints) return;
+    setKeyPoints([...keyPoints, val]);
+    setNewKeyPointInput('');
+    onChange?.();
+  };
 
   // Extract active tiers from matrixRows (or defaults)
   const activeTiers = useMemo(() => {
@@ -646,7 +664,7 @@ export function StudioTabBasics({
           <div className="md:col-span-2">
             <label className="block text-xs font-semibold text-slate-700 mb-1">Product Description</label>
             <textarea
-              rows={2}
+              rows={3}
               value={description}
               onChange={(e) => {
                 setDescription(e.target.value);
@@ -655,6 +673,174 @@ export function StudioTabBasics({
               placeholder="Detailed commercial print specifications, finishes, and paper quality..."
               className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-amber-500 shadow-2xs"
             />
+          </div>
+        </div>
+
+        {/* Key Points & Product Highlights */}
+        <div className="mt-5 pt-5 border-t border-slate-100 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-md bg-amber-100 text-amber-800 flex items-center justify-center">
+                <RiListCheck2 className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">Key Highlights & Bullet Points (Storefront Checklist)</h4>
+                <p className="text-[11px] text-slate-500">
+                  Displayed as checkmark bullet points on the customer product page (/products/[id]).
+                </p>
+              </div>
+            </div>
+            <span className="text-[11px] font-mono text-slate-400">
+              {keyPoints.length} point{keyPoints.length === 1 ? '' : 's'} configured
+            </span>
+          </div>
+
+          {/* Quick Preset Suggestions */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <span className="text-[10.5px] font-semibold text-slate-400 mr-1">Quick Add:</span>
+            {[
+              'Calibrated commercial-grade substrates & vibrant inks',
+              'Multiple sizes, styles & customization formats',
+              'Custom finishes: matte, gloss, UV, foil stamping',
+              'Precision die-cut trims & reinforced hardware',
+              'Low MOQ & progressive bulk discounts',
+              'Free pre-flight artwork proofing by experts',
+            ].map((preset, pIdx) => {
+              const alreadyHas = keyPoints.includes(preset);
+              return (
+                <button
+                  key={pIdx}
+                  type="button"
+                  disabled={alreadyHas}
+                  onClick={() => {
+                    if (!alreadyHas && setKeyPoints) {
+                      setKeyPoints([...keyPoints, preset]);
+                      onChange?.();
+                    }
+                  }}
+                  className={`text-[10.5px] px-2 py-0.5 rounded-full border transition-colors flex items-center gap-1 ${
+                    alreadyHas
+                      ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-default'
+                      : 'bg-white hover:bg-amber-50 text-slate-700 hover:text-amber-900 border-slate-200 hover:border-amber-300 cursor-pointer'
+                  }`}
+                >
+                  <RiAddLine className="w-3 h-3 text-amber-600" />
+                  <span>{preset.length > 32 ? preset.slice(0, 30) + '...' : preset}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Existing Key Points List */}
+          {keyPoints.length > 0 ? (
+            <div className="space-y-2 pt-1">
+              {keyPoints.map((point, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center gap-2 p-2 bg-slate-50 hover:bg-slate-100/70 border border-slate-200 rounded-lg group transition-colors"
+                >
+                  <span className="w-5 h-5 rounded bg-amber-400/20 text-amber-800 text-[10px] font-mono font-bold flex items-center justify-center flex-shrink-0">
+                    {idx + 1}
+                  </span>
+                  <input
+                    type="text"
+                    value={point}
+                    onChange={(e) => {
+                      if (setKeyPoints) {
+                        const updated = [...keyPoints];
+                        updated[idx] = e.target.value;
+                        setKeyPoints(updated);
+                        onChange?.();
+                      }
+                    }}
+                    placeholder={`Key point #${idx + 1}...`}
+                    className="flex-1 bg-white border border-slate-200 focus:border-amber-500 rounded px-2.5 py-1 text-xs text-slate-900 focus:outline-none shadow-2xs"
+                  />
+                  <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100">
+                    <button
+                      type="button"
+                      disabled={idx === 0}
+                      onClick={() => {
+                        if (idx > 0 && setKeyPoints) {
+                          const updated = [...keyPoints];
+                          const temp = updated[idx - 1];
+                          updated[idx - 1] = updated[idx];
+                          updated[idx] = temp;
+                          setKeyPoints(updated);
+                          onChange?.();
+                        }
+                      }}
+                      className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Move Up"
+                    >
+                      <RiArrowUpLine className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={idx === keyPoints.length - 1}
+                      onClick={() => {
+                        if (idx < keyPoints.length - 1 && setKeyPoints) {
+                          const updated = [...keyPoints];
+                          const temp = updated[idx + 1];
+                          updated[idx + 1] = updated[idx];
+                          updated[idx] = temp;
+                          setKeyPoints(updated);
+                          onChange?.();
+                        }
+                      }}
+                      className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Move Down"
+                    >
+                      <RiArrowDownLine className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (setKeyPoints) {
+                          const updated = keyPoints.filter((_, i) => i !== idx);
+                          setKeyPoints(updated);
+                          onChange?.();
+                        }
+                      }}
+                      className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
+                      title="Delete point"
+                    >
+                      <RiDeleteBin7Line className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-3 bg-slate-50 border border-dashed border-slate-200 rounded-lg text-center text-xs text-slate-500">
+              No custom key points yet. The storefront will display default commercial print quality highlights.
+            </div>
+          )}
+
+          {/* Add New Key Point Input */}
+          <div className="flex items-center gap-2 pt-1">
+            <input
+              type="text"
+              value={newKeyPointInput}
+              onChange={(e) => setNewKeyPointInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddKeyPoint();
+                }
+              }}
+              placeholder="Type a new key highlight and press Enter or click Add..."
+              className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-amber-500 shadow-2xs"
+            />
+            <button
+              type="button"
+              onClick={handleAddKeyPoint}
+              disabled={!newKeyPointInput.trim()}
+              className="px-3 py-1.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 shadow-2xs cursor-pointer"
+            >
+              <RiAddLine className="w-3.5 h-3.5" />
+              <span>Add Point</span>
+            </button>
           </div>
         </div>
 

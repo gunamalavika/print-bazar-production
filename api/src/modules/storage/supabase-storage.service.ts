@@ -54,14 +54,34 @@ export class SupabaseStorageService {
     file: Express.Multer.File,
     folder: 'artwork' | 'references' | 'products' | 'general',
   ): Promise<UploadResult> {
-    const filename = file.filename || file.originalname;
-    const ext = path.extname(filename);
-    const baseName = path
-      .basename(filename, ext)
-      .replace(/[^a-zA-Z0-9_-]/g, '_');
-    const uniqueKey = `${folder}/${baseName}_${Date.now()}${ext}`;
+    // If Multer already saved the file to disk with a unique name, preserve it exactly!
+    const diskFilename = file.filename;
+    let uniqueKey: string;
+    let localUrl: string;
 
-    if (this.isConfigured() && this.supabase) {
+    if (diskFilename) {
+      uniqueKey = `${folder}/${diskFilename}`;
+      localUrl = `/uploads/${folder}/${diskFilename}`;
+    } else {
+      const filename = file.originalname || 'file';
+      const ext = path.extname(filename);
+      const baseName = path
+        .basename(filename, ext)
+        .replace(/[^a-zA-Z0-9_-]/g, '_');
+      const prefix = folder === 'artwork' ? 'art_' : folder === 'references' ? 'ref_' : '';
+      const uniqueFilename = `${prefix}${baseName}_${Date.now()}${ext}`;
+      uniqueKey = `${folder}/${uniqueFilename}`;
+      localUrl = `/uploads/${folder}/${uniqueFilename}`;
+    }
+
+    // In local development, default to local storage unless Supabase is explicitly configured and requested
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isSupabaseEnabled =
+      this.isConfigured() &&
+      this.supabase &&
+      (isProduction || process.env.USE_SUPABASE_IN_DEV === 'true');
+
+    if (isSupabaseEnabled && this.supabase) {
       try {
         let fileBuffer: Buffer | null = file.buffer || null;
         if (!fileBuffer && file.path && fs.existsSync(file.path)) {
@@ -103,8 +123,7 @@ export class SupabaseStorageService {
       }
     }
 
-    // Fallback: Local disk URL
-    const localUrl = `/uploads/${folder}/${file.filename || filename}`;
+    // Local disk fallback: exactly matches the saved file on disk
     return {
       fileUrl: localUrl,
       storageKey: uniqueKey,
