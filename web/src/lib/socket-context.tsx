@@ -31,7 +31,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     const apiHost = getApiHost();
 
     const socket = io(apiHost, {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnectionAttempts: 10,
       reconnectionDelay: 2000,
       autoConnect: true,
@@ -51,8 +51,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       setIsConnected(false);
     });
 
-    socket.on('connect_error', (error) => {
-      console.warn('⚠️ [WebSocket] Connection warning:', error.message);
+    socket.on('connect_error', () => {
+      // Graceful fallback to HTTP polling without noisy console errors
       setIsConnected(false);
     });
 

@@ -778,6 +778,7 @@ export default function LoginPage() {
             width={240}
             height={46}
             priority
+            style={{ width: 'auto', height: 'auto' }}
             className="h-10 sm:h-12 w-auto object-contain transition-transform duration-200 group-hover:scale-102"
           />
           <div className="flex items-center gap-2">

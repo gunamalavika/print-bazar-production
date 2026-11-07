@@ -217,8 +217,12 @@ export default function CheckoutPage() {
 
     if (itemsList.length > 0) {
       setCartItems(itemsList);
-      if (initialMode === 'SPLIT_50' || itemsList.some((it) => it.paymentMode === 'SPLIT_50')) {
+      const initialDeliv = itemsList[0]?.shippingSnapshot?.deliveryMethod === 'STORE_PICKUP' ? 'STORE_PICKUP' : 'COURIER';
+      setDeliveryMethod(initialDeliv);
+      if (initialDeliv === 'STORE_PICKUP' && (initialMode === 'SPLIT_50' || itemsList.some((it) => it.paymentMode === 'SPLIT_50'))) {
         setPaymentMode('SPLIT_50');
+      } else {
+        setPaymentMode('FULL');
       }
       if (!initialPincode) {
         initialPincode = itemsList[0]?.shippingPincode || (typeof window !== 'undefined' ? localStorage.getItem('pb2_user_pincode') || '' : '') || '';
@@ -228,6 +232,13 @@ export default function CheckoutPage() {
       }
     }
   }, []);
+
+  // When Doorstep Courier Delivery is selected, only 100% Full Settlement is allowed
+  useEffect(() => {
+    if (deliveryMethod === 'COURIER' && paymentMode !== 'FULL') {
+      setPaymentMode('FULL');
+    }
+  }, [deliveryMethod, paymentMode]);
 
   // Pre-fill user data
   useEffect(() => {
@@ -359,8 +370,6 @@ export default function CheckoutPage() {
     };
   }, [subtotal, totalQuantity, shippingAddress.postalCode, deliveryMethod, cartItems.length]);
 
-  const gstRatePercent = shippingTaxQuote?.gstRatePercent ?? 18;
-  const tax = shippingTaxQuote?.gstAmount ?? Math.round(subtotal * (gstRatePercent / 100) * 100) / 100;
   const hasValidEnterpriseQuote =
     enterpriseShippingQuote &&
     enterpriseShippingQuote.status !== 'PENDING' &&
@@ -384,6 +393,9 @@ export default function CheckoutPage() {
   const matchedZoneName =
     enterpriseShippingQuote?.zone?.name || shippingTaxQuote?.matchedZone?.zoneName;
   const matchedZoneCode = enterpriseShippingQuote?.zone?.code;
+
+  const gstRatePercent = shippingTaxQuote?.gstRatePercent ?? 18;
+  const tax = shippingTaxQuote?.gstAmount ?? Math.round((subtotal + shipping) * (gstRatePercent / 100) * 100) / 100;
   const grandTotal = Math.round((subtotal + tax + shipping) * 100) / 100;
 
   const isSplit = paymentMode === 'SPLIT_50';
@@ -718,7 +730,10 @@ export default function CheckoutPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setDeliveryMethod('COURIER')}
+                  onClick={() => {
+                    setDeliveryMethod('COURIER');
+                    setPaymentMode('FULL');
+                  }}
                   className={`p-4 rounded-xl border text-left flex items-start gap-3 transition-all ${
                     deliveryMethod === 'COURIER'
                       ? 'border-slate-900 bg-amber-50/40 ring-1 ring-slate-900 shadow-xs'
@@ -991,7 +1006,7 @@ export default function CheckoutPage() {
               </div>
 
               {/* Payment Mode Selection Tiles */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className={`grid gap-3 ${deliveryMethod === 'STORE_PICKUP' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
                 <button
                   type="button"
                   onClick={() => setPaymentMode('FULL')}
@@ -1017,31 +1032,40 @@ export default function CheckoutPage() {
                   </div>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setPaymentMode('SPLIT_50')}
-                  className={`p-4 rounded-xl border text-left flex items-start gap-3 transition-all ${
-                    paymentMode === 'SPLIT_50'
-                      ? 'border-slate-900 bg-amber-50/40 ring-1 ring-slate-900 shadow-xs'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <div className="p-2 rounded-lg bg-[#FFED00] text-slate-950 flex-shrink-0 mt-0.5 border border-[#E3A008]/40">
-                    <ShieldCheck className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-900">50% Split Milestone</span>
-                      <span className="text-[10px] font-mono font-black bg-[#FFED00] text-slate-950 px-1.5 py-0.5 rounded border border-[#E3A008]/40">
-                        ADVANCE
-                      </span>
+                {deliveryMethod === 'STORE_PICKUP' && (
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMode('SPLIT_50')}
+                    className={`p-4 rounded-xl border text-left flex items-start gap-3 transition-all ${
+                      paymentMode === 'SPLIT_50'
+                        ? 'border-slate-900 bg-amber-50/40 ring-1 ring-slate-900 shadow-xs'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="p-2 rounded-lg bg-[#FFED00] text-slate-950 flex-shrink-0 mt-0.5 border border-[#E3A008]/40">
+                      <ShieldCheck className="h-5 w-5" />
                     </div>
-                    <div className="text-[11px] text-slate-500 mt-1">
-                      Pay <strong>{formatCurrency(advanceAmount)}</strong> (50%) today to initiate prepress. Balance <strong>{formatCurrency(balanceAmount)}</strong> on dispatch.
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-900">50% Split Milestone</span>
+                        <span className="text-[10px] font-mono font-black bg-[#FFED00] text-slate-950 px-1.5 py-0.5 rounded border border-[#E3A008]/40">
+                          ADVANCE
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-1">
+                        Pay <strong>{formatCurrency(advanceAmount)}</strong> (50%) today to initiate prepress. Balance <strong>{formatCurrency(balanceAmount)}</strong> on pickup.
+                      </div>
                     </div>
-                  </div>
-                </button>
+                  </button>
+                )}
               </div>
+
+              {deliveryMethod === 'COURIER' && (
+                <div className="px-3.5 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center gap-2 text-xs text-slate-600">
+                  <Lock className="w-4 h-4 text-slate-400 shrink-0" />
+                  <span>Doorstep Courier Delivery requires <strong>100% Full Settlement</strong> online prepaid.</span>
+                </div>
+              )}
 
               <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
                 <div className="flex items-center gap-3">

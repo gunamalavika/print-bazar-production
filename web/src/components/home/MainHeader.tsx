@@ -40,6 +40,7 @@ export function MainHeader() {
             width={212}
             height={40}
             priority
+            style={{ width: 'auto', height: 'auto' }}
             className="h-8 sm:h-9 md:h-10 w-auto object-contain transition-transform duration-200 group-hover:scale-102"
           />
         </Link>

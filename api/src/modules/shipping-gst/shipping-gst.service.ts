@@ -681,9 +681,10 @@ export class ShippingGstService {
       settings.freeShippingThreshold > 0 &&
       cleanSubtotal >= settings.freeShippingThreshold;
 
-    // Dynamic GST Calculation
+    // Dynamic GST Calculation (including shipping/courier charge)
     const taxRate = settings.gstRate / 100;
-    const gstAmount = Math.round(cleanSubtotal * taxRate * 100) / 100;
+    const taxableBase = Math.round((cleanSubtotal + shippingFee) * 100) / 100;
+    const gstAmount = Math.round(taxableBase * taxRate * 100) / 100;
 
     let cgst = 0;
     let sgst = 0;
@@ -696,7 +697,7 @@ export class ShippingGstService {
       sgst = Math.round((gstAmount - cgst) * 100) / 100;
     }
 
-    const grandTotal = Math.round((cleanSubtotal + gstAmount + shippingFee) * 100) / 100;
+    const grandTotal = Math.round((cleanSubtotal + shippingFee + gstAmount) * 100) / 100;
 
     return {
       subtotal: cleanSubtotal,

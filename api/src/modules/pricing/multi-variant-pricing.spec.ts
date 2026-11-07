@@ -3,6 +3,7 @@ import { PricingService } from './pricing.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { BadRequestException } from '@nestjs/common';
 import { ShippingGstService } from '../shipping-gst/shipping-gst.service';
+import { ShippingCalculatorService } from '../shipping/shipping-calculator.service';
 
 describe('Multi-Variant Product Ordering & Selection Behavior Tests', () => {
   let service: PricingService;
@@ -138,9 +139,17 @@ describe('Multi-Variant Product Ordering & Selection Behavior Tests', () => {
       sgstAmount: 90,
       igstAmount: 0,
       totalTax: 180,
+      gstAmount: 180,
       shippingAmount: 100,
       shippingGst: 18,
       grandTotal: 1298,
+    }),
+  };
+
+  const mockShippingCalculatorService = {
+    calculateShipping: jest.fn().mockResolvedValue({
+      finalShippingAmount: 100,
+      isFreeShipping: false,
     }),
   };
 
@@ -150,6 +159,7 @@ describe('Multi-Variant Product Ordering & Selection Behavior Tests', () => {
         PricingService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: ShippingGstService, useValue: mockShippingGstService },
+        { provide: ShippingCalculatorService, useValue: mockShippingCalculatorService },
       ],
     }).compile();
 

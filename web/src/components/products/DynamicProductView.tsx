@@ -15,7 +15,6 @@ import {
   RiAwardLine,
   RiTimeLine,
   RiBox3Line,
-  RiStarFill,
   RiArrowLeftSLine,
   RiArrowRightSLine,
   RiCloseLine,
@@ -36,6 +35,9 @@ import {
   RiLockLine,
   RiArrowUpCircleLine,
   RiLoader4Line,
+  RiArrowDownSLine,
+  RiCheckboxCircleFill,
+  RiCheckboxBlankCircleLine,
 } from 'react-icons/ri';
 import {
   api,
@@ -51,6 +53,7 @@ import { CartDrawer, CartDrawerItem } from '@/components/cart/CartDrawer';
 import { CustomerAuthModal } from '@/components/auth/CustomerAuthModal';
 import { useAuth } from '@/lib/auth-context';
 import { resolveArtworkConditions } from '@/lib/artwork-rule-resolver';
+import { evaluateProductConfiguration, ConfigurationEvaluationResult } from '@/lib/product-rules-engine';
 
 interface PresetDimension {
   id: string;
@@ -117,6 +120,15 @@ function getOptionAdditionalTierCharge(
     };
   }
   return null;
+}
+
+function cleanOptionLabel(text?: string | null): string {
+  if (!text) return '';
+  return text
+    .replace(/\s*\(\+?₹[0-9.,]+\)/gi, '')
+    .replace(/\s*\(\+[0-9.,]+%?\)/gi, '')
+    .replace(/\s*\+₹[0-9.,]+/gi, '')
+    .trim();
 }
 
 // Fallback options for common option groups when DB options are not yet seeded
@@ -606,7 +618,31 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
   });
 
   // -------------------------------------------------------------
-  // VARIANT-WISE QUANTITY STATE & VALIDATION (selectionBehavior === 'VARIANT_WISE')
+  // RULES ENGINE INTEGRATION (ProductConfigurationRule)
+  // -------------------------------------------------------------
+  const rulesEvaluation: ConfigurationEvaluationResult = useMemo(() => {
+    if (!product.configurationRules || product.configurationRules.length === 0) {
+      return {
+        isValid: true,
+        errors: [],
+        visibleGroupCodes: effectiveOptionGroups.map((g) => g.code),
+        groupStatus: {},
+        optionStatus: {},
+        invalidCombinations: [],
+        sanitizedSelections: selectedOptions,
+        changedSelections: [],
+        activeCharges: [],
+      };
+    }
+    return evaluateProductConfiguration(
+      effectiveOptionGroups as any,
+      product.configurationRules as any,
+      selectedOptions
+    );
+  }, [product.configurationRules, selectedOptions, effectiveOptionGroups]);
+
+  // -------------------------------------------------------------
+  // VARIANT-WISE QUANTITY STATE & COMBINED MATRIX (selectionBehavior === 'VARIANT_WISE')
   // -------------------------------------------------------------
   const [variantQuantities, setVariantQuantities] = useState<Record<string, number>>({});
 
@@ -616,21 +652,54 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
 
   const hasVariantWiseGroups = variantWiseGroups.length > 0;
 
-  const totalVariantAllocated = useMemo(() => {
-    return Object.values(variantQuantities).reduce((acc, q) => acc + (Number(q) || 0), 0);
-  }, [variantQuantities]);
+  // Multi-dimensional variant matrix (e.g. Colors x Size)
+  const isCombinedVariantMatrix = useMemo(() => {
+    if (
+      product.allowMultipleVariants &&
+      Array.isArray(product.variantDimensions) &&
+      product.variantDimensions.length >= 2
+    ) {
+      const dim1Code = product.variantDimensions[0].toLowerCase();
+      const dim2Code = product.variantDimensions[1].toLowerCase();
+      const hasDim1 = variantWiseGroups.some((g) => g.code.toLowerCase() === dim1Code);
+      const hasDim2 = variantWiseGroups.some((g) => g.code.toLowerCase() === dim2Code);
+      return hasDim1 && hasDim2;
+    }
+    return false;
+  }, [variantWiseGroups, product.allowMultipleVariants, product.variantDimensions]);
 
+  // Identify Dimension 1 (e.g. Colors as Rows) and Dimension 2 (e.g. Size as Columns)
+  const combinedDimensions = useMemo(() => {
+    if (!isCombinedVariantMatrix || !Array.isArray(product.variantDimensions) || product.variantDimensions.length < 2) {
+      return null;
+    }
+    const dim1Code = product.variantDimensions[0].toLowerCase();
+    const dim2Code = product.variantDimensions[1].toLowerCase();
+    const dim1 = variantWiseGroups.find((g) => g.code.toLowerCase() === dim1Code);
+    const dim2 = variantWiseGroups.find((g) => g.code.toLowerCase() === dim2Code);
+    if (dim1 && dim2) return { dim1, dim2 };
+    return null;
+  }, [isCombinedVariantMatrix, variantWiseGroups, product.variantDimensions]);
+
+  // Total allocated across the entire variant matrix
+  const totalVariantAllocated = useMemo(() => {
+    if (!hasVariantWiseGroups) return selectedQuantity;
+    if (isCombinedVariantMatrix) {
+      return Object.values(variantQuantities).reduce((acc, q) => acc + (Number(q) || 0), 0);
+    }
+    const grp = variantWiseGroups[0];
+    return (grp.options || []).reduce((acc, opt) => acc + (Number(variantQuantities[opt.value]) || 0), 0);
+  }, [hasVariantWiseGroups, isCombinedVariantMatrix, variantWiseGroups, variantQuantities, selectedQuantity]);
+
+  const remainingVariantQty = selectedQuantity - totalVariantAllocated;
+
+  // Single rule: Total Allocated across the combined matrix MUST equal Selected Order Quantity
   const isVariantAllocationValid = useMemo(() => {
     if (!hasVariantWiseGroups) return true;
-    return variantWiseGroups.every((g) => {
-      const groupSum = (g.options || []).reduce(
-        (sum, opt) => sum + (Number(variantQuantities[opt.value]) || 0),
-        0
-      );
-      return groupSum === selectedQuantity;
-    });
-  }, [hasVariantWiseGroups, variantWiseGroups, variantQuantities, selectedQuantity]);
+    return totalVariantAllocated === selectedQuantity;
+  }, [hasVariantWiseGroups, totalVariantAllocated, selectedQuantity]);
 
+  // Serialized variantLines payload for backend quote calculation & OrderItemVariant creation
   const variantLinesPayload = useMemo(() => {
     if (!hasVariantWiseGroups) return undefined;
     const lines: Array<{
@@ -641,8 +710,27 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
       combination: Record<string, string>;
     }> = [];
 
-    for (const group of variantWiseGroups) {
-      for (const opt of group.options || []) {
+    if (isCombinedVariantMatrix) {
+      for (const [key, q] of Object.entries(variantQuantities)) {
+        const qty = Number(q) || 0;
+        if (qty > 0) {
+          const combination: Record<string, string> = {};
+          for (const part of key.split('|')) {
+            const [grpCode, valCode] = part.split(':');
+            if (grpCode && valCode) combination[grpCode] = valCode;
+          }
+          lines.push({
+            code: Object.values(combination).join('-'),
+            optionCode: Object.values(combination).join('-'),
+            qty,
+            quantity: qty,
+            combination,
+          });
+        }
+      }
+    } else {
+      const grp = variantWiseGroups[0];
+      for (const opt of grp.options || []) {
         const q = Number(variantQuantities[opt.value]) || 0;
         if (q > 0) {
           lines.push({
@@ -650,13 +738,13 @@ export function DynamicProductView({ product }: DynamicProductViewProps) {
             optionCode: opt.value,
             qty: q,
             quantity: q,
-            combination: { [group.code]: opt.value },
+            combination: { [grp.code]: opt.value },
           });
         }
       }
     }
     return lines.length > 0 ? lines : undefined;
-  }, [hasVariantWiseGroups, variantWiseGroups, variantQuantities]);
+  }, [hasVariantWiseGroups, isCombinedVariantMatrix, variantWiseGroups, variantQuantities]);
 
   // Dynamic Key Points / Highlights with fallback
   const displayedKeyPoints = useMemo(() => {
@@ -944,11 +1032,23 @@ function detectIsDesignServiceSelected(
 
   // Base print subtotal (print items only, excluding design and artwork fees)
   const basePrintSubtotal = serverSubtotal;
+  const productCourier = Number((product as any).courierCharge) || 0;
+  const effectiveShippingFee =
+    shippingQuote?.finalShippingAmount !== undefined && shippingQuote?.finalShippingAmount !== null
+      ? Number(shippingQuote.finalShippingAmount)
+      : shippingQuote?.isFreeShippingApplied
+      ? 0
+      : productCourier;
 
+  const totalDesignCharge = Math.round((activeDesignFee + rawArtworkPrice) * 100) / 100;
   // Effective production subtotal including design service fee and artwork fee
-  const effectiveSubtotal = Math.round((basePrintSubtotal + activeDesignFee + rawArtworkPrice) * 100) / 100;
-  const effectiveTax = Math.round(effectiveSubtotal * 0.18 * 100) / 100;
-  const effectiveGrandTotal = Math.round((effectiveSubtotal + effectiveTax) * 100) / 100;
+  const effectiveSubtotal = Math.round((basePrintSubtotal + totalDesignCharge) * 100) / 100;
+  // Taxable Base combines: Total Product Price + Design Charge + Delivery Charge
+  const effectiveTaxableAmount = Math.round((effectiveSubtotal + effectiveShippingFee) * 100) / 100;
+  // GST (18%) on combined Total Product Price + Design Charge + Delivery Charge
+  const effectiveTax = Math.round(effectiveTaxableAmount * 0.18 * 100) / 100;
+  // Total Payable includes the 18% GST
+  const effectiveGrandTotal = Math.round((effectiveTaxableAmount + effectiveTax) * 100) / 100;
 
   // Server Quote Recalculation
   useEffect(() => {
@@ -1007,8 +1107,10 @@ function detectIsDesignServiceSelected(
         : Math.round(((effectiveBaseUnit * selectedQuantity) + bulkAddonTotal) * 100) / 100;
     const syncUnitPrice =
       selectedQuantity > 0 ? Math.round((syncSubtotal / selectedQuantity) * 10000) / 10000 : effectiveBaseUnit;
-    const syncTax = Math.round(syncSubtotal * 0.18 * 100) / 100;
-    const syncGrandTotal = Math.round((syncSubtotal + syncTax) * 100) / 100;
+    const syncCourier = Number((product as any).courierCharge) || 0;
+    const syncTaxable = Math.round((syncSubtotal + activeDesignFee + rawArtworkPrice + syncCourier) * 100) / 100;
+    const syncTax = Math.round(syncTaxable * 0.18 * 100) / 100;
+    const syncGrandTotal = Math.round((syncTaxable + syncTax) * 100) / 100;
 
     setServerUnitPrice(syncUnitPrice);
     setServerSubtotal(syncSubtotal);
@@ -1053,9 +1155,14 @@ function detectIsDesignServiceSelected(
           const uPrice = quote.unitPrice ?? syncUnitPrice;
           // Production subtotal reflects authoritative unit price including option & additional pricing
           const sTotal = Math.round(uPrice * selectedQuantity * 100) / 100;
-          const tax = Math.round(sTotal * 0.18 * 100) / 100;
-          const shipAmt = quote.estimatedShipping !== undefined ? Number(quote.estimatedShipping) : (Number(quote.shipping?.finalShippingAmount) || 0);
-          const gTotal = Math.round((sTotal + tax + shipAmt) * 100) / 100;
+          const designAmt = isDesignWanted ? (Number((product as any).designServiceFee ?? (product as any).designServicePrice) || 150) : 0;
+          const artAmt = Number(product.artworkPrice) || 0;
+          const shipAmt = quote.estimatedShipping !== undefined
+            ? Number(quote.estimatedShipping)
+            : (Number(quote.shipping?.finalShippingAmount) || (Number((product as any).courierCharge) || 0));
+          const taxable = Math.round((sTotal + designAmt + artAmt + shipAmt) * 100) / 100;
+          const tax = Math.round(taxable * 0.18 * 100) / 100;
+          const gTotal = Math.round((taxable + tax) * 100) / 100;
 
           setServerUnitPrice(uPrice);
           setServerSubtotal(sTotal);
@@ -1236,20 +1343,38 @@ function detectIsDesignServiceSelected(
       });
     }
 
+    // Multi-Variant combined breakdown in order snapshot
+    if (isCombinedVariantMatrix && variantLinesPayload && variantLinesPayload.length > 0) {
+      const comboSummaries = variantLinesPayload.map((line) => {
+        const parts = Object.entries(line.combination).map(([gCode, vCode]) => {
+          const grp = effectiveOptionGroups.find((g) => g.code === gCode);
+          const opt = grp?.options?.find((o) => o.value === vCode);
+          return opt?.label || vCode;
+        });
+        return `${parts.join(' / ')} (${line.quantity})`;
+      });
+      selectedOptionsSummary.push({
+        fieldLabel: 'Variant Breakdown',
+        value: comboSummaries.join(', '),
+      });
+    }
+
     for (const group of effectiveOptionGroups) {
       if (group.selectionBehavior === 'VARIANT_WISE') {
-        const allocatedForGroup = (group.options || [])
-          .map((o) => {
-            const q = Number(variantQuantities[o.value]) || 0;
-            return q > 0 ? `${o.label} (${q})` : null;
-          })
-          .filter(Boolean);
+        if (!isCombinedVariantMatrix) {
+          const allocatedForGroup = (group.options || [])
+            .map((o) => {
+              const q = Number(variantQuantities[o.value]) || 0;
+              return q > 0 ? `${o.label} (${q})` : null;
+            })
+            .filter(Boolean);
 
-        if (allocatedForGroup.length > 0) {
-          selectedOptionsSummary.push({
-            fieldLabel: group.name,
-            value: allocatedForGroup.join(', '),
-          });
+          if (allocatedForGroup.length > 0) {
+            selectedOptionsSummary.push({
+              fieldLabel: group.name,
+              value: allocatedForGroup.join(', '),
+            });
+          }
         }
       } else {
         const selectedVal = selectedOptions[group.code];
@@ -1318,9 +1443,16 @@ function detectIsDesignServiceSelected(
     const activeDesignFee = hasDesignService ? rawDesignFee : 0;
 
     const computedSubtotal = Math.round((finalSubtotal + activeDesignFee + rawArtworkPrice) * 100) / 100;
-    const computedTax = Math.round(computedSubtotal * 0.18 * 100) / 100;
-    const finalShippingFee = Number(shippingQuote?.finalShippingAmount) || 0;
-    const computedGrandTotal = Math.round((computedSubtotal + computedTax + finalShippingFee) * 100) / 100;
+    const productCourier = Number((product as any).courierCharge) || 0;
+    const finalShippingFee =
+      shippingQuote?.finalShippingAmount !== undefined && shippingQuote?.finalShippingAmount !== null
+        ? Number(shippingQuote.finalShippingAmount)
+        : shippingQuote?.isFreeShippingApplied
+        ? 0
+        : productCourier;
+    const taxableAmount = Math.round((computedSubtotal + finalShippingFee) * 100) / 100;
+    const computedTax = Math.round(taxableAmount * 0.18 * 100) / 100;
+    const computedGrandTotal = Math.round((taxableAmount + computedTax) * 100) / 100;
 
     return {
       productId: product.id,
@@ -1333,6 +1465,7 @@ function detectIsDesignServiceSelected(
       taxAmount: computedTax,
       grandTotal: computedGrandTotal,
       shippingFee: finalShippingFee,
+      courierCharge: productCourier,
       shippingSnapshot: shippingQuote ? {
         ...shippingQuote,
         productWeightGrams: storefrontWeightInfo.productWeightGrams,
@@ -1449,9 +1582,9 @@ function detectIsDesignServiceSelected(
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
           {/* ====================================================== */}
-          {/* LEFT COLUMN: GALLERY & PRODUCT HIGHLIGHTS (~5 Cols)     */}
+          {/* LEFT COLUMN: STICKY GALLERY (~5 Cols)                  */}
           {/* ====================================================== */}
-          <div className="lg:col-span-5 space-y-8">
+          <div className="lg:col-span-5 lg:sticky lg:top-24 self-start space-y-4">
             {/* Main Product Showcase Box */}
             <div className="relative rounded-2xl overflow-hidden bg-[#EAE8E4] border border-slate-200/90 shadow-sm aspect-square flex items-center justify-center group">
               <div className="absolute top-4 left-4 z-10 bg-[#FFED00] text-black text-[11px] font-black uppercase tracking-wider px-3 py-1 rounded-md shadow-xs border border-amber-300">
@@ -1528,191 +1661,6 @@ function detectIsDesignServiceSelected(
                 ))}
               </div>
             )}
-
-            {/* Feature Highlights Block */}
-            <div className="space-y-4 pt-2">
-              <div>
-                <h3 className="text-base font-bold text-slate-950 font-display">
-                  {product.category?.name || 'Commercial Quality'}. Elevated.
-                </h3>
-                <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
-                  {product.description?.slice(0, 95) ||
-                    'High-precision commercial print crafted for brands that value detail, quality and impact.'}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3.5">
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-white shadow-2xs space-y-1.5">
-                  <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
-                    <RiBox3Line className="w-4 h-4" />
-                  </div>
-                  <h4 className="text-xs font-bold text-slate-900">Premium Materials</h4>
-                  <p className="text-[11px] text-slate-500 leading-tight">
-                    Certified commercial substrates & archival inks
-                  </p>
-                </div>
-
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-white shadow-2xs space-y-1.5">
-                  <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
-                    <RiPaletteLine className="w-4 h-4" />
-                  </div>
-                  <h4 className="text-xs font-bold text-slate-900">Customisation</h4>
-                  <p className="text-[11px] text-slate-500 leading-tight">
-                    Multiple sizes, custom finishes & add-ons
-                  </p>
-                </div>
-
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-white shadow-2xs space-y-1.5">
-                  <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
-                    <RiTimeLine className="w-4 h-4" />
-                  </div>
-                  <h4 className="text-xs font-bold text-slate-900">Fast Turnaround</h4>
-                  <p className="text-[11px] text-slate-500 leading-tight">
-                    {product.productionDays || 3} working days production SLA
-                  </p>
-                </div>
-
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-white shadow-2xs space-y-1.5">
-                  <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
-                    <RiCustomerService2Line className="w-4 h-4" />
-                  </div>
-                  <h4 className="text-xs font-bold text-slate-900">Expert Support</h4>
-                  <p className="text-[11px] text-slate-500 leading-tight">
-                    Design & pre-flight consultation
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Need Help Designing Banner */}
-            <div className="relative rounded-2xl p-6 bg-slate-50 border border-slate-200/90 overflow-hidden flex items-center justify-between">
-              <div className="space-y-2 z-10 max-w-[65%]">
-                <h3 className="text-sm font-black text-slate-950 font-display">
-                  Need Help Designing?
-                </h3>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Our print & packaging experts are here to help you find the perfect solution for your brand.
-                </p>
-                <div className="pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setIsDesignerModalOpen(true)}
-                    className="inline-flex items-center gap-1 px-4 py-2 bg-[#FFED00] hover:bg-[#F2E100] text-black text-xs font-bold rounded-lg border border-amber-300 shadow-2xs transition-colors cursor-pointer"
-                  >
-                    <span>Contact Designer</span>
-                    <RiArrowRightLine className="w-3.5 h-3.5 stroke-[2]" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="w-28 h-28 flex-shrink-0 relative opacity-95">
-                <img
-                  src={galleryImages[0]?.url}
-                  alt="Packaging Support"
-                  className="w-full h-full object-cover rounded-xl shadow-xs"
-                />
-              </div>
-            </div>
-
-            {/* Product Highlights Section */}
-            <div className="space-y-3 pt-2">
-              <h3 className="text-sm font-bold text-slate-950 uppercase tracking-wider text-[11px]">
-                Product Highlights
-              </h3>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1.5 text-center">
-                  <div className="rounded-xl overflow-hidden aspect-square border border-slate-200">
-                    <img
-                      src={galleryImages[1]?.url || galleryImages[0]?.url}
-                      alt="Premium Branding"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <span className="text-[11px] font-bold text-slate-800 block">
-                    Premium Branding
-                  </span>
-                </div>
-
-                <div className="space-y-1.5 text-center">
-                  <div className="rounded-xl overflow-hidden aspect-square border border-slate-200">
-                    <img
-                      src={galleryImages[2]?.url || galleryImages[0]?.url}
-                      alt="Luxury Presentation"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <span className="text-[11px] font-bold text-slate-800 block">
-                    Luxury Presentation
-                  </span>
-                </div>
-
-                <div className="space-y-1.5 text-center">
-                  <div className="rounded-xl overflow-hidden aspect-square border border-slate-200">
-                    <img
-                      src={galleryImages[3]?.url || galleryImages[0]?.url}
-                      alt="High Precision"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <span className="text-[11px] font-bold text-slate-800 block">
-                    High Precision
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Ideal For Section */}
-            <div className="space-y-3 pt-2">
-              <h3 className="text-sm font-bold text-slate-950 uppercase tracking-wider text-[11px]">
-                Ideal For
-              </h3>
-              <div className="grid grid-cols-5 gap-2 text-center">
-                <div className="space-y-1 flex flex-col items-center">
-                  <div className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700">
-                    <RiShoppingBag3Line className="w-4 h-4" />
-                  </div>
-                  <span className="text-[10px] text-slate-600 font-medium leading-tight">
-                    Retail Products
-                  </span>
-                </div>
-
-                <div className="space-y-1 flex flex-col items-center">
-                  <div className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700">
-                    <RiGiftLine className="w-4 h-4" />
-                  </div>
-                  <span className="text-[10px] text-slate-600 font-medium leading-tight">
-                    Brand Presentation
-                  </span>
-                </div>
-
-                <div className="space-y-1 flex flex-col items-center">
-                  <div className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700">
-                    <RiSparklingFill className="w-4 h-4 text-amber-500" />
-                  </div>
-                  <span className="text-[10px] text-slate-600 font-medium leading-tight">
-                    Expos & Events
-                  </span>
-                </div>
-
-                <div className="space-y-1 flex flex-col items-center">
-                  <div className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700">
-                    <RiAwardLine className="w-4 h-4" />
-                  </div>
-                  <span className="text-[10px] text-slate-600 font-medium leading-tight">
-                    Corporate Identity
-                  </span>
-                </div>
-
-                <div className="space-y-1 flex flex-col items-center">
-                  <div className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700">
-                    <RiBox3Line className="w-4 h-4" />
-                  </div>
-                  <span className="text-[10px] text-slate-600 font-medium leading-tight">
-                    Marketing Growth
-                  </span>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* ====================================================== */}
@@ -1734,23 +1682,11 @@ function detectIsDesignServiceSelected(
                 {product.name}
               </h1>
 
-              {/* Rating & Stock */}
+              {/* Stock Status Badge */}
               <div className="flex items-center gap-3 pt-0.5 text-xs">
-                <div className="flex items-center gap-1 text-amber-500 font-semibold">
-                  <div className="flex items-center">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <RiStarFill key={star} className="w-3.5 h-3.5 fill-amber-400" />
-                    ))}
-                  </div>
-                  <span className="text-slate-800 ml-1 font-bold">4.8</span>
-                  <span className="text-slate-400">(124 reviews)</span>
-                </div>
-
-                <span className="text-slate-300">•</span>
-
-                <div className="flex items-center gap-1 text-emerald-700 font-bold">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span>In Stock</span>
+                <div className="flex items-center gap-1.5 text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>In Stock • Ready to Configure</span>
                 </div>
               </div>
 
@@ -1844,7 +1780,7 @@ function detectIsDesignServiceSelected(
                 <span className="w-5 h-5 rounded-full bg-slate-200 text-slate-600 font-bold flex items-center justify-center text-[10px]">
                   {(hasDimensionalInputs ? 1 : 0) + (effectiveOptionGroups.length > 0 ? 1 : 0) + (personalizationTemplate?.isActive ? 1 : 0) + 1}
                 </span>
-                <span>Quantity & Pricing</span>
+                <span>Quantity</span>
               </div>
             </div>
 
@@ -1930,325 +1866,798 @@ function detectIsDesignServiceSelected(
             )}
 
             {/* ====================================================== */}
+            {/* CONFIGURATION RULES ALERTS (Invalid Combinations)     */}
+            {/* ====================================================== */}
+            {rulesEvaluation.invalidCombinations && rulesEvaluation.invalidCombinations.length > 0 && (
+              <div className="space-y-2">
+                {rulesEvaluation.invalidCombinations.map((inv, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-center gap-2 shadow-2xs"
+                  >
+                    <RiErrorWarningLine className="w-4 h-4 shrink-0 text-rose-600" />
+                    <span>
+                      <strong className="font-bold">{inv.ruleName}:</strong> {inv.message}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ====================================================== */}
             {/* DYNAMIC OPTION GROUPS (From /admin/option-groups)       */}
             {/* ====================================================== */}
-            {effectiveOptionGroups.map((group, groupIdx) => {
-              const isMulti = group.inputType === 'MULTI_SELECT' || group.selectionBehavior === 'MULTIPLE';
-              const isInputText = ['TEXT', 'TEXTAREA', 'NUMBER', 'DATE'].includes((group.inputType || '').toUpperCase());
+            {(() => {
+              let hasRenderedCombinedMatrix = false;
 
-              const options =
-                group.options && group.options.length > 0
-                  ? group.options.map((o) => {
-                      let modifierText = '';
-                      const addonCharge = getOptionAdditionalTierCharge(
-                        product.additionalPricings,
-                        group.code,
-                        o.value,
-                        selectedQuantity
-                      );
+              return effectiveOptionGroups.map((group, groupIdx) => {
+                const isMulti = group.inputType === 'MULTI_SELECT' || group.selectionBehavior === 'MULTIPLE';
+                const isInputText = ['TEXT', 'TEXTAREA', 'NUMBER', 'DATE'].includes((group.inputType || '').toUpperCase());
 
-                      if (addonCharge && !addonCharge.isExcluded && addonCharge.unitPrice > 0) {
-                        if (addonCharge.chargeBasis === 'PERCENTAGE') {
-                          modifierText = `+${addonCharge.unitPrice}%`;
+                const options =
+                  group.options && group.options.length > 0
+                    ? group.options.map((o) => {
+                        let modifierText = '';
+                        const addonCharge = getOptionAdditionalTierCharge(
+                          product.additionalPricings,
+                          group.code,
+                          o.value,
+                          selectedQuantity
+                        );
+
+                        if (addonCharge && !addonCharge.isExcluded && addonCharge.unitPrice > 0) {
+                          if (addonCharge.chargeBasis === 'PERCENTAGE') {
+                            modifierText = `+${addonCharge.unitPrice}%`;
+                          } else {
+                            modifierText = `+₹${addonCharge.unitPrice % 1 === 0 ? addonCharge.unitPrice : addonCharge.unitPrice.toFixed(2)}`;
+                          }
                         } else {
-                          modifierText = `+₹${addonCharge.unitPrice % 1 === 0 ? addonCharge.unitPrice : addonCharge.unitPrice.toFixed(2)}`;
+                          const numMod = Number(o.priceModifier);
+                          if (numMod > 0) {
+                            modifierText = o.priceModifierType === 'PERCENTAGE' ? `+${numMod}%` : `+₹${numMod.toFixed(0)}`;
+                          }
                         }
-                      } else {
-                        const numMod = Number(o.priceModifier);
-                        if (numMod > 0) {
-                          modifierText = o.priceModifierType === 'PERCENTAGE' ? `+${numMod}%` : `+₹${numMod.toFixed(0)}`;
-                        }
-                      }
 
-                      return {
-                        id: o.value,
-                        title: o.label,
-                        subtitle: modifierText || undefined,
-                        isExcluded: addonCharge?.isExcluded,
-                      };
-                    })
-                  : FALLBACK_GROUP_OPTIONS[group.code] || [];
+                        const isRuleDisabled = Boolean(
+                          rulesEvaluation.optionStatus?.[`${group.code}:${o.value}`]?.isDisabled
+                        );
+                        const ruleReason = rulesEvaluation.optionStatus?.[`${group.code}:${o.value}`]?.disabledReason;
 
-              const currentVal = selectedOptions[group.code];
+                        return {
+                          id: o.value,
+                          title: cleanOptionLabel(o.label),
+                          subtitle: undefined,
+                          isExcluded: addonCharge?.isExcluded || isRuleDisabled,
+                          disabledReason: ruleReason,
+                        };
+                      })
+                    : FALLBACK_GROUP_OPTIONS[group.code] || [];
 
-              const groupStepNum = (hasDimensionalInputs ? 1 : 0) + groupIdx + 1;
+                const currentVal = selectedOptions[group.code];
+                const groupStepNum = (hasDimensionalInputs ? 1 : 0) + groupIdx + 1;
 
-              // Handle Direct Text / Number / Date Input Groups
-              if (isInputText) {
-                return (
-                  <div key={group.id || group.code} className="space-y-2">
-                    <label className="text-xs font-bold text-slate-900 flex items-center justify-between">
-                      <span className="flex items-center gap-1.5">
-                        <span>{groupStepNum}. {group.name}</span>
-                        {group.isRequired && <span className="text-rose-500 font-bold">*</span>}
-                      </span>
-                      {group.description && <span className="text-[10px] text-slate-400 font-normal">{group.description}</span>}
-                    </label>
-
-                    {group.inputType === 'TEXTAREA' ? (
-                      <textarea
-                        rows={2}
-                        value={currentVal || ''}
-                        onChange={(e) => setSelectedOptions((prev) => ({ ...prev, [group.code]: e.target.value }))}
-                        placeholder={group.description || `Enter ${group.name}...`}
-                        className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
-                      />
-                    ) : (
-                      <input
-                        type={group.inputType === 'NUMBER' ? 'number' : group.inputType === 'DATE' ? 'date' : 'text'}
-                        value={currentVal || ''}
-                        onChange={(e) => setSelectedOptions((prev) => ({ ...prev, [group.code]: e.target.value }))}
-                        placeholder={group.description || `Enter ${group.name}...`}
-                        className="w-full h-9 px-3 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
-                      />
-                    )}
-                  </div>
+                // ======================================================
+                // CASE 1: COMBINED VARIANT MATRIX (e.g. Colors x Size)
+                // ======================================================
+                const isDimOfCombined = Boolean(
+                  combinedDimensions &&
+                  (group.code.toLowerCase() === combinedDimensions.dim1.code.toLowerCase() ||
+                   group.code.toLowerCase() === combinedDimensions.dim2.code.toLowerCase())
                 );
-              }
 
-              // ======================================================
-              // VARIANT-WISE QUANTITY GRID (Wrapped Box Model with Inline Boxes)
-              // ======================================================
-              if (group.selectionBehavior === 'VARIANT_WISE') {
-                const groupSum = (group.options || []).reduce(
-                  (sum, o) => sum + (Number(variantQuantities[o.value]) || 0),
-                  0
-                );
-                const isValid = groupSum === selectedQuantity;
-
-                return (
-                  <div key={group.id || group.code} className="space-y-1.5">
-                    {/* Wrap the variant options in a border container */}
-                    <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
-                      {/* Header of the box */}
-                      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-gray-800 text-sm">
-                            {groupStepNum}. {group.name}
-                          </h4>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 uppercase tracking-wider">
-                            Variant-Wise
-                          </span>
-                        </div>
-                        {/* Dynamic Badge */}
-                        <span
-                          className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                            isValid
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-red-100 text-red-700'
-                          }`}
-                        >
-                          {isValid ? `${groupSum} / ${selectedQuantity} Allocated` : 'Mismatch'}
-                        </span>
-                      </div>
-
-                      {/* Inline Boxes for Variant Values */}
-                      <div className="p-3 bg-white">
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
-                          {(group.options && group.options.length > 0 ? group.options : []).map((opt) => {
-                            const currentQty = Number(variantQuantities[opt.value]) || 0;
-
-                            // Check price modifier
-                            let modifierText = '';
-                            const addonCharge = getOptionAdditionalTierCharge(
-                              product.additionalPricings,
-                              group.code,
-                              opt.value,
-                              selectedQuantity
-                            );
-                            if (addonCharge && !addonCharge.isExcluded && addonCharge.unitPrice > 0) {
-                              modifierText =
-                                addonCharge.chargeBasis === 'PERCENTAGE'
-                                  ? `+${addonCharge.unitPrice}%`
-                                  : `+₹${addonCharge.unitPrice % 1 === 0 ? addonCharge.unitPrice : addonCharge.unitPrice.toFixed(2)}`;
-                            } else {
-                              const numMod = Number(opt.priceModifier);
-                              if (numMod > 0) {
-                                modifierText =
-                                  opt.priceModifierType === 'PERCENTAGE'
-                                    ? `+${numMod}%`
-                                    : `+₹${numMod.toFixed(0)}`;
-                              }
-                            }
-
-                            const handleDecrement = () => {
-                              setVariantQuantities((prev) => ({
-                                ...prev,
-                                [opt.value]: Math.max(0, currentQty - 1),
-                              }));
-                            };
-
-                            const handleIncrement = () => {
-                              setVariantQuantities((prev) => ({
-                                ...prev,
-                                [opt.value]: currentQty + 1,
-                              }));
-                            };
-
-                            const handleDirectChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-                              const val = Math.max(0, parseInt(e.target.value, 10) || 0);
-                              setVariantQuantities((prev) => ({
-                                ...prev,
-                                [opt.value]: val,
-                              }));
-                            };
-
-                            const isSelected = currentQty > 0;
-
-                            return (
-                              <div
-                                key={opt.id || opt.value}
-                                className={`p-3 rounded-xl border transition-all flex flex-col justify-between items-center text-center ${
-                                  isSelected
-                                    ? 'border-2 border-slate-900 bg-amber-50/20 shadow-xs'
-                                    : 'border-gray-200 bg-white hover:border-gray-300'
-                                }`}
-                              >
-                                <div className="mb-2 w-full">
-                                  <span className="text-xs font-bold text-gray-800 block truncate">
-                                    {opt.label || (opt as any).name}
-                                  </span>
-                                  {modifierText && (
-                                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded mt-0.5 inline-block">
-                                      {modifierText}
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Stepper Controls inside each inline box */}
-                                <div className="flex items-center gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={handleDecrement}
-                                    disabled={currentQty <= 0}
-                                    aria-label={`Decrease ${opt.label} quantity`}
-                                    className="w-7 h-7 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-700 font-bold disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer text-xs"
-                                  >
-                                    -
-                                  </button>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    value={currentQty}
-                                    onChange={handleDirectChange}
-                                    className="w-10 text-center font-bold text-xs border-none bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-gray-900"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={handleIncrement}
-                                    aria-label={`Increase ${opt.label} quantity`}
-                                    className="w-7 h-7 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-700 font-bold cursor-pointer text-xs"
-                                  >
-                                    +
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Summary footer showing allocated count only */}
-                      <div className="bg-gray-50 px-4 py-2.5 border-t border-gray-200 text-xs text-gray-600">
-                        <span>
-                          Total {group.name} Allocated: <strong className="text-gray-900 font-bold">{groupSum}</strong> of <strong className="text-gray-900 font-bold">{selectedQuantity}</strong>
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Error Message Placement */}
-                    {!isValid && (
-                      <p className="text-red-500 text-sm mt-2 font-medium">
-                        Please adjust quantities to match the total order quantity of {selectedQuantity}. (Variant quantities ({groupSum}) do not match total order quantity ({selectedQuantity}).)
-                      </p>
-                    )}
-                  </div>
-                );
-              }
-
-              // Standard Visual Card Selectors
-              return (
-                <div key={group.id || group.code} className="space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                      <span>
-                        {groupStepNum}. {group.name}
-                      </span>
-                      {isMulti && <span className="text-[10px] text-amber-600 font-medium">(Select Multiple)</span>}
-                      <RiInformationLine className="w-3.5 h-3.5 text-slate-400" />
-                    </label>
-                  </div>
-
-                  <div
-                    className={`grid gap-2.5 ${
-                      options.length <= 4
-                        ? 'grid-cols-2 sm:grid-cols-4'
-                        : options.length <= 5
-                        ? 'grid-cols-2 sm:grid-cols-5'
-                        : 'grid-cols-3 sm:grid-cols-6'
-                    }`}
-                  >
-                    {options.map((opt, optIdx) => {
-                      const isSelected = isMulti
-                        ? Array.isArray(currentVal) && currentVal.includes(opt.id)
-                        : (currentVal || options[0]?.id) === opt.id;
-
-                      const handleCardClick = () => {
-                        if (isMulti) {
-                          const currentArr = Array.isArray(currentVal) ? [...currentVal] : [];
-                          const nextArr = isSelected
-                            ? currentArr.filter((item) => item !== opt.id)
-                            : [...currentArr, opt.id];
-                          setSelectedOptions((prev) => ({
-                            ...prev,
-                            [group.code]: nextArr,
-                          }));
-                        } else {
-                          setSelectedOptions((prev) => ({
-                            ...prev,
-                            [group.code]: opt.id,
-                          }));
-                        }
-                      };
+                if (group.selectionBehavior === 'VARIANT_WISE') {
+                  if (isCombinedVariantMatrix && isDimOfCombined) {
+                    if (hasRenderedCombinedMatrix) {
+                      // Already rendered the combined matrix table for this group set
+                      return null;
+                    }
+                    if (combinedDimensions) {
+                      hasRenderedCombinedMatrix = true;
+                      const { dim1, dim2 } = combinedDimensions;
 
                       return (
-                        <button
-                          key={`${group.code}-${opt.id || optIdx}`}
-                          type="button"
-                          disabled={opt.isExcluded}
-                          onClick={handleCardClick}
-                          className={`relative p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                            opt.isExcluded
-                              ? 'border-slate-200 bg-slate-100 opacity-60 cursor-not-allowed'
-                              : isSelected
-                              ? 'border-2 border-[#FFED00] bg-amber-50/20 shadow-xs'
-                              : 'border-slate-200 bg-white hover:border-slate-300'
-                          }`}
-                        >
-                          {isSelected && !opt.isExcluded && (
-                            <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-[#FFED00] text-black flex items-center justify-center">
-                              <RiCheckLine className="w-3 h-3 stroke-[2.5]" />
+                        <div key="combined-variant-matrix" className="space-y-3 p-4 bg-white border border-slate-200/90 rounded-2xl shadow-xs">
+                          {/* Header with Title and Live Counter */}
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-bold text-slate-900 text-sm">
+                                  {groupStepNum}. {dim1.name} × {dim2.name} Breakdown
+                                </h4>
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                                  Combined Matrix
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Specify quantities for each size and color combination. Total must equal {selectedQuantity.toLocaleString()} units.
+                              </p>
+                            </div>
+
+                            {/* Live Allocation Status Pill */}
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`text-xs font-bold px-3 py-1 rounded-full border flex items-center gap-1.5 transition-colors ${
+                                  totalVariantAllocated === selectedQuantity
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                    : totalVariantAllocated < selectedQuantity
+                                    ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                    : 'bg-rose-50 text-rose-800 border-rose-300'
+                                }`}
+                              >
+                                <span
+                                  className={`w-2 h-2 rounded-full ${
+                                    totalVariantAllocated === selectedQuantity
+                                      ? 'bg-emerald-500 animate-pulse'
+                                      : totalVariantAllocated < selectedQuantity
+                                      ? 'bg-amber-500'
+                                      : 'bg-rose-500'
+                                  }`}
+                                />
+                                {totalVariantAllocated === selectedQuantity
+                                  ? `${totalVariantAllocated} / ${selectedQuantity} Allocated (Complete)`
+                                  : totalVariantAllocated < selectedQuantity
+                                  ? `${totalVariantAllocated} / ${selectedQuantity} Allocated (${remainingVariantQty} Remaining)`
+                                  : `${totalVariantAllocated} / ${selectedQuantity} (Over by ${totalVariantAllocated - selectedQuantity})`}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Desktop / Tablet Matrix Table */}
+                          <div className="hidden sm:block overflow-x-auto">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead>
+                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                                  <th className="py-2.5 px-3">{dim1.name} \ {dim2.name}</th>
+                                  {dim2.options.map((colOpt) => (
+                                    <th key={colOpt.value} className="py-2.5 px-3 text-center">
+                                      <div>{colOpt.label}</div>
+                                    </th>
+                                  ))}
+                                  <th className="py-2.5 px-3 text-right">Row Total</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {dim1.options.map((rowOpt) => {
+                                  let rowTotal = 0;
+                                  return (
+                                    <tr key={rowOpt.value} className="hover:bg-slate-50/60 transition-colors">
+                                      <td className="py-3 px-3 font-bold text-slate-900 whitespace-nowrap">
+                                        <span className="flex items-center gap-1.5">
+                                          <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
+                                          <span>{rowOpt.label}</span>
+                                        </span>
+                                      </td>
+                                      {dim2.options.map((colOpt) => {
+                                        const cellKey = `${dim1.code}:${rowOpt.value}|${dim2.code}:${colOpt.value}`;
+                                        const isCellDisabled =
+                                          rowOpt.isActive === false ||
+                                          colOpt.isActive === false ||
+                                          Boolean(rulesEvaluation.optionStatus?.[`${dim1.code}:${rowOpt.value}`]?.isDisabled) ||
+                                          Boolean(rulesEvaluation.optionStatus?.[`${dim2.code}:${colOpt.value}`]?.isDisabled);
+                                        const cellQty = isCellDisabled ? 0 : Number(variantQuantities[cellKey]) || 0;
+                                        rowTotal += cellQty;
+
+                                        return (
+                                          <td key={colOpt.value} className="py-2 px-2 text-center">
+                                            <div
+                                              title={isCellDisabled ? 'Unavailable or disabled combination' : undefined}
+                                              className={`inline-flex items-center border rounded-lg transition-all ${
+                                                isCellDisabled
+                                                  ? 'border-slate-200 bg-slate-100 opacity-40 cursor-not-allowed'
+                                                  : cellQty > 0
+                                                  ? 'border-slate-900 bg-amber-50/30 shadow-2xs'
+                                                  : 'border-slate-200 bg-white'
+                                              }`}
+                                            >
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  if (isCellDisabled) return;
+                                                  const next = Math.max(0, cellQty - 1);
+                                                  setVariantQuantities((prev) => ({ ...prev, [cellKey]: next }));
+                                                }}
+                                                disabled={isCellDisabled || cellQty <= 0}
+                                                className="w-7 h-7 flex items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent rounded-l-lg cursor-pointer disabled:cursor-not-allowed"
+                                              >
+                                                -
+                                              </button>
+                                              <input
+                                                type="number"
+                                                min={0}
+                                                value={cellQty}
+                                                disabled={isCellDisabled}
+                                                onChange={(e) => {
+                                                  if (isCellDisabled) return;
+                                                  const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                                  setVariantQuantities((prev) => ({ ...prev, [cellKey]: val }));
+                                                }}
+                                                className="w-10 text-center text-xs font-bold bg-transparent border-none focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-slate-900 disabled:text-slate-400"
+                                              />
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  if (isCellDisabled) return;
+                                                  setVariantQuantities((prev) => ({ ...prev, [cellKey]: cellQty + 1 }));
+                                                }}
+                                                disabled={isCellDisabled}
+                                                className="w-7 h-7 flex items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent rounded-r-lg cursor-pointer disabled:cursor-not-allowed"
+                                              >
+                                                +
+                                              </button>
+                                            </div>
+                                          </td>
+                                        );
+                                      })}
+                                      <td className="py-3 px-3 text-right font-mono font-bold text-slate-700">
+                                        {rowTotal}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                              <tfoot>
+                                <tr className="bg-slate-50 border-t border-slate-200 font-bold text-slate-800">
+                                  <td className="py-2.5 px-3">Column Totals</td>
+                                  {dim2.options.map((colOpt) => {
+                                    const colTotal = dim1.options.reduce((sum, rowOpt) => {
+                                      const cellKey = `${dim1.code}:${rowOpt.value}|${dim2.code}:${colOpt.value}`;
+                                      return sum + (Number(variantQuantities[cellKey]) || 0);
+                                    }, 0);
+                                    return (
+                                      <td key={colOpt.value} className="py-2.5 px-3 text-center font-mono">
+                                        {colTotal}
+                                      </td>
+                                    );
+                                  })}
+                                  <td className="py-2.5 px-3 text-right font-mono text-amber-900 bg-amber-100/50">
+                                    {totalVariantAllocated}
+                                  </td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+
+                          {/* Mobile View (Cards per Dim1) */}
+                          <div className="sm:hidden space-y-3">
+                            {dim1.options.map((rowOpt) => (
+                              <div key={rowOpt.value} className="border border-slate-200 rounded-xl p-3 bg-slate-50/50">
+                                <div className="font-bold text-xs text-slate-900 mb-2 flex items-center justify-between">
+                                  <span>{rowOpt.label}</span>
+                                  <span className="text-[11px] font-mono font-semibold text-slate-500">
+                                    {dim2.options.reduce((sum, colOpt) => {
+                                      const cellKey = `${dim1.code}:${rowOpt.value}|${dim2.code}:${colOpt.value}`;
+                                      return sum + (Number(variantQuantities[cellKey]) || 0);
+                                    }, 0)} units
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {dim2.options.map((colOpt) => {
+                                    const cellKey = `${dim1.code}:${rowOpt.value}|${dim2.code}:${colOpt.value}`;
+                                    const isCellDisabled =
+                                      rowOpt.isActive === false ||
+                                      colOpt.isActive === false ||
+                                      Boolean(rulesEvaluation.optionStatus?.[`${dim1.code}:${rowOpt.value}`]?.isDisabled) ||
+                                      Boolean(rulesEvaluation.optionStatus?.[`${dim2.code}:${colOpt.value}`]?.isDisabled);
+                                    const cellQty = isCellDisabled ? 0 : Number(variantQuantities[cellKey]) || 0;
+                                    return (
+                                      <div
+                                        key={colOpt.value}
+                                        title={isCellDisabled ? 'Unavailable or disabled combination' : undefined}
+                                        className={`p-2 rounded-lg border flex items-center justify-between ${
+                                          isCellDisabled
+                                            ? 'bg-slate-100 opacity-40 border-slate-200 cursor-not-allowed'
+                                            : 'bg-white border-slate-200'
+                                        }`}
+                                      >
+                                        <span className="text-xs font-semibold">{colOpt.label}</span>
+                                        <div className="flex items-center border border-slate-200 rounded">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (isCellDisabled) return;
+                                              const next = Math.max(0, cellQty - 1);
+                                              setVariantQuantities((prev) => ({ ...prev, [cellKey]: next }));
+                                            }}
+                                            disabled={isCellDisabled || cellQty <= 0}
+                                            className="w-6 h-6 flex items-center justify-center text-xs disabled:opacity-30 disabled:cursor-not-allowed"
+                                          >-</button>
+                                          <input
+                                            type="number"
+                                            min={0}
+                                            value={cellQty}
+                                            disabled={isCellDisabled}
+                                            onChange={(e) => {
+                                              if (isCellDisabled) return;
+                                              const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                              setVariantQuantities((prev) => ({ ...prev, [cellKey]: val }));
+                                            }}
+                                            className="w-8 text-center text-xs font-bold border-none disabled:text-slate-400"
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (isCellDisabled) return;
+                                              setVariantQuantities((prev) => ({ ...prev, [cellKey]: cellQty + 1 }));
+                                            }}
+                                            disabled={isCellDisabled}
+                                            className="w-6 h-6 flex items-center justify-center text-xs disabled:opacity-30 disabled:cursor-not-allowed"
+                                          >+</button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Inline Validation Alert */}
+                          {totalVariantAllocated !== selectedQuantity && (
+                            <div className={`p-3 rounded-xl text-xs flex items-center gap-2 border ${
+                              totalVariantAllocated < selectedQuantity
+                                ? 'bg-amber-50 text-amber-900 border-amber-200'
+                                : 'bg-rose-50 text-rose-900 border-rose-200'
+                            }`}>
+                              <RiErrorWarningLine className="w-4 h-4 shrink-0" />
+                              <span>
+                                {totalVariantAllocated < selectedQuantity
+                                  ? `Please distribute ${remainingVariantQty} more units across sizes and colors to match your total order quantity of ${selectedQuantity}.`
+                                  : `Total variant quantity (${totalVariantAllocated}) exceeds your order quantity of ${selectedQuantity} by ${totalVariantAllocated - selectedQuantity}. Please reduce allocated quantities.`}
+                              </span>
                             </div>
                           )}
-                          <span className="text-xs font-bold text-slate-900 block">
-                            {opt.title}
-                          </span>
-                          {opt.isExcluded ? (
-                            <span className="text-[10px] text-rose-500 block mt-0.5 font-medium">
-                              Unavailable
-                            </span>
-                          ) : opt.subtitle ? (
-                            <span className="text-[11px] text-amber-700 font-bold block mt-0.5 font-mono">
-                              {opt.subtitle}
-                            </span>
-                          ) : null}
-                        </button>
+                        </div>
                       );
-                    })}
+                    }
+                  }
+
+                  // Single 1D Variant Group
+                  const groupSum = (group.options || []).reduce(
+                    (sum, o) => sum + (Number(variantQuantities[o.value]) || 0),
+                    0
+                  );
+                  const isValid = groupSum === selectedQuantity;
+
+                  return (
+                    <div key={group.id || group.code} className="space-y-1.5">
+                      <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                        <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-slate-800 text-sm">
+                              {groupStepNum}. {group.name}
+                            </h4>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 uppercase tracking-wider">
+                              Variant-Wise
+                            </span>
+                          </div>
+                          <span
+                            className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                              isValid
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {isValid ? `${groupSum} / ${selectedQuantity} Allocated` : `${groupSum} / ${selectedQuantity} Allocated`}
+                          </span>
+                        </div>
+
+                        <div className="p-3 bg-white">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+                            {(group.options && group.options.length > 0 ? group.options : []).map((opt) => {
+                              const currentQty = Number(variantQuantities[opt.value]) || 0;
+                              const isSelected = currentQty > 0;
+
+                              return (
+                                <div
+                                  key={opt.id || opt.value}
+                                  className={`p-3 rounded-xl border transition-all flex flex-col justify-between items-center text-center ${
+                                    isSelected
+                                      ? 'border-2 border-slate-900 bg-amber-50/20 shadow-xs'
+                                      : 'border-slate-200 bg-white hover:border-slate-300'
+                                  }`}
+                                >
+                                  <div className="mb-2 w-full">
+                                    <span className="text-xs font-bold text-slate-800 block truncate">
+                                      {opt.label}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setVariantQuantities((prev) => ({
+                                          ...prev,
+                                          [opt.value]: Math.max(0, currentQty - 1),
+                                        }));
+                                      }}
+                                      disabled={currentQty <= 0}
+                                      className="w-7 h-7 rounded-full border border-slate-300 flex items-center justify-center hover:bg-slate-100 transition-colors text-slate-700 font-bold disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer text-xs"
+                                    >
+                                      -
+                                    </button>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={currentQty}
+                                      onChange={(e) => {
+                                        const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                        setVariantQuantities((prev) => ({ ...prev, [opt.value]: val }));
+                                      }}
+                                      className="w-10 text-center font-bold text-xs border-none bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-slate-900"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setVariantQuantities((prev) => ({ ...prev, [opt.value]: currentQty + 1 }));
+                                      }}
+                                      className="w-7 h-7 rounded-full border border-slate-300 flex items-center justify-center hover:bg-slate-100 transition-colors text-slate-700 font-bold cursor-pointer text-xs"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-50 px-4 py-2.5 border-t border-slate-200 text-xs text-slate-600">
+                          <span>
+                            Total {group.name} Allocated: <strong className="text-slate-900 font-bold">{groupSum}</strong> of <strong className="text-slate-900 font-bold">{selectedQuantity}</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      {!isValid && (
+                        <p className="text-rose-600 text-xs mt-1.5 font-medium flex items-center gap-1.5">
+                          <RiErrorWarningLine className="w-4 h-4 shrink-0" />
+                          <span>Please adjust quantities to match the total order quantity of {selectedQuantity} (Current: {groupSum}).</span>
+                        </p>
+                      )}
+                    </div>
+                  );
+                }
+
+                // ======================================================
+                // CASE 2: DIRECT TEXT / NUMBER / DATE INPUT GROUPS
+                // ======================================================
+                if (isInputText) {
+                  return (
+                    <div key={group.id || group.code} className="space-y-2">
+                      <label className="text-xs font-bold text-slate-900 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <span>{groupStepNum}. {group.name}</span>
+                          {group.isRequired && <span className="text-rose-500 font-bold">*</span>}
+                        </span>
+                        {group.description && <span className="text-[10px] text-slate-400 font-normal">{group.description}</span>}
+                      </label>
+
+                      {group.inputType === 'TEXTAREA' ? (
+                        <textarea
+                          rows={2}
+                          value={currentVal || ''}
+                          onChange={(e) => setSelectedOptions((prev) => ({ ...prev, [group.code]: e.target.value }))}
+                          placeholder={group.description || `Enter ${group.name}...`}
+                          className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                        />
+                      ) : (
+                        <input
+                          type={group.inputType === 'NUMBER' ? 'number' : group.inputType === 'DATE' ? 'date' : 'text'}
+                          value={currentVal || ''}
+                          onChange={(e) => setSelectedOptions((prev) => ({ ...prev, [group.code]: e.target.value }))}
+                          placeholder={group.description || `Enter ${group.name}...`}
+                          className="w-full h-10 px-3 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                        />
+                      )}
+                    </div>
+                  );
+                }
+
+                // ======================================================
+                // CASE 3: DROPDOWN (inputType === 'SELECT')
+                // ======================================================
+                if (group.inputType === 'SELECT') {
+                  if (isMulti) {
+                    const currentArr: string[] = Array.isArray(currentVal) ? currentVal : [];
+                    return (
+                      <div key={group.id || group.code} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                            <span>{groupStepNum}. {group.name}</span>
+                            {group.isRequired && <span className="text-rose-500 font-bold">*</span>}
+                            <span className="text-[10px] text-amber-700 font-medium">(Multi-Select)</span>
+                          </label>
+                          {group.description && <span className="text-[10px] text-slate-400 font-normal">{group.description}</span>}
+                        </div>
+
+                        <div className="relative">
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val && !currentArr.includes(val)) {
+                                setSelectedOptions((prev) => ({ ...prev, [group.code]: [...currentArr, val] }));
+                              }
+                            }}
+                            className="w-full h-11 pl-3.5 pr-10 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 shadow-2xs cursor-pointer appearance-none"
+                          >
+                            <option value="">+ Add {group.name} option...</option>
+                            {options.map((opt) => (
+                              <option
+                                key={opt.id}
+                                value={opt.id}
+                                disabled={opt.isExcluded || currentArr.includes(opt.id)}
+                              >
+                                {cleanOptionLabel(opt.title)} {opt.isExcluded ? '(Unavailable)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <RiArrowDownSLine className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                        </div>
+
+                        {/* Removable Selected Pills */}
+                        {currentArr.length > 0 && (
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {currentArr.map((val) => {
+                              const matched = options.find((o) => o.id === val);
+                              return (
+                                <span
+                                  key={val}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 border border-amber-300 text-amber-950 rounded-xl text-xs font-semibold shadow-2xs"
+                                >
+                                  <span>{cleanOptionLabel(matched?.title || val)}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedOptions((prev) => ({
+                                        ...prev,
+                                        [group.code]: currentArr.filter((item) => item !== val),
+                                      }));
+                                    }}
+                                    className="p-0.5 hover:bg-amber-200/60 rounded-full transition-colors cursor-pointer"
+                                  >
+                                    <RiCloseLine className="w-3.5 h-3.5 text-amber-900" />
+                                  </button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  // Single Select Dropdown
+                  return (
+                    <div key={group.id || group.code} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                          <span>{groupStepNum}. {group.name}</span>
+                          {group.isRequired && <span className="text-rose-500 font-bold">*</span>}
+                        </label>
+                        {group.description && <span className="text-[10px] text-slate-400 font-normal">{group.description}</span>}
+                      </div>
+
+                      <div className="relative">
+                        <select
+                          value={currentVal || ''}
+                          onChange={(e) => setSelectedOptions((prev) => ({ ...prev, [group.code]: e.target.value }))}
+                          className="w-full h-11 pl-3.5 pr-10 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 shadow-2xs cursor-pointer appearance-none"
+                        >
+                          <option value="" disabled>Select {group.name}...</option>
+                          {options.map((opt) => (
+                            <option
+                              key={opt.id}
+                              value={opt.id}
+                              disabled={opt.isExcluded}
+                            >
+                              {cleanOptionLabel(opt.title)} {opt.isExcluded ? '(Unavailable)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <RiArrowDownSLine className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                      </div>
+                    </div>
+                  );
+                }
+
+                // ======================================================
+                // CASE 4: CHECKBOX GROUP (inputType === 'CHECKBOX')
+                // ======================================================
+                if (group.inputType === 'CHECKBOX') {
+                  return (
+                    <div key={group.id || group.code} className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                          <span>{groupStepNum}. {group.name}</span>
+                          {group.isRequired && <span className="text-rose-500 font-bold">*</span>}
+                          {isMulti && <span className="text-[10px] text-amber-700 font-medium">(Select Multiple)</span>}
+                        </label>
+                        {group.description && <span className="text-[10px] text-slate-400 font-normal">{group.description}</span>}
+                      </div>
+
+                      <div className="space-y-2">
+                        {options.map((opt) => {
+                          const isChecked = isMulti
+                            ? Array.isArray(currentVal) && currentVal.includes(opt.id)
+                            : currentVal === opt.id;
+
+                          const toggleCheck = () => {
+                            if (opt.isExcluded) return;
+                            if (isMulti) {
+                              const cur = Array.isArray(currentVal) ? [...currentVal] : [];
+                              const next = isChecked ? cur.filter((x) => x !== opt.id) : [...cur, opt.id];
+                              setSelectedOptions((prev) => ({ ...prev, [group.code]: next }));
+                            } else {
+                              setSelectedOptions((prev) => ({ ...prev, [group.code]: isChecked ? '' : opt.id }));
+                            }
+                          };
+
+                          return (
+                            <div
+                              key={opt.id}
+                              onClick={toggleCheck}
+                              className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                                opt.isExcluded
+                                  ? 'border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed'
+                                  : isChecked
+                                  ? 'border-2 border-slate-900 bg-amber-50/20 shadow-2xs'
+                                  : 'border-slate-200 bg-white hover:border-slate-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                {isChecked ? (
+                                  <RiCheckboxCircleFill className="w-5 h-5 text-slate-900 shrink-0" />
+                                ) : (
+                                  <RiCheckboxBlankCircleLine className="w-5 h-5 text-slate-400 shrink-0" />
+                                )}
+                                <div>
+                                  <span className="text-xs font-bold text-slate-900">{cleanOptionLabel(opt.title)}</span>
+                                  {opt.isExcluded && (
+                                    <span className="text-[10px] text-rose-500 block font-medium">Unavailable</span>
+                                  )}
+                                </div>
+                              </div>
+                              {opt.subtitle && !opt.subtitle.includes('₹') && !opt.subtitle.includes('+') && (
+                                <span className="text-xs font-medium text-slate-500 font-mono">
+                                  {opt.subtitle}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // ======================================================
+                // CASE 5: TOGGLE SWITCH (inputType === 'TOGGLE')
+                // ======================================================
+                if (group.inputType === 'TOGGLE') {
+                  const activeVal = options[0]?.id || 'true';
+                  const isCurrentlyOn = currentVal === activeVal || currentVal === true || currentVal === 'yes';
+
+                  return (
+                    <div key={group.id || group.code} className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-200 bg-white shadow-2xs">
+                      <div>
+                        <span className="text-xs font-bold text-slate-900 block">{groupStepNum}. {group.name}</span>
+                        {group.description && <span className="text-[11px] text-slate-500 block mt-0.5">{group.description}</span>}
+                        {options[0]?.subtitle && !options[0].subtitle.includes('₹') && !options[0].subtitle.includes('+') && (
+                          <span className="text-[11px] font-medium text-slate-500 font-mono mt-0.5 block">
+                            {options[0].subtitle}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedOptions((prev) => ({
+                            ...prev,
+                            [group.code]: isCurrentlyOn ? (options[1]?.id || '') : activeVal,
+                          }));
+                        }}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          isCurrentlyOn ? 'bg-slate-900' : 'bg-slate-200'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                            isCurrentlyOn ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  );
+                }
+
+                // ======================================================
+                // CASE 6: RADIO CARDS (inputType === 'RADIO' or default)
+                // ======================================================
+                return (
+                  <div key={group.id || group.code} className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                        <span>{groupStepNum}. {group.name}</span>
+                        {group.isRequired && <span className="text-rose-500 font-bold">*</span>}
+                        {isMulti && <span className="text-[10px] text-amber-700 font-medium">(Select Multiple)</span>}
+                      </label>
+                      {group.description && <span className="text-[10px] text-slate-400 font-normal">{group.description}</span>}
+                    </div>
+
+                    <div
+                      className={`grid gap-2.5 ${
+                        options.length <= 4
+                          ? 'grid-cols-2 sm:grid-cols-4'
+                          : options.length <= 5
+                          ? 'grid-cols-2 sm:grid-cols-5'
+                          : 'grid-cols-3 sm:grid-cols-6'
+                      }`}
+                    >
+                      {options.map((opt, optIdx) => {
+                        const isSelected = isMulti
+                          ? Array.isArray(currentVal) && currentVal.includes(opt.id)
+                          : (currentVal || options[0]?.id) === opt.id;
+
+                        const handleCardClick = () => {
+                          if (opt.isExcluded) return;
+                          if (isMulti) {
+                            const currentArr = Array.isArray(currentVal) ? [...currentVal] : [];
+                            const nextArr = isSelected
+                              ? currentArr.filter((item) => item !== opt.id)
+                              : [...currentArr, opt.id];
+                            setSelectedOptions((prev) => ({
+                              ...prev,
+                              [group.code]: nextArr,
+                            }));
+                          } else {
+                            setSelectedOptions((prev) => ({
+                              ...prev,
+                              [group.code]: opt.id,
+                            }));
+                          }
+                        };
+
+                        return (
+                          <button
+                            key={`${group.code}-${opt.id || optIdx}`}
+                            type="button"
+                            disabled={opt.isExcluded}
+                            onClick={handleCardClick}
+                            className={`relative p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                              opt.isExcluded
+                                ? 'border-slate-200 bg-slate-100 opacity-60 cursor-not-allowed'
+                                : isSelected
+                                ? 'border-2 border-[#FFED00] bg-amber-50/20 shadow-xs'
+                                : 'border-slate-200 bg-white hover:border-slate-300'
+                            }`}
+                          >
+                            {isSelected && !opt.isExcluded && (
+                              <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-[#FFED00] text-black flex items-center justify-center">
+                                <RiCheckLine className="w-3 h-3 stroke-[2.5]" />
+                              </div>
+                            )}
+                            <span className="text-xs font-bold text-slate-900 block">
+                              {cleanOptionLabel(opt.title)}
+                            </span>
+                            {opt.isExcluded ? (
+                              <span className="text-[10px] text-rose-500 block mt-0.5 font-medium">
+                                Unavailable
+                              </span>
+                            ) : opt.subtitle && !opt.subtitle.includes('₹') && !opt.subtitle.includes('+') ? (
+                              <span className="text-[11px] text-slate-500 font-medium block mt-0.5 font-mono">
+                                {opt.subtitle}
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
 
             {/* ====================================================== */}
             {/* PERSONALIZATION SECTION (/admin/personalization-templates) */}
@@ -2483,7 +2892,7 @@ function detectIsDesignServiceSelected(
                         effectiveOptionGroups.length +
                         (personalizationTemplate?.isActive ? 1 : 0) +
                         1}
-                      . Quantity & Pricing
+                      . Quantity
                     </span>
                     <RiInformationLine className="w-3.5 h-3.5 text-slate-400" />
                   </label>
@@ -2668,7 +3077,7 @@ function detectIsDesignServiceSelected(
                           onClick={() => {
                             setSelectedQuantity(tier.quantity);
                           }}
-                          className={`relative p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                          className={`relative py-3.5 px-3 rounded-xl border text-center transition-all cursor-pointer ${
                             isSelected
                               ? 'border-2 border-[#FFED00] bg-amber-50/20 shadow-xs'
                               : 'border-slate-200 bg-white hover:border-slate-300'
@@ -2686,18 +3095,8 @@ function detectIsDesignServiceSelected(
                             </span>
                           )}
 
-                          <span className="text-xs font-bold text-slate-800 block">
+                          <span className="text-sm font-bold text-slate-900 block font-mono">
                             {tier.isRange ? `${tier.minQty}–${tier.maxQty} units` : `${tier.quantity} units`}
-                          </span>
-
-                          <span className="text-sm font-black text-slate-950 font-mono block mt-0.5">
-                            {tier.isRange
-                              ? `From ${formatCurrency(tier.totalPrice)}`
-                              : formatCurrency(tier.totalPrice)}
-                          </span>
-
-                          <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
-                            ₹{tier.unitPrice.toFixed(2)} / unit
                           </span>
                         </button>
                       );
@@ -2786,35 +3185,45 @@ function detectIsDesignServiceSelected(
 
               {/* Price Details Bar */}
               <div className="pt-2.5 border-t border-slate-800 space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-slate-300 font-mono">
+                  <span className="text-slate-400">Total Product Price:</span>
+                  <span className="font-bold text-white">{formatCurrency(basePrintSubtotal)}</span>
+                </div>
                 {activeDesignFee > 0 && (
                   <div className="flex items-center justify-between text-xs text-amber-300 font-mono">
                     <span className="flex items-center gap-1.5 text-amber-400">
                       <RiSparklingFill className="w-3.5 h-3.5 text-amber-400" />
-                      Design Assistance Fee:
+                      Design Charge:
                     </span>
                     <span className="font-bold">+{formatCurrency(activeDesignFee)}</span>
                   </div>
                 )}
-                {shippingQuote && (
-                  <div className="flex items-center justify-between text-xs text-slate-300 font-mono">
-                    <span className="flex items-center gap-1.5 text-sky-400">
-                      <RiTruckLine className="w-3.5 h-3.5" />
-                      Shipping ({shippingQuote.zoneCode || 'Standard'}):
+                {rawArtworkPrice > 0 && (
+                  <div className="flex items-center justify-between text-xs text-amber-300 font-mono">
+                    <span className="flex items-center gap-1.5 text-amber-400">
+                      Prepress Artwork Fee:
                     </span>
-                    <span className="font-bold">
-                      {shippingQuote.isFreeShippingApplied ? (
-                        <span className="text-emerald-400">FREE</span>
-                      ) : Number(shippingQuote.finalShippingAmount) > 0 ? (
-                        `+${formatCurrency(shippingQuote.finalShippingAmount)}`
-                      ) : (
-                        <span className="text-amber-300">Pending PIN</span>
-                      )}
-                    </span>
+                    <span className="font-bold">+{formatCurrency(rawArtworkPrice)}</span>
                   </div>
                 )}
-                <div className="flex items-center justify-between text-xs text-slate-300 flex-wrap gap-2">
+                <div className="flex items-center justify-between text-xs text-slate-300 font-mono">
+                  <span className="flex items-center gap-1.5 text-sky-400">
+                    <RiTruckLine className="w-3.5 h-3.5" />
+                    Delivery Charge{shippingQuote?.zoneCode ? ` (${shippingQuote.zoneCode})` : ''}:
+                  </span>
+                  <span className="font-bold">
+                    {shippingQuote?.isFreeShippingApplied ? (
+                      <span className="text-emerald-400">FREE</span>
+                    ) : effectiveShippingFee > 0 ? (
+                      `+${formatCurrency(effectiveShippingFee)}`
+                    ) : (
+                      <span className="text-slate-400 font-normal">₹0.00</span>
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-slate-300 flex-wrap gap-2 pt-1 border-t border-slate-800/80">
                   <div className="flex items-center gap-2">
-                    <span className="text-slate-400">Estimated GST (18%):</span>
+                    <span className="text-slate-400">GST (18% on Product + Design + Delivery):</span>
                     <span className="font-mono text-slate-200">+{formatCurrency(effectiveTax)}</span>
                   </div>
                   <div className="flex items-center gap-2 font-bold text-white">
@@ -2825,44 +3234,18 @@ function detectIsDesignServiceSelected(
               </div>
             </div>
 
-            {/* Delivery Pincode & Authoritative Weight Box */}
-            <div className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-2xs space-y-2.5">
+            {/* Delivery Pincode Check */}
+            <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-2xs space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-slate-800 flex items-center gap-1.5">
                   <RiTruckLine className="w-4 h-4 text-sky-600" />
-                  Estimated Weight & Shipping
+                  Delivery Availability
                 </span>
                 {shippingQuote?.estimatedDeliveryDays && (
                   <span className="text-[11px] font-semibold text-slate-500">
                     ETA: {shippingQuote.estimatedDeliveryDays}
                   </span>
                 )}
-              </div>
-
-              {/* Weight Breakdown Summary */}
-              <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200/80 space-y-1.5 text-[11px]">
-                <div className="flex items-center justify-between text-slate-600">
-                  <span>Estimated Product Weight:</span>
-                  <span className="font-mono font-bold text-slate-900">
-                    {storefrontWeightInfo.productWeightGrams >= 1000
-                      ? `${(storefrontWeightInfo.productWeightGrams / 1000).toFixed(2)} kg`
-                      : `${storefrontWeightInfo.productWeightGrams} g`}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-slate-500">
-                  <span>Packaging Box (Tare):</span>
-                  <span className="font-mono">
-                    +{storefrontWeightInfo.packagingWeightGrams} g
-                  </span>
-                </div>
-                <div className="flex items-center justify-between pt-1 border-t border-slate-200 font-bold text-slate-900">
-                  <span>Estimated Shipment Weight:</span>
-                  <span className="font-mono text-sky-700">
-                    {storefrontWeightInfo.actualWeightGrams >= 1000
-                      ? `${(storefrontWeightInfo.actualWeightGrams / 1000).toFixed(2)} kg`
-                      : `${storefrontWeightInfo.actualWeightGrams} g`}
-                  </span>
-                </div>
               </div>
 
               <div className="flex items-center gap-2">
@@ -2915,9 +3298,23 @@ function detectIsDesignServiceSelected(
                 <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-900 flex items-start gap-2 shadow-2xs">
                   <RiErrorWarningLine className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
                   <div className="space-y-0.5">
-                    <p className="font-bold text-red-800">Variant Quantity Mismatch</p>
+                    <p className="font-bold text-red-800">Variant Quantity Allocation Incomplete</p>
                     <p className="text-[11px] text-red-700 leading-tight">
-                      Please adjust variant quantities to match the total order quantity of {selectedQuantity}.
+                      {totalVariantAllocated < selectedQuantity
+                        ? `Please allocate ${remainingVariantQty} more units across variants to reach your order quantity of ${selectedQuantity} (Current: ${totalVariantAllocated}).`
+                        : `Total allocated (${totalVariantAllocated}) exceeds order quantity of ${selectedQuantity} by ${totalVariantAllocated - selectedQuantity}. Please reduce variant quantities.`}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {rulesEvaluation.invalidCombinations && rulesEvaluation.invalidCombinations.length > 0 && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-900 flex items-start gap-2 shadow-2xs">
+                  <RiErrorWarningLine className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <p className="font-bold text-red-800">Configuration Rule Conflict</p>
+                    <p className="text-[11px] text-red-700 leading-tight">
+                      {rulesEvaluation.invalidCombinations[0].message}
                     </p>
                   </div>
                 </div>
@@ -2926,15 +3323,21 @@ function detectIsDesignServiceSelected(
               <button
                 type="button"
                 onClick={handleAddToCart}
-                disabled={isCalculatingPrice || !isVariantAllocationValid}
+                disabled={isCalculatingPrice || !isVariantAllocationValid || rulesEvaluation.invalidCombinations.length > 0}
                 className={`w-full h-12 font-bold text-sm rounded-xl border border-black/10 shadow-xs flex items-center justify-center gap-2 transition-transform active:scale-[0.99] ${
-                  !isVariantAllocationValid
+                  (!isVariantAllocationValid || rulesEvaluation.invalidCombinations.length > 0)
                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                     : 'bg-[#FFED00] hover:bg-[#F2E100] text-black cursor-pointer'
                 }`}
               >
                 <RiShoppingCart2Line className="w-5 h-5" />
-                <span>{!isVariantAllocationValid ? 'Adjust Variants to Proceed' : 'Add to Cart'}</span>
+                <span>
+                  {rulesEvaluation.invalidCombinations.length > 0
+                    ? 'Resolve Rule Conflict'
+                    : !isVariantAllocationValid
+                    ? `Allocate Variants (${totalVariantAllocated}/${selectedQuantity})`
+                    : 'Add to Cart'}
+                </span>
               </button>
 
               <div>
@@ -3248,29 +3651,38 @@ function detectIsDesignServiceSelected(
             <div className="text-right">
               <div className="flex items-baseline gap-1.5 justify-end">
                 <span className="text-[10px] text-slate-500 uppercase tracking-wider font-mono font-semibold">
-                  Total (Incl. GST):
+                  Total (Incl. 18% GST):
                 </span>
                 <span className="text-xl sm:text-2xl font-black font-mono text-slate-950">
                   {formatCurrency(effectiveGrandTotal)}
                 </span>
               </div>
               <div className="text-[10px] text-slate-500 font-mono">
-                Subtotal: {formatCurrency(effectiveSubtotal)} • GST (18%): {formatCurrency(effectiveTax)}
+                Product: {formatCurrency(basePrintSubtotal)}
+                {totalDesignCharge > 0 ? ` • Design: +${formatCurrency(totalDesignCharge)}` : ''}
+                {effectiveShippingFee > 0 ? ` • Delivery: +${formatCurrency(effectiveShippingFee)}` : ''}
+                {' '}• GST (18%): +{formatCurrency(effectiveTax)}
               </div>
             </div>
 
             <button
               type="button"
               onClick={handleAddToCart}
-              disabled={isCalculatingPrice || !isVariantAllocationValid}
+              disabled={isCalculatingPrice || !isVariantAllocationValid || rulesEvaluation.invalidCombinations.length > 0}
               className={`h-11 sm:h-12 px-5 sm:px-7 font-bold text-xs sm:text-sm rounded-xl border border-black/10 shadow-xs flex items-center justify-center gap-2 transition-transform active:scale-95 shrink-0 ${
-                !isVariantAllocationValid
+                (!isVariantAllocationValid || rulesEvaluation.invalidCombinations.length > 0)
                   ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                   : 'bg-[#FFED00] hover:bg-[#F2E100] text-black cursor-pointer'
               }`}
             >
               <RiShoppingCart2Line className="w-4 h-4" />
-              <span>{!isVariantAllocationValid ? 'Distribute Qty' : 'Add to Cart'}</span>
+              <span>
+                {rulesEvaluation.invalidCombinations.length > 0
+                  ? 'Conflict'
+                  : !isVariantAllocationValid
+                  ? `Allocate (${totalVariantAllocated}/${selectedQuantity})`
+                  : 'Add to Cart'}
+              </span>
             </button>
           </div>
         </div>

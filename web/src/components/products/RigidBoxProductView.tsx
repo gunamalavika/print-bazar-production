@@ -15,7 +15,6 @@ import {
   RiAwardLine,
   RiTimeLine,
   RiBox3Line,
-  RiStarFill,
   RiArrowLeftSLine,
   RiArrowRightSLine,
   RiCloseLine,
@@ -205,8 +204,10 @@ export function RigidBoxProductView({ product }: RigidBoxProductViewProps) {
         if (!isCancelled) {
           const uPrice = quote.unitPrice ?? (quote.subtotal / selectedQuantity);
           const sTotal = quote.subtotal ?? (uPrice * selectedQuantity);
-          const tax = quote.totalTax ?? Math.round(sTotal * 0.18 * 100) / 100;
-          const gTotal = quote.grandTotal ?? (sTotal + tax);
+          const productCourier = Number((product as any).courierCharge) || 0;
+          const taxable = Math.round((sTotal + productCourier) * 100) / 100;
+          const tax = Math.round(taxable * 0.18 * 100) / 100;
+          const gTotal = Math.round((taxable + tax) * 100) / 100;
 
           setServerUnitPrice(uPrice);
           setServerSubtotal(sTotal);
@@ -217,10 +218,14 @@ export function RigidBoxProductView({ product }: RigidBoxProductViewProps) {
         // Fallback to exact tier rate matching approved specifications
         if (!isCancelled) {
           const tier = QUANTITY_TIERS.find((t) => t.quantity === selectedQuantity) || QUANTITY_TIERS[0];
+          const productCourier = Number((product as any).courierCharge) || 0;
+          const taxable = Math.round((tier.totalPrice + productCourier) * 100) / 100;
+          const tax = Math.round(taxable * 0.18 * 100) / 100;
+          const gTotal = Math.round((taxable + tax) * 100) / 100;
           setServerUnitPrice(tier.unitPrice);
           setServerSubtotal(tier.totalPrice);
-          setServerTax(Math.round(tier.totalPrice * 0.18 * 100) / 100);
-          setServerGrandTotal(tier.totalPrice + Math.round(tier.totalPrice * 0.18 * 100) / 100);
+          setServerTax(tax);
+          setServerGrandTotal(gTotal);
         }
       } finally {
         if (!isCancelled) {
@@ -302,6 +307,11 @@ export function RigidBoxProductView({ product }: RigidBoxProductViewProps) {
       quantity: selectedQuantity,
     };
 
+    const productCourier = Number((product as any).courierCharge) || 0;
+    const taxable = Math.round((serverSubtotal + productCourier) * 100) / 100;
+    const taxAmt = Math.round(taxable * 0.18 * 100) / 100;
+    const gTotal = Math.round((taxable + taxAmt) * 100) / 100;
+
     return {
       productId: product.id,
       productName: product.name || 'Custom Luxury Rigid Box',
@@ -310,8 +320,10 @@ export function RigidBoxProductView({ product }: RigidBoxProductViewProps) {
       unitPrice: serverUnitPrice,
       totalPrice: serverSubtotal,
       subtotal: serverSubtotal,
-      taxAmount: serverTax,
-      grandTotal: serverGrandTotal,
+      shippingFee: productCourier,
+      courierCharge: productCourier,
+      taxAmount: taxAmt,
+      grandTotal: gTotal,
       specificationsSnapshot,
       selectedOptionsSummary: [
         { fieldLabel: 'Box Style', value: specificationsSnapshot.boxStyle },
@@ -711,23 +723,11 @@ export function RigidBoxProductView({ product }: RigidBoxProductViewProps) {
                 {product.name || 'Custom Luxury Rigid Box'}
               </h1>
 
-              {/* Rating & Stock */}
+              {/* Stock Status Badge */}
               <div className="flex items-center gap-3 pt-0.5 text-xs">
-                <div className="flex items-center gap-1 text-amber-500 font-semibold">
-                  <div className="flex items-center">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <RiStarFill key={star} className="w-3.5 h-3.5 fill-amber-400" />
-                    ))}
-                  </div>
-                  <span className="text-slate-800 ml-1 font-bold">4.8</span>
-                  <span className="text-slate-400">(124 reviews)</span>
-                </div>
-
-                <span className="text-slate-300">•</span>
-
-                <div className="flex items-center gap-1 text-emerald-700 font-bold">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span>In Stock</span>
+                <div className="flex items-center gap-1.5 text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>In Stock • Direct-to-Press Packaging</span>
                 </div>
               </div>
 
@@ -800,7 +800,7 @@ export function RigidBoxProductView({ product }: RigidBoxProductViewProps) {
                 <span className="w-5 h-5 rounded-full bg-slate-200 text-slate-600 font-bold flex items-center justify-center text-[10px]">
                   4
                 </span>
-                <span>Quantity & Review</span>
+                <span>Quantity</span>
               </div>
             </div>
 
@@ -1069,7 +1069,7 @@ export function RigidBoxProductView({ product }: RigidBoxProductViewProps) {
             <div className="space-y-2.5 pt-1">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                  <span>7. Quantity & Pricing</span>
+                  <span>7. Quantity</span>
                   <RiInformationLine className="w-3.5 h-3.5 text-slate-400" />
                 </label>
 
@@ -1102,7 +1102,7 @@ export function RigidBoxProductView({ product }: RigidBoxProductViewProps) {
                       key={tier.quantity}
                       type="button"
                       onClick={() => setSelectedQuantity(tier.quantity)}
-                      className={`relative p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                      className={`relative py-3.5 px-3 rounded-xl border text-center transition-all cursor-pointer ${
                         isSelected
                           ? 'border-2 border-[#FFED00] bg-amber-50/20 shadow-xs'
                           : 'border-slate-200 bg-white hover:border-slate-300'
@@ -1113,14 +1113,8 @@ export function RigidBoxProductView({ product }: RigidBoxProductViewProps) {
                           <RiCheckLine className="w-3 h-3 stroke-[2.5]" />
                         </div>
                       )}
-                      <span className="text-xs font-bold text-slate-800 block">
+                      <span className="text-sm font-bold text-slate-900 block font-mono">
                         {tier.quantity} units
-                      </span>
-                      <span className="text-sm font-black text-slate-950 font-mono block mt-0.5">
-                        {formatCurrency(tier.totalPrice)}
-                      </span>
-                      <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
-                        ₹{tier.unitPrice.toFixed(2)} / unit
                       </span>
                     </button>
                   );

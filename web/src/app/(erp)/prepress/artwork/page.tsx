@@ -35,6 +35,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
+import { RiKanbanView2 } from 'react-icons/ri';
 import { api, resolveImageUrl, downloadFile } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 
@@ -790,6 +791,13 @@ export default function ArtworkPrepressPage() {
 
         {/* Tab Switcher */}
         <div className="flex items-center gap-1.5 p-1 bg-slate-100 border border-slate-200 rounded-lg">
+          <Link
+            href="/prepress/kanban"
+            className="flex items-center gap-2 px-3.5 py-1.5 rounded-md text-[13px] font-semibold text-slate-700 hover:text-slate-950 hover:bg-white transition"
+          >
+            <RiKanbanView2 className="h-4 w-4 text-amber-600" />
+            <span>Design Process Kanban</span>
+          </Link>
           <button
             onClick={() => {
               setActiveTab('DESIGN_STUDIO');

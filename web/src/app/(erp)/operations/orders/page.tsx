@@ -163,10 +163,20 @@ export default function OrderAssignmentCenterPage() {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [liveToast, setLiveToast] = useState<string | null>(null);
 
+  // Auto-dismiss live toast after 4.5 seconds
+  useEffect(() => {
+    if (!liveToast) return;
+    const timer = setTimeout(() => {
+      setLiveToast(null);
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [liveToast]);
+
   // Candidate Artworks Review & Selection Modal state
   const [candidateModalOpen, setCandidateModalOpen] = useState(false);
   const [candidateOrder, setCandidateOrder] = useState<any | null>(null);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [selectedModalOperatorId, setSelectedModalOperatorId] = useState<string>('');
   const [oeReviewNotes, setOeReviewNotes] = useState('');
   const [isApprovingCandidate, setIsApprovingCandidate] = useState(false);
   const [showCorrectionInput, setShowCorrectionInput] = useState(false);
@@ -579,6 +589,12 @@ export default function OrderAssignmentCenterPage() {
     setOeReviewNotes('');
     setOeCorrectionNotes('');
     setShowCorrectionInput(false);
+
+    // Pre-select current operator or recommended operator
+    const currentOpId = order.assignedOperator?.id;
+    const recOp = operators.find((o) => o.recommended) || operators[0];
+    setSelectedModalOperatorId(currentOpId || recOp?.id || '');
+
     setCandidateModalOpen(true);
   };
 
@@ -590,15 +606,37 @@ export default function OrderAssignmentCenterPage() {
     setIsApprovingCandidate(true);
     try {
       const orderItemId = candidateOrder.orderItemId || candidateOrder.id;
+      // 1. Authoritative Artwork confirmation
       await api.confirmArtworkWork({
         orderItemId,
         artworkVersionId: selectedCandidateId,
         oeNotes: oeReviewNotes || 'Confirmed by Operations Manager for production',
       });
 
-      setLiveToast(`✓ Authoritative work confirmed for Order #${candidateOrder.orderNumber}! Moved to Production Queue.`);
+      // 2. Direct Operator Assignment if selected in modal
+      let assignedOpName = '';
+      if (selectedModalOperatorId && selectedModalOperatorId !== 'LATER') {
+        const op = operators.find((o) => o.id === selectedModalOperatorId);
+        assignedOpName = op?.fullName || 'Production Operator';
+        await api.assignProductionOperator(candidateOrder.id, {
+          operatorId: selectedModalOperatorId,
+          reason: oeReviewNotes || `Assigned Production Operator during Artwork Sign-off`,
+        });
+      }
+
+      if (assignedOpName) {
+        setLiveToast(`✓ Artwork confirmed & assigned to Operator ${assignedOpName} (#${candidateOrder.orderNumber})! Moved to Production Queue.`);
+      } else {
+        setLiveToast(`✓ Authoritative work confirmed for Order #${candidateOrder.orderNumber}! Moved to Production Queue.`);
+      }
+
       setCandidateModalOpen(false);
       await loadData();
+
+      // If operator assignment was skipped, open assignment drawer so it's not forgotten
+      if (!selectedModalOperatorId || selectedModalOperatorId === 'LATER') {
+        handleOpenDrawer({ ...candidateOrder, artworkState: 'READY' }, 'PRODUCTION');
+      }
     } catch (err: any) {
       setLiveToast(`⚠️ Failed to approve artwork: ${err.message || 'Server error'}`);
     } finally {
@@ -805,9 +843,19 @@ export default function OrderAssignmentCenterPage() {
     <div className="relative min-h-screen bg-[#F8FAFC] pb-16 font-sans text-slate-900 select-none">
       {/* ─── LIVE WEBSOCKET TOAST BANNER ─────────────────────────────────── */}
       {liveToast && (
-        <div className="fixed top-4 right-6 z-50 bg-slate-900 text-white text-xs font-mono font-bold px-4 py-3 rounded-xl shadow-xl flex items-center gap-2.5 border border-slate-700 animate-in fade-in slide-in-from-top-2">
-          <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
-          <span>{liveToast}</span>
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100] max-w-[92vw] sm:max-w-lg bg-slate-950 text-white text-xs font-mono font-bold px-4 py-3 rounded-2xl shadow-2xl flex items-center justify-between gap-3 border border-slate-700/80 animate-in fade-in slide-in-from-top-3 backdrop-blur-md">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+            <span className="truncate">{liveToast}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setLiveToast(null)}
+            className="text-slate-400 hover:text-white p-1 rounded-lg transition-colors font-sans text-sm leading-none shrink-0 cursor-pointer"
+            title="Dismiss"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -1251,7 +1299,7 @@ export default function OrderAssignmentCenterPage() {
                               {order.artworkFile?.fileName}
                             </span>
                           </div>
-                          <div className="mt-0.5">
+                          <div className="mt-0.5 flex items-center gap-2 flex-wrap">
                             <button
                               type="button"
                               onClick={() => handleOpenArtwork(order)}
@@ -1260,6 +1308,17 @@ export default function OrderAssignmentCenterPage() {
                               <RiEyeLine className="h-3 w-3" />
                               <span>Inspect Proof</span>
                             </button>
+                            {order.candidateArtworks && order.candidateArtworks.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenCandidateReviewModal(order)}
+                                className="text-[11px] font-bold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded inline-flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                                title="Click to view and switch between multiple candidate artworks"
+                              >
+                                <RiShieldCheckLine className="h-3 w-3 text-amber-600" />
+                                <span>Select Work ({order.candidateArtworks.length})</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       ) : (order.candidateArtworks && order.candidateArtworks.length > 0) || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW' ? (
@@ -1378,7 +1437,37 @@ export default function OrderAssignmentCenterPage() {
                           </div>
                         </div>
 
-                        {(order.candidateArtworks && order.candidateArtworks.length > 0) || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW' ? (
+                        {order.assignedOperator ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDrawer(order, 'PRODUCTION')}
+                            className="px-2 py-1 rounded text-[10px] font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition cursor-pointer shrink-0"
+                          >
+                            Change
+                          </button>
+                        ) : order.artworkState === 'READY' ? (
+                          order.candidateArtworks && order.candidateArtworks.length > 1 ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCandidateReviewModal(order)}
+                              className="px-2.5 py-1 rounded text-[10.5px] font-bold bg-blue-600 hover:bg-blue-700 text-white transition cursor-pointer shadow-xs active:scale-95 flex items-center gap-1 shrink-0"
+                              title="Multiple artworks uploaded. Select master artwork and assign operator."
+                            >
+                              <RiPrinterLine className="h-3 w-3" />
+                              <span>Select & Assign</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDrawer(order, 'PRODUCTION')}
+                              className="px-2.5 py-1 rounded text-[10.5px] font-bold bg-blue-600 hover:bg-blue-700 text-white transition cursor-pointer shadow-xs active:scale-95 flex items-center gap-1 shrink-0"
+                              title="Assign Production Operator for press floor execution"
+                            >
+                              <RiPrinterLine className="h-3 w-3" />
+                              <span>Assign</span>
+                            </button>
+                          )
+                        ) : (order.candidateArtworks && order.candidateArtworks.length > 0) || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW' ? (
                           <button
                             type="button"
                             onClick={() => handleOpenCandidateReviewModal(order)}
@@ -1392,23 +1481,13 @@ export default function OrderAssignmentCenterPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              if (order.artworkState !== 'READY') {
-                                setLiveToast('⚠️ Artwork must be approved before assigning Production Operator. Immediate task: Prepress Design.');
-                                handleOpenDrawer(order, 'DESIGN');
-                                return;
-                              }
-                              handleOpenDrawer(order, 'PRODUCTION');
+                              setLiveToast('⚠️ Artwork must be approved before assigning Production Operator. Immediate task: Prepress Design.');
+                              handleOpenDrawer(order, 'DESIGN');
                             }}
-                            className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer shrink-0 ${
-                              order.artworkState !== 'READY'
-                                ? 'bg-slate-100 text-slate-400 hover:bg-slate-200 border border-slate-200'
-                                : order.assignedOperator
-                                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
-                                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-2xs'
-                            }`}
-                            title={order.artworkState !== 'READY' ? 'Artwork must be approved before assigning Operator' : undefined}
+                            className="px-2 py-1 rounded text-[10px] font-bold bg-slate-100 text-slate-400 hover:bg-slate-200 border border-slate-200 transition cursor-pointer shrink-0"
+                            title="Artwork must be approved before assigning Operator"
                           >
-                            {order.artworkState !== 'READY' ? 'Artwork Req' : order.assignedOperator ? 'Change' : 'Assign'}
+                            Artwork Req
                           </button>
                         )}
                       </div>
@@ -1482,16 +1561,29 @@ export default function OrderAssignmentCenterPage() {
                       </td>
                       <td className="py-3 px-3">
                         {isArtReady ? (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenArtwork(order)}
-                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition cursor-pointer"
-                            title="Click to view artwork proof"
-                          >
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                            <RiEyeLine className="h-3 w-3 text-emerald-700" />
-                            <span>READY</span>
-                          </button>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenArtwork(order)}
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition cursor-pointer"
+                              title="Click to view artwork proof"
+                            >
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                              <RiEyeLine className="h-3 w-3 text-emerald-700" />
+                              <span>READY</span>
+                            </button>
+                            {order.candidateArtworks && order.candidateArtworks.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenCandidateReviewModal(order)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 transition cursor-pointer"
+                                title="Click to view and switch between multiple uploaded artworks"
+                              >
+                                <RiShieldCheckLine className="h-3 w-3 text-amber-600" />
+                                <span>{order.candidateArtworks.length} Works</span>
+                              </button>
+                            )}
+                          </div>
                         ) : (order.candidateArtworks && order.candidateArtworks.length > 0) || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW' ? (
                           <button
                             type="button"
@@ -1564,6 +1656,27 @@ export default function OrderAssignmentCenterPage() {
                               Edit
                             </button>
                           </div>
+                        ) : order.artworkState === 'READY' ? (
+                          order.candidateArtworks && order.candidateArtworks.length > 1 ? (
+                            <Button
+                              variant="primary"
+                              size="xs"
+                              onClick={() => handleOpenCandidateReviewModal(order)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold cursor-pointer"
+                              title="Multiple artworks uploaded. Select master artwork and assign operator."
+                            >
+                              + Select & Assign Operator
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="primary"
+                              size="xs"
+                              onClick={() => handleOpenDrawer(order, 'PRODUCTION')}
+                              className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold cursor-pointer"
+                            >
+                              + Assign Operator
+                            </Button>
+                          )
                         ) : (order.candidateArtworks && order.candidateArtworks.length > 0) || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW' ? (
                           <button
                             type="button"
@@ -1580,20 +1693,13 @@ export default function OrderAssignmentCenterPage() {
                             variant="outline"
                             size="xs"
                             onClick={() => {
-                              if (order.artworkState !== 'READY') {
-                                setLiveToast('⚠️ Artwork must be approved before assigning Production Operator. Immediate task: Prepress Design.');
-                                handleOpenDrawer(order, 'DESIGN');
-                                return;
-                              }
-                              handleOpenDrawer(order, 'PRODUCTION');
+                              setLiveToast('⚠️ Artwork must be approved before assigning Production Operator. Immediate task: Prepress Design.');
+                              handleOpenDrawer(order, 'DESIGN');
                             }}
-                            className={order.artworkState !== 'READY'
-                              ? "bg-slate-100 text-slate-400 border-slate-200 text-[10px] font-bold cursor-pointer hover:bg-slate-200"
-                              : "bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-300 text-[10px] font-bold cursor-pointer"
-                            }
-                            title={order.artworkState !== 'READY' ? 'Artwork must be approved first' : undefined}
+                            className="bg-slate-100 text-slate-400 border-slate-200 text-[10px] font-bold cursor-pointer hover:bg-slate-200"
+                            title="Artwork must be approved first"
                           >
-                            {order.artworkState !== 'READY' ? 'Locked (Artwork Req)' : '+ Assign Operator'}
+                            Locked (Artwork Req)
                           </Button>
                         )}
                       </td>
@@ -2291,10 +2397,86 @@ export default function OrderAssignmentCenterPage() {
                 </div>
               )}
 
-              {/* Optional OE Production Sign-off Notes */}
+              {/* Step 2: Assign Production Operator directly */}
+              <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <RiPrinterLine className="h-4 w-4 text-blue-600" />
+                    <label className="text-xs font-bold text-blue-950">
+                      Step 2: Assign Production Operator for Machine Run
+                    </label>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded border border-blue-300">
+                    Press Floor Allocation
+                  </span>
+                </div>
+                <p className="text-[11px] text-blue-900/80">
+                  Select which press operator will receive and execute this print job immediately upon artwork approval.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                  {operators.map((op) => {
+                    const isOpSelected = selectedModalOperatorId === op.id;
+                    return (
+                      <div
+                        key={op.id}
+                        onClick={() => setSelectedModalOperatorId(op.id)}
+                        className={`p-2.5 rounded-lg border text-xs cursor-pointer transition-all flex items-center justify-between ${
+                          isOpSelected
+                            ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                            : 'bg-white text-slate-800 border-slate-200 hover:border-blue-300'
+                        }`}
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="font-bold truncate text-[11.5px] flex items-center gap-1.5">
+                            <RiPrinterLine className={`h-3 w-3 ${isOpSelected ? 'text-white' : 'text-blue-600'}`} />
+                            <span className="truncate">{op.fullName}</span>
+                          </div>
+                          <div className={`text-[10px] font-mono mt-0.5 ${isOpSelected ? 'text-blue-100' : 'text-slate-400'}`}>
+                            {op.activeJobs} active job(s)
+                          </div>
+                        </div>
+                        <div
+                          className={`h-4 w-4 rounded-full border flex items-center justify-center shrink-0 ${
+                            isOpSelected
+                              ? 'border-white bg-white text-blue-600'
+                              : 'border-slate-300 bg-white'
+                          }`}
+                        >
+                          {isOpSelected && <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center justify-between pt-1 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedModalOperatorId('LATER')}
+                    className={`font-semibold hover:underline cursor-pointer ${
+                      selectedModalOperatorId === 'LATER'
+                        ? 'text-blue-700 font-bold underline'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Skip & Assign Operator Later
+                  </button>
+                  {selectedModalOperatorId && selectedModalOperatorId !== 'LATER' && (
+                    <span className="text-emerald-700 font-bold font-mono text-[10px] flex items-center gap-1">
+                      <RiCheckLine className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>
+                        Operator Assigned: {operators.find((o) => o.id === selectedModalOperatorId)?.fullName}
+                      </span>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Step 3: Optional OE Production Sign-off Notes */}
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
                 <label className="block text-xs font-bold text-slate-700">
-                  Manager Sign-off / Print Operator Directive (Optional)
+                  Step 3: Manager Sign-off / Print Operator Directive (Optional)
                 </label>
                 <input
                   type="text"
@@ -2381,8 +2563,10 @@ export default function OrderAssignmentCenterPage() {
                   <RiCheckLine className="h-4 w-4" />
                   <span>
                     {isApprovingCandidate
-                      ? 'Confirming & Moving to Production...'
-                      : 'APPROVE SELECTED WORK & MOVE TO PRODUCTION'}
+                      ? 'Confirming Artwork & Assigning Operator...'
+                      : selectedModalOperatorId && selectedModalOperatorId !== 'LATER'
+                      ? `APPROVE WORK & ASSIGN TO ${operators.find((o) => o.id === selectedModalOperatorId)?.fullName?.toUpperCase() || 'OPERATOR'} →`
+                      : 'APPROVE SELECTED WORK & MOVE TO PRODUCTION →'}
                   </span>
                 </Button>
               </div>

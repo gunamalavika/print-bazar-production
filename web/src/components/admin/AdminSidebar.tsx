@@ -74,6 +74,7 @@ export function AdminSidebar({ isOpen = false, onClose }: AdminSidebarProps) {
               width={180}
               height={34}
               priority
+              style={{ width: 'auto', height: 'auto' }}
               className="h-7 sm:h-8 w-auto object-contain transition-transform duration-200 group-hover:scale-102"
             />
             <div className="flex items-center gap-1.5">

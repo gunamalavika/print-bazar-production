@@ -75,7 +75,7 @@ export function HeroSection() {
       `}</style>
 
       {/* Full-Width & Full-Height Hero Banner Sliding Track Layer */}
-      <div className="relative w-full min-h-[72vh] sm:min-h-[82vh] lg:min-h-[calc(100vh-108px)] lg:h-[calc(100vh-108px)] flex items-center overflow-hidden">
+      <div className="relative w-full min-h-[60vh] sm:min-h-[75vh] lg:min-h-[calc(100vh-108px)] lg:h-[calc(100vh-108px)] flex items-center overflow-hidden">
         <div
           className="absolute inset-0 flex transition-transform duration-700 ease-in-out"
           style={{
@@ -84,142 +84,215 @@ export function HeroSection() {
         >
           {activeHeroSlides.map((slide, idx) => (
             <div key={slide.id || idx} className="relative w-full h-full shrink-0">
-              <img
-                src={resolveSiteAssetUrl(slide.imageUrl || settings.heroImageUrl)}
-                alt={
-                  slide.altText ||
-                  settings.heroAltText ||
-                  'Print Bazzar Commercial Products'
-                }
-                className="w-full h-full object-cover object-center"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src =
-                    'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=1600&auto=format&fit=crop&q=80';
-                }}
-              />
+              <picture className="w-full h-full block">
+                {slide.mobileImageUrl?.trim() ? (
+                  <source
+                    media="(max-width: 767px)"
+                    srcSet={resolveSiteAssetUrl(slide.mobileImageUrl)}
+                  />
+                ) : settings.heroMobileImageUrl?.trim() ? (
+                  <source
+                    media="(max-width: 767px)"
+                    srcSet={resolveSiteAssetUrl(settings.heroMobileImageUrl)}
+                  />
+                ) : null}
+                <img
+                  src={resolveSiteAssetUrl(slide.imageUrl || settings.heroImageUrl)}
+                  alt={
+                    slide.altText ||
+                    settings.heroAltText ||
+                    'Print Bazzar Commercial Products'
+                  }
+                  className="w-full h-full object-cover object-center"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=1600&auto=format&fit=crop&q=80';
+                  }}
+                />
+              </picture>
             </div>
           ))}
         </div>
 
         {/* Gradient Scrim when Text Overlay is enabled */}
         {showOverlay && (
-          <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/60 to-black/25 sm:from-black/80 sm:via-black/55 sm:to-transparent z-10" />
+          <div
+            className={`absolute inset-0 bg-gradient-to-r from-black/85 via-black/65 to-black/30 sm:from-black/80 sm:via-black/55 sm:to-transparent z-10 ${
+              settings.hideHeroTextOnMobile ? 'max-md:hidden' : ''
+            }`}
+          />
         )}
 
         {/* Foreground Content (When Overlay is enabled) */}
         {showOverlay ? (
-          <div className="mx-auto max-w-7xl w-full px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20 relative z-20">
-            <div className="max-w-2xl space-y-5">
-              {/* Eyebrow Badge */}
-              {settings.showHeroBadge !== false && (
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-[6px] bg-[#FFED00] border border-black/20 shadow-xs">
-                  <span className="h-2 w-2 rounded-full bg-black" />
-                  <span className="text-[11px] font-mono font-bold text-black uppercase tracking-wider">
-                    {currentSlide?.badgeText || settings.heroBadgeText || 'COMMERCIAL PRINTING & PACKAGING OS'}
-                  </span>
-                </div>
-              )}
+          <>
+            {settings.hideHeroTextOnMobile && (
+              <Link
+                href={currentSlide?.linkHref || settings.heroBannerLinkHref || '/products'}
+                aria-label={currentSlide?.altText || 'Explore Print Bazzar'}
+                className="absolute inset-0 z-15 hidden max-md:block"
+              />
+            )}
+            <div
+              className={`mx-auto max-w-7xl w-full px-4 sm:px-6 lg:px-8 py-10 sm:py-16 lg:py-20 relative z-20 ${
+                settings.hideHeroTextOnMobile ? 'max-md:hidden' : ''
+              }`}
+            >
+            {(() => {
+              const textPosition = currentSlide?.textPosition || settings.heroTextPosition || 'left';
+              const alignClass =
+                textPosition === 'center'
+                  ? 'mx-auto items-center text-center'
+                  : textPosition === 'right'
+                  ? 'ml-auto items-end text-right'
+                  : 'items-start text-left';
 
-              {/* Main Display Headline */}
-              {settings.showHeroHeading !== false && (
-                <h1 className="text-3xl sm:text-4xl lg:text-[44px] font-bold text-white tracking-tight leading-[1.12] font-sans drop-shadow-xs">
-                  {settings.heroTitle ?? 'Commercial Print Excellence,'}{' '}
-                  {settings.heroHighlightText && (
-                    <span className="text-[#FFED00] underline decoration-[#FFED00]/80 decoration-4 underline-offset-4">
-                      {settings.heroHighlightText}
-                    </span>
-                  )}{' '}
-                  {settings.heroTitleSuffix ?? 'for Scale.'}
-                </h1>
-              )}
+              const titleText = currentSlide?.title || settings.heroTitle || 'Commercial Print Excellence,';
+              const highlightText = currentSlide?.titleHighlight !== undefined ? currentSlide.titleHighlight : settings.heroHighlightText;
+              const titleColor = currentSlide?.titleColor || settings.heroTitleColor || '#FFFFFF';
+              const titleFont = currentSlide?.titleFontFamily || settings.heroTitleFontFamily || 'inherit';
 
-              {/* Value Proposition */}
-              {settings.showHeroDescription !== false && settings.heroDescription && (
-                <p className="text-[15px] sm:text-[16px] text-neutral-200 max-w-xl leading-relaxed font-sans">
-                  {settings.heroDescription}
-                </p>
-              )}
+              const descriptionText = currentSlide?.description || settings.heroDescription;
+              const descriptionColor = currentSlide?.descriptionColor || settings.heroDescriptionColor || '#E5E5E5';
 
-              {/* CTAs */}
-              {(settings.showHeroPrimaryBtn !== false || settings.showHeroSecondaryBtn !== false) && (
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
-                  {settings.showHeroPrimaryBtn !== false && (
-                    <Link
-                      href={settings.heroPrimaryBtnHref || '/products/premium-visiting-cards'}
-                      className="w-full sm:w-auto"
+              const badgeText = currentSlide?.badgeText || settings.heroBadgeText || 'COMMERCIAL PRINTING & PACKAGING OS';
+              const badgeBg = currentSlide?.badgeBgColor || '#FFED00';
+              const badgeTextCol = currentSlide?.badgeTextColor || '#000000';
+
+              const primaryBtnText = currentSlide?.primaryBtnText || settings.heroPrimaryBtnText || 'START CUSTOM CONFIGURATION';
+              const primaryBtnHref = currentSlide?.primaryBtnHref || settings.heroPrimaryBtnHref || '/products/premium-visiting-cards';
+              const primaryBtnBg = currentSlide?.primaryBtnBgColor || settings.heroPrimaryBtnBgColor || '#FFED00';
+              const primaryBtnTextCol = currentSlide?.primaryBtnTextColor || settings.heroPrimaryBtnTextColor || '#000000';
+
+              const secondaryBtnText = currentSlide?.secondaryBtnText || settings.heroSecondaryBtnText || 'EXPLORE 2026 CATALOGUE';
+              const secondaryBtnHref = currentSlide?.secondaryBtnHref || settings.heroSecondaryBtnHref || '/products';
+              const secondaryBtnBg = currentSlide?.secondaryBtnBgColor || settings.heroSecondaryBtnBgColor || '#FFFFFF';
+              const secondaryBtnTextCol = currentSlide?.secondaryBtnTextColor || settings.heroSecondaryBtnTextColor || '#000000';
+
+              return (
+                <div className={`max-w-2xl flex flex-col space-y-5 ${alignClass}`}>
+                  {/* Eyebrow Badge */}
+                  {settings.showHeroBadge !== false && (
+                    <div
+                      className="inline-flex items-center gap-2 px-3 py-1 rounded-[6px] border border-black/20 shadow-xs"
+                      style={{ backgroundColor: badgeBg, color: badgeTextCol }}
                     >
-                      <Button variant="primary" size="lg" className="w-full justify-center shadow-md min-h-[44px]">
-                        <span>{settings.heroPrimaryBtnText || 'START CUSTOM CONFIGURATION'}</span>
-                        <ArrowRight className="h-4 w-4 ml-1" />
-                      </Button>
-                    </Link>
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: badgeTextCol }} />
+                      <span className="text-[11px] font-mono font-bold uppercase tracking-wider">
+                        {badgeText}
+                      </span>
+                    </div>
                   )}
 
-                  {settings.showHeroSecondaryBtn !== false && (
-                    <Link
-                      href={settings.heroSecondaryBtnHref || '/products'}
-                      className="w-full sm:w-auto"
+                  {/* Main Display Headline */}
+                  {settings.showHeroHeading !== false && (
+                    <h1
+                      className="text-3xl sm:text-4xl lg:text-[44px] font-bold tracking-tight leading-[1.12] drop-shadow-xs"
+                      style={{ color: titleColor, fontFamily: titleFont }}
                     >
-                      <Button
-                        variant="secondary"
-                        size="lg"
-                        className="w-full justify-center min-h-[44px] bg-white/95 hover:bg-white text-black border-white"
-                      >
-                        <span>{settings.heroSecondaryBtnText || 'EXPLORE 2026 CATALOGUE'}</span>
-                      </Button>
-                    </Link>
+                      {titleText}{' '}
+                      {highlightText && (
+                        <span className="underline decoration-4 underline-offset-4" style={{ color: titleColor === '#FFFFFF' ? '#FFED00' : 'inherit' }}>
+                          {highlightText}
+                        </span>
+                      )}{' '}
+                      {!currentSlide?.title && (settings.heroTitleSuffix ?? 'for Scale.')}
+                    </h1>
+                  )}
+
+                  {/* Value Proposition */}
+                  {settings.showHeroDescription !== false && descriptionText && (
+                    <p
+                      className="text-[15px] sm:text-[16px] max-w-xl leading-relaxed"
+                      style={{ color: descriptionColor }}
+                    >
+                      {descriptionText}
+                    </p>
+                  )}
+
+                  {/* CTAs */}
+                  {(settings.showHeroPrimaryBtn !== false || settings.showHeroSecondaryBtn !== false) && (
+                    <div className={`flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1 w-full ${textPosition === 'center' ? 'justify-center' : textPosition === 'right' ? 'justify-end' : ''}`}>
+                      {settings.showHeroPrimaryBtn !== false && (
+                        <Link href={primaryBtnHref} className="w-full sm:w-auto">
+                          <Button
+                            variant="primary"
+                            size="lg"
+                            className="w-full justify-center shadow-md min-h-[44px] font-bold"
+                            style={{ backgroundColor: primaryBtnBg, color: primaryBtnTextCol, borderColor: primaryBtnBg }}
+                          >
+                            <span>{primaryBtnText}</span>
+                            <ArrowRight className="h-4 w-4 ml-1" />
+                          </Button>
+                        </Link>
+                      )}
+
+                      {settings.showHeroSecondaryBtn !== false && (
+                        <Link href={secondaryBtnHref} className="w-full sm:w-auto">
+                          <Button
+                            variant="secondary"
+                            size="lg"
+                            className="w-full justify-center min-h-[44px] font-semibold"
+                            style={{ backgroundColor: secondaryBtnBg, color: secondaryBtnTextCol, borderColor: secondaryBtnBg }}
+                          >
+                            <span>{secondaryBtnText}</span>
+                          </Button>
+                        </Link>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Trust Proof Pillars */}
+                  {settings.showHeroTrustPillars !== false && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-5 border-t border-white/20 w-full text-left">
+                      <div className="flex items-start gap-2.5">
+                        <div className="h-8 w-8 rounded-[6px] bg-[#FFED00] text-black flex items-center justify-center flex-shrink-0 mt-0.5 shadow-2xs">
+                          <ShieldCheck className="h-4 w-4 stroke-[2.2]" />
+                        </div>
+                        <div>
+                          <span className="text-[13px] font-semibold text-white block leading-tight">
+                            2400 DPI Precision
+                          </span>
+                          <span className="text-[12px] text-neutral-300 block leading-tight mt-0.5">
+                            Heidelberg & HP Indigo
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-2.5">
+                        <div className="h-8 w-8 rounded-[6px] bg-[#FFED00] text-black flex items-center justify-center flex-shrink-0 mt-0.5 shadow-2xs">
+                          <Truck className="h-4 w-4 stroke-[2.2]" />
+                        </div>
+                        <div>
+                          <span className="text-[13px] font-semibold text-white block leading-tight">
+                            Pan-India Dispatch
+                          </span>
+                          <span className="text-[12px] text-neutral-300 block leading-tight mt-0.5">
+                            Express Carrier SLAs
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-2.5">
+                        <div className="h-8 w-8 rounded-[6px] bg-[#FFED00] text-black flex items-center justify-center flex-shrink-0 mt-0.5 shadow-2xs">
+                          <Award className="h-4 w-4 stroke-[2.2]" />
+                        </div>
+                        <div>
+                          <span className="text-[13px] font-semibold text-white block leading-tight">
+                            Zero Price Drift
+                          </span>
+                          <span className="text-[12px] text-neutral-300 block leading-tight mt-0.5">
+                            Server-Verified Quotes
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
-              )}
-
-              {/* Trust Proof Pillars */}
-              {settings.showHeroTrustPillars !== false && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-5 border-t border-white/20">
-                  <div className="flex items-start gap-2.5">
-                    <div className="h-8 w-8 rounded-[6px] bg-[#FFED00] text-black flex items-center justify-center flex-shrink-0 mt-0.5 shadow-2xs">
-                      <ShieldCheck className="h-4 w-4 stroke-[2.2]" />
-                    </div>
-                    <div>
-                      <span className="text-[13px] font-semibold text-white block leading-tight">
-                        2400 DPI Precision
-                      </span>
-                      <span className="text-[12px] text-neutral-300 block leading-tight mt-0.5">
-                        Heidelberg & HP Indigo
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2.5">
-                    <div className="h-8 w-8 rounded-[6px] bg-[#FFED00] text-black flex items-center justify-center flex-shrink-0 mt-0.5 shadow-2xs">
-                      <Truck className="h-4 w-4 stroke-[2.2]" />
-                    </div>
-                    <div>
-                      <span className="text-[13px] font-semibold text-white block leading-tight">
-                        Pan-India Dispatch
-                      </span>
-                      <span className="text-[12px] text-neutral-300 block leading-tight mt-0.5">
-                        Express Carrier SLAs
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2.5">
-                    <div className="h-8 w-8 rounded-[6px] bg-[#FFED00] text-black flex items-center justify-center flex-shrink-0 mt-0.5 shadow-2xs">
-                      <Award className="h-4 w-4 stroke-[2.2]" />
-                    </div>
-                    <div>
-                      <span className="text-[13px] font-semibold text-white block leading-tight">
-                        Zero Price Drift
-                      </span>
-                      <span className="text-[12px] text-neutral-300 block leading-tight mt-0.5">
-                        Server-Verified Quotes
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+              );
+            })()}
           </div>
+          </>
         ) : (
           /* Clean Full-Width Clickable Banner Link when text overlay is disabled */
           <Link

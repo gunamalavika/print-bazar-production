@@ -1121,6 +1121,8 @@ export const api = {
   },
   claimDesignJob: (orderId: string) =>
     fetchApi<any>(`/artwork/design/${orderId}/claim`, { method: 'POST' }),
+  updateDesignKanbanStage: (orderId: string, data: { stage: 'ARTWORK_CHECK' | 'DESIGNING' | 'WAITING_FOR_APPROVAL' | 'READY_TO_PRINT'; notes?: string }) =>
+    fetchApi<any>(`/artwork/design/${orderId}/kanban-stage`, { method: 'POST', body: JSON.stringify(data) }),
   completeDesignJob: (orderId: string, data: {
     storageKey: string;
     originalFileName: string;

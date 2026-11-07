@@ -69,6 +69,7 @@ export function BrandLogo({
           width={width}
           height={height}
           priority={priority}
+          style={{ width: 'auto', height: 'auto' }}
           className={`${sizeClass} object-contain transition-transform duration-200 group-hover:scale-102`}
         />
       </div>

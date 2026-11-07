@@ -168,11 +168,19 @@ export class ArtworkService {
 
     const order = artwork.orderItem.order;
 
-    // Security check: individual ownership verification
+    // Reassign cleanly if currently assigned to a colleague or self-assign
     if (userRole === UserRole.DESIGNER_PREPRESS) {
-      const isAssigned = order.assignments.some((a) => a.assignedUserId === userId);
-      if (!isAssigned && order.assignments.length > 0) {
-        throw new ForbiddenException('You cannot submit proofs for a design task assigned to another designer.');
+      const activeOtherAssignment = order.assignments.find(
+        (a) => a.assignedUserId !== userId && a.status === AssignmentStatus.ACTIVE,
+      );
+      if (activeOtherAssignment) {
+        await this.prisma.orderAssignment.update({
+          where: { id: activeOtherAssignment.id },
+          data: {
+            status: AssignmentStatus.REASSIGNED,
+            reason: `Reassigned to submitting designer ${userId}`,
+          },
+        });
       }
     }
 
@@ -1591,5 +1599,112 @@ export class ArtworkService {
     });
 
     return result;
+  }
+
+  /**
+   * Update Design Department Kanban Board Stage
+   * Stages: ARTWORK_CHECK | DESIGNING | WAITING_FOR_APPROVAL | READY_TO_PRINT
+   */
+  async updateDesignKanbanStage(
+    orderId: string,
+    stage: 'ARTWORK_CHECK' | 'DESIGNING' | 'WAITING_FOR_APPROVAL' | 'READY_TO_PRINT',
+    user: JwtPayload,
+    notes?: string,
+  ) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        assignments: true,
+        items: {
+          include: {
+            artworkVersions: { orderBy: { versionNumber: 'desc' } },
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Order ${orderId} not found`);
+    }
+
+    let targetStatus: OrderStatus = order.status;
+
+    if (stage === 'ARTWORK_CHECK') {
+      targetStatus = OrderStatus.ARTWORK_REVIEW;
+    } else if (stage === 'DESIGNING') {
+      targetStatus = OrderStatus.DESIGN_REQUIRED;
+      // Auto-assign to current designer if not already assigned
+      const activeDesignAssignment = order.assignments.find(
+        (a) => a.taskType === AssignmentTaskType.DESIGN && a.status === AssignmentStatus.ACTIVE,
+      );
+      if (!activeDesignAssignment && user?.sub) {
+        await this.prisma.orderAssignment.create({
+          data: {
+            orderId: order.id,
+            assignedUserId: user.sub,
+            assignedByUserId: user.sub,
+            taskType: AssignmentTaskType.DESIGN,
+            status: AssignmentStatus.ACTIVE,
+            reason: notes || 'Assigned via Design Kanban Board',
+          },
+        });
+      }
+    } else if (stage === 'WAITING_FOR_APPROVAL') {
+      targetStatus = OrderStatus.CUSTOMER_APPROVAL_REQUIRED;
+    } else if (stage === 'READY_TO_PRINT') {
+      targetStatus = OrderStatus.ARTWORK_APPROVED;
+      // Lock latest artwork version if available
+      for (const item of order.items) {
+        if (item.artworkVersions && item.artworkVersions.length > 0 && !item.approvedArtworkVersionId) {
+          const latest = item.artworkVersions[0];
+          await this.prisma.orderItem.update({
+            where: { id: item.id },
+            data: { approvedArtworkVersionId: latest.id },
+          });
+          await this.prisma.artworkVersion.update({
+            where: { id: latest.id },
+            data: { isApproved: true, status: ArtworkStatus.PROOF_APPROVED },
+          });
+        }
+      }
+    }
+
+    const updated = await this.prisma.order.update({
+      where: { id: order.id },
+      data: {
+        status: targetStatus,
+      },
+    });
+
+    await this.prisma.orderStatusHistory.create({
+      data: {
+        orderId: order.id,
+        fromStatus: order.status,
+        toStatus: targetStatus,
+        reason: `Design Kanban: Moved to ${stage.replace(/_/g, ' ')}`,
+        notes: notes || null,
+        changedById: user?.sub || null,
+      },
+    });
+
+    await this.auditService.log({
+      actorId: user?.sub,
+      action: 'DESIGN_KANBAN_STAGE_UPDATED',
+      entity: 'Order',
+      entityId: order.id,
+      orderId: order.id,
+      previousState: { status: order.status },
+      newState: { status: targetStatus, stage },
+      reason: notes || `Moved to ${stage}`,
+    });
+
+    return {
+      success: true,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      previousStatus: order.status,
+      currentStatus: targetStatus,
+      stage,
+    };
   }
 }

@@ -253,4 +253,15 @@ export class ArtworkController {
       body.revisionFeedback,
     );
   }
+
+  @Post('design/:orderId/kanban-stage')
+  @Roles(UserRole.DESIGNER_PREPRESS, UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER)
+  @ApiOperation({ summary: 'Update design department kanban stage (Artwork Check, Designing, Waiting for Approval, Ready to Print)' })
+  async updateKanbanStage(
+    @Param('orderId') orderId: string,
+    @Body() body: { stage: 'ARTWORK_CHECK' | 'DESIGNING' | 'WAITING_FOR_APPROVAL' | 'READY_TO_PRINT'; notes?: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.artworkService.updateDesignKanbanStage(orderId, body.stage, user, body.notes);
+  }
 }

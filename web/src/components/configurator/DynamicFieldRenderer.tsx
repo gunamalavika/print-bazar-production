@@ -6,6 +6,15 @@ import { RiCheckLine, RiInformationLine } from 'react-icons/ri';
 import { formatCurrency } from '@/lib/utils';
 
 // Backward compatibility helper stubs (safe defaults without legacy hacks)
+export function cleanOptionLabel(text?: string | null): string {
+  if (!text) return '';
+  return text
+    .replace(/\s*\(\+?₹[0-9.,]+\)/gi, '')
+    .replace(/\s*\(\+[0-9.,]+%?\)/gi, '')
+    .replace(/\s*\+₹[0-9.,]+/gi, '')
+    .trim();
+}
+
 export function formatSlotLabel(rawLabel: string): { title: string; placeholder: string } {
   const clean = (rawLabel || '').trim();
   if (!clean) return { title: 'ARTWORK FILE', placeholder: 'Click or drag artwork file' };
@@ -71,7 +80,7 @@ export function DynamicFieldRenderer({
   const options: DynamicFieldOption[] = (field.options || []).map((o: any) => ({
     id: o.id || o.value,
     fieldId: o.groupId || o.fieldId || field.id,
-    label: o.label || o.name || o.value,
+    label: cleanOptionLabel(o.label || o.name || o.value),
     value: o.value || o.code || o.label,
     priceModifierType: o.priceModifierType || 'FIXED',
     priceModifier: o.priceModifier || 0,
@@ -87,27 +96,9 @@ export function DynamicFieldRenderer({
     disabledReason: o.disabledReason,
   }));
 
-  // Helper to render price modifier badge on option
-  const renderPriceBadge = (opt: DynamicFieldOption, isSelected: boolean) => {
-    const mod = Number(opt.priceModifier || 0);
-    if (!mod || isNaN(mod) || mod === 0) return null;
-    const sign = mod > 0 ? '+' : '';
-    const formatted =
-      opt.priceModifierType === 'PERCENTAGE'
-        ? `${sign}${mod}%`
-        : `${sign}${formatCurrency(mod)}${opt.priceModifierType === 'PER_UNIT' ? '/pc' : ''}`;
-
-    return (
-      <span
-        className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded transition-colors ${
-          isSelected
-            ? 'bg-[#FFED00] text-slate-950 font-black border border-[#E3A008]/50 shadow-2xs'
-            : 'bg-amber-50 text-amber-900 border border-amber-200/80 group-hover:bg-amber-100/70'
-        }`}
-      >
-        {formatted}
-      </span>
-    );
+  // Helper to render price modifier badge on option (disabled to show clean option names only)
+  const renderPriceBadge = (_opt: DynamicFieldOption, _isSelected: boolean) => {
+    return null;
   };
 
   return (
@@ -209,11 +200,9 @@ export function DynamicFieldRenderer({
                 Select {label}...
               </option>
               {options.map((opt: any) => {
-                const mod = Number(opt.priceModifier || 0);
-                const modText = mod !== 0 ? ` (${mod > 0 ? '+' : ''}${opt.priceModifierType === 'PERCENTAGE' ? `${mod}%` : formatCurrency(mod)})` : '';
                 return (
                   <option key={opt.id} value={opt.value} disabled={opt.isDisabled}>
-                    {opt.label}{opt.isDisabled ? ' — (Unavailable)' : ''}{modText}
+                    {opt.label}{opt.isDisabled ? ' — (Unavailable)' : ''}
                   </option>
                 );
               })}
@@ -290,7 +279,7 @@ export function DynamicFieldRenderer({
               <span className="text-xs font-bold text-slate-900 block">{label}</span>
               {options[0] && (
                 <span className="text-[11px] text-slate-500">
-                  {options[0].label} {Number(options[0].priceModifier || 0) > 0 && `(+${formatCurrency(Number(options[0].priceModifier))})`}
+                  {options[0].label}
                 </span>
               )}
             </div>

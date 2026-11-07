@@ -21,6 +21,7 @@ const ROUTE_LABELS: Record<string, string> = {
   inventory: 'Materials & Substrates',
   prepress: 'Prepress Studio',
   artwork: 'Artwork Verification',
+  kanban: 'Design Process Kanban',
   qc: 'Quality Engineering',
   inspection: 'QC Release & Inspection',
   packing: 'Packaging Station',

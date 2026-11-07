@@ -91,6 +91,7 @@ export interface CartDrawerItem {
   advanceAmount?: number;
   balanceAmount?: number;
   shippingFee?: number;
+  courierCharge?: number;
   shippingSnapshot?: any;
   variantLines?: any[];
   quote?: any;
@@ -389,9 +390,11 @@ export function CartDrawer({
       : 0;
 
   const subtotal = Math.round((baseSubtotal + activeDesignFee + artworkFee) * 100) / 100;
-  const tax = Math.round(subtotal * 0.18 * 100) / 100;
-  const shippingTotal = Number(item?.shippingFee ?? (item?.shippingSnapshot?.finalShippingAmount ?? 0)) || 0;
-  const grandTotal = Math.round((subtotal + tax + shippingTotal) * 100) / 100;
+  const shippingTotal = Number(item?.shippingFee ?? (item?.shippingSnapshot?.finalShippingAmount ?? (item?.courierCharge ?? 0))) || 0;
+  // GST (18%) calculated including the courier price
+  const taxableAmount = Math.round((subtotal + shippingTotal) * 100) / 100;
+  const tax = Math.round(taxableAmount * 0.18 * 100) / 100;
+  const grandTotal = Math.round((taxableAmount + tax) * 100) / 100;
 
   const handleToggleDesignService = (selected: boolean) => {
     // Guard against toggling to disabled states
@@ -403,8 +406,9 @@ export function CartDrawer({
 
     const newDesignFee = selected ? designFeeUnit : 0;
     const newSubtotal = Math.round((baseSubtotal + newDesignFee + artworkFee) * 100) / 100;
-    const newTax = Math.round(newSubtotal * 0.18 * 100) / 100;
-    const newGrandTotal = Math.round((newSubtotal + newTax) * 100) / 100;
+    const newTaxable = Math.round((newSubtotal + shippingTotal) * 100) / 100;
+    const newTax = Math.round(newTaxable * 0.18 * 100) / 100;
+    const newGrandTotal = Math.round((newTaxable + newTax) * 100) / 100;
 
     const updatedItem: CartDrawerItem = {
       ...item,
@@ -412,6 +416,7 @@ export function CartDrawer({
       totalPrice: baseSubtotal,
       designServiceFee: designFeeUnit,
       subtotal: newSubtotal,
+      shippingFee: shippingTotal,
       taxAmount: newTax,
       grandTotal: newGrandTotal,
     };
@@ -430,8 +435,9 @@ export function CartDrawer({
     if ((specDesignChoice === 'YES' || designServiceRequirement === 'REQUIRED') && item.hasDesignService !== true) {
       const newDesignFee = designFeeUnit > 0 ? designFeeUnit : 150;
       const newSubtotal = Math.round((baseSubtotal + newDesignFee + artworkFee) * 100) / 100;
-      const newTax = Math.round(newSubtotal * 0.18 * 100) / 100;
-      const newGrandTotal = Math.round((newSubtotal + newTax) * 100) / 100;
+      const newTaxable = Math.round((newSubtotal + shippingTotal) * 100) / 100;
+      const newTax = Math.round(newTaxable * 0.18 * 100) / 100;
+      const newGrandTotal = Math.round((newTaxable + newTax) * 100) / 100;
 
       const updatedItem: CartDrawerItem = {
         ...item,
@@ -439,6 +445,7 @@ export function CartDrawer({
         totalPrice: baseSubtotal,
         designServiceFee: newDesignFee,
         subtotal: newSubtotal,
+        shippingFee: shippingTotal,
         taxAmount: newTax,
         grandTotal: newGrandTotal,
       };
@@ -447,8 +454,9 @@ export function CartDrawer({
       updateCartStorage(updatedItem);
     } else if ((specDesignChoice === 'NO' || designServiceRequirement === 'DISABLED') && item.hasDesignService === true) {
       const newSubtotal = Math.round((baseSubtotal + artworkFee) * 100) / 100;
-      const newTax = Math.round(newSubtotal * 0.18 * 100) / 100;
-      const newGrandTotal = Math.round((newSubtotal + newTax) * 100) / 100;
+      const newTaxable = Math.round((newSubtotal + shippingTotal) * 100) / 100;
+      const newTax = Math.round(newTaxable * 0.18 * 100) / 100;
+      const newGrandTotal = Math.round((newTaxable + newTax) * 100) / 100;
 
       const updatedItem: CartDrawerItem = {
         ...item,
@@ -456,6 +464,7 @@ export function CartDrawer({
         totalPrice: baseSubtotal,
         designServiceFee: 0,
         subtotal: newSubtotal,
+        shippingFee: shippingTotal,
         taxAmount: newTax,
         grandTotal: newGrandTotal,
       };
@@ -463,7 +472,7 @@ export function CartDrawer({
       if (onUpdateItem) onUpdateItem(updatedItem);
       updateCartStorage(updatedItem);
     }
-  }, [specDesignChoice, designServiceRequirement, item?.hasDesignService, baseSubtotal, designFeeUnit, artworkFee]);
+  }, [specDesignChoice, designServiceRequirement, item?.hasDesignService, baseSubtotal, designFeeUnit, artworkFee, shippingTotal]);
 
   const maxFileSizeMb = Number(artworkConfig?.maxFileSizeMb) || 50;
   const allowedFormats =
@@ -875,6 +884,29 @@ export function CartDrawer({
                       <span className="font-mono font-bold text-slate-950">
                         {qty.toLocaleString()} units
                       </span>
+                    </div>
+                  )}
+
+                  {/* Multi-Variant Allocation Breakdown */}
+                  {Array.isArray(item.variantLines) && item.variantLines.length > 0 && (
+                    <div className="pt-2.5 border-t border-slate-200/80 space-y-1.5">
+                      <div className="text-[10px] font-mono font-bold uppercase text-amber-900 flex justify-between">
+                        <span>Variant Breakdown ({item.variantLines.length} combinations)</span>
+                        <span>{item.quantity} total units</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {item.variantLines.map((vl: any, idx: number) => {
+                          const comboText = Object.values(vl.combination || {}).join(' / ');
+                          return (
+                            <span
+                              key={idx}
+                              className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300"
+                            >
+                              {vl.quantity}× {comboText.toUpperCase()}
+                            </span>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1303,21 +1335,14 @@ export function CartDrawer({
                   )}
 
                   <div className="flex items-center justify-between text-slate-600">
-                    <span>GST (18% Commercial Print)</span>
-                    <span className="font-mono font-semibold text-slate-900">
-                      +{formatCurrency(tax)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-slate-600">
-                    <span>Shipping & Logistics</span>
+                    <span>Courier & Delivery Charge</span>
                     {shippingTotal > 0 ? (
                       <span className="font-mono font-bold text-slate-900">
                         +{formatCurrency(shippingTotal)}
                       </span>
                     ) : item?.shippingSnapshot?.isFreeShippingApplied ? (
                       <span className="text-emerald-700 font-bold font-mono">
-                        FREE Standard Delivery
+                        FREE Delivery
                       </span>
                     ) : item?.shippingSnapshot?.deliveryMethod === 'STORE_PICKUP' ? (
                       <span className="text-slate-700 font-bold font-mono">
@@ -1325,7 +1350,7 @@ export function CartDrawer({
                       </span>
                     ) : item?.shippingSnapshot?.status === 'CALCULATED' && item?.shippingSnapshot?.finalShippingAmount === 0 ? (
                       <span className="text-emerald-700 font-bold font-mono">
-                        FREE Standard Delivery
+                        FREE Delivery
                       </span>
                     ) : (
                       <span className="text-amber-700 font-medium font-mono text-[11px] bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
@@ -1334,54 +1359,12 @@ export function CartDrawer({
                     )}
                   </div>
 
-                  {/* Authoritative Shipping & Weight Details */}
-                  {item?.shippingSnapshot && (
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-[11px] font-mono">
-                      <div className="flex items-center justify-between text-slate-600 font-sans font-bold text-xs pb-1 border-b border-slate-200">
-                        <span className="flex items-center gap-1.5 text-sky-700">
-                          <RiTruckLine className="w-3.5 h-3.5" />
-                          Logistics & Weight Breakdown
-                        </span>
-                        <span className="font-mono text-slate-900">
-                          {item.shippingSnapshot.zoneCode ? `${item.shippingSnapshot.zoneCode} Zone` : 'Standard Delivery'}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-slate-600">
-                        <span className="font-sans">Product Quantity:</span>
-                        <span className="font-bold text-slate-800">{qty} pcs</span>
-                      </div>
-                      <div className="flex items-center justify-between text-slate-600">
-                        <span className="font-sans">Product Net Weight:</span>
-                        <span className="text-slate-800">
-                          {Number(item.shippingSnapshot.productWeightGrams) >= 1000
-                            ? `${(Number(item.shippingSnapshot.productWeightGrams) / 1000).toFixed(2)} kg`
-                            : `${Number(item.shippingSnapshot.productWeightGrams || 0)} g`}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-slate-500">
-                        <span className="font-sans">Packaging Box (Tare):</span>
-                        <span>
-                          +{Number(item.shippingSnapshot.packaging?.weightGrams ?? item.shippingSnapshot.packagingWeightGrams ?? 200)} g
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-slate-700 font-semibold pt-1 border-t border-slate-200">
-                        <span className="font-sans">Actual Shipment Weight:</span>
-                        <span>
-                          {Number(item.shippingSnapshot.actualWeightGrams) >= 1000
-                            ? `${(Number(item.shippingSnapshot.actualWeightGrams) / 1000).toFixed(2)} kg`
-                            : `${Number(item.shippingSnapshot.actualWeightGrams || 0)} g`}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-sky-900 font-bold">
-                        <span className="font-sans">Billable Weight:</span>
-                        <span>
-                          {Number(item.shippingSnapshot.billableWeightGrams) >= 1000
-                            ? `${(Number(item.shippingSnapshot.billableWeightGrams) / 1000).toFixed(2)} kg`
-                            : `${Number(item.shippingSnapshot.billableWeightGrams || 0)} g`}
-                        </span>
-                      </div>
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between text-slate-600">
+                    <span>GST (18% on Goods & Courier)</span>
+                    <span className="font-mono font-semibold text-slate-900">
+                      +{formatCurrency(tax)}
+                    </span>
+                  </div>
 
                   <div className="pt-2.5 border-t border-slate-200 flex items-center justify-between text-sm">
                     <div>
@@ -1389,7 +1372,7 @@ export function CartDrawer({
                         Total Amount
                       </span>
                       <span className="text-[10px] text-slate-500">
-                        Inclusive of all taxes & shipping
+                        Inclusive of all taxes & courier
                       </span>
                     </div>
                     <span className="text-lg font-black text-slate-950 font-mono">
@@ -1416,7 +1399,7 @@ export function CartDrawer({
             <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
               <div>
                 <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 block font-mono">
-                  Order Total (Incl. GST)
+                  Order Total (Incl. GST & Courier)
                 </span>
                 <span className="text-lg font-black text-slate-950 font-mono">
                   {formatCurrency(grandTotal)}

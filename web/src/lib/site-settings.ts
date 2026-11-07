@@ -15,14 +15,35 @@ export interface SiteMarqueeItem {
 export interface SiteHeroImage {
   id: string;
   imageUrl: string;
+  mobileImageUrl?: string;
+  mobileAltText?: string;
   altText?: string;
   badgeText?: string;
+  badgeBgColor?: string;
+  badgeTextColor?: string;
   linkHref?: string;
   isActive: boolean;
+  // Per-slide H1 title, description, buttons, colors & font
+  title?: string;
+  titleHighlight?: string;
+  titleColor?: string;
+  titleFontFamily?: string;
+  description?: string;
+  descriptionColor?: string;
+  primaryBtnText?: string;
+  primaryBtnHref?: string;
+  primaryBtnBgColor?: string;
+  primaryBtnTextColor?: string;
+  secondaryBtnText?: string;
+  secondaryBtnHref?: string;
+  secondaryBtnBgColor?: string;
+  secondaryBtnTextColor?: string;
+  textPosition?: 'left' | 'center' | 'right';
 }
 
 export interface SiteSettings {
   heroImageUrl: string;
+  heroMobileImageUrl?: string;
   heroAltText: string;
   heroBadgeText: string;
   heroTitle: string;
@@ -34,7 +55,17 @@ export interface SiteSettings {
   heroSecondaryBtnText: string;
   heroSecondaryBtnHref: string;
   heroBannerLinkHref: string;
+  heroTitleColor?: string;
+  heroTitleFontFamily?: string;
+  heroDescriptionColor?: string;
+  heroPrimaryBtnBgColor?: string;
+  heroPrimaryBtnTextColor?: string;
+  heroSecondaryBtnBgColor?: string;
+  heroSecondaryBtnTextColor?: string;
+  heroTextPosition?: 'left' | 'center' | 'right';
   showHeroTextOverlay: boolean;
+  hideHeroTextOnMobile?: boolean;
+  mobileBannerMode?: 'single' | 'separate';
   showHeroBadge: boolean;
   showHeroHeading: boolean;
   showHeroDescription: boolean;
@@ -52,10 +83,32 @@ export interface SiteSettings {
   updatedAt?: string;
 }
 
+export const HERO_FONT_OPTIONS = [
+  { value: 'inherit', label: 'Default Font (Inter / Sans-Serif)' },
+  { value: "'Poppins', sans-serif", label: 'Poppins (Geometric Punchy)' },
+  { value: "'Montserrat', sans-serif", label: 'Montserrat (Corporate Sharp)' },
+  { value: "'Playfair Display', serif", label: 'Playfair Display (Luxury Editorial)' },
+  { value: "'Merriweather', serif", label: 'Merriweather (Classic Book Serif)' },
+  { value: "'Oswald', sans-serif", label: 'Oswald (Industrial High-Impact)' },
+  { value: 'ui-monospace, monospace', label: 'Monospace (Technical / Calibrated)' },
+];
+
+export const COLOR_SWATCH_PRESETS = [
+  { label: 'White', color: '#FFFFFF' },
+  { label: 'PrintBazar Yellow', color: '#FFED00' },
+  { label: 'Light Slate', color: '#E2E8F0' },
+  { label: 'Jet Black', color: '#000000' },
+  { label: 'Flame Orange', color: '#F97316' },
+  { label: 'Sky Blue', color: '#38BDF8' },
+  { label: 'Emerald Green', color: '#10B981' },
+  { label: 'Coral Rose', color: '#F43F5E' },
+];
+
 export const SITE_SETTINGS_STORAGE_KEY = 'pb2_site_settings';
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   heroImageUrl: '/images/home/hero-products.jpg',
+  heroMobileImageUrl: '',
   heroAltText: 'Print Bazzar Commercial Products',
   heroBadgeText: 'COMMERCIAL PRINTING & PACKAGING OS',
   heroTitle: 'Commercial Print Excellence,',

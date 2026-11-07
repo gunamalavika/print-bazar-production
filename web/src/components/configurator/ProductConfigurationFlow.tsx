@@ -870,17 +870,23 @@ export function ProductConfigurationFlow({
     return Math.round(baseTotal * 100) / 100;
   }, [quote?.subtotal, hasActiveCombinationTiers, validCombinationTiers, quantity, referenceUnitPrice, fallbackOptionModifiers]);
 
-  const computedTax = useMemo(() => {
-    return Number(quote?.totalTax || Math.round(computedSubtotal * 0.18 * 100) / 100);
-  }, [quote?.totalTax, computedSubtotal]);
-
   const computedShipping = useMemo(() => {
     if (deliveryMethod === 'STORE_PICKUP') return 0;
     return Number(quote?.shippingAmount ?? quote?.estimatedShipping ?? 50);
   }, [deliveryMethod, quote?.shippingAmount, quote?.estimatedShipping]);
 
+  const computedTax = useMemo(() => {
+    return Number(
+      quote?.totalTax ||
+      Math.round((computedSubtotal + effectiveDesignFee + computedShipping) * 0.18 * 100) / 100
+    );
+  }, [quote?.totalTax, computedSubtotal, effectiveDesignFee, computedShipping]);
+
   const computedGrandTotal = useMemo(() => {
-    return Number(quote?.grandTotal || Math.round((computedSubtotal + computedTax + computedShipping + effectiveDesignFee) * 100) / 100);
+    return Number(
+      quote?.grandTotal ||
+      Math.round((computedSubtotal + effectiveDesignFee + computedShipping + computedTax) * 100) / 100
+    );
   }, [quote?.grandTotal, computedSubtotal, computedTax, computedShipping, effectiveDesignFee]);
 
   const computedAdvanceAmount = useMemo(() => {
@@ -1584,7 +1590,7 @@ export function ProductConfigurationFlow({
                         >
                           <div className="flex items-center justify-between">
                             <span className="font-mono font-black text-sm text-slate-950">
-                              {tier.quantity.toLocaleString()}
+                              {tier.quantity.toLocaleString()} pcs
                             </span>
                             {isSel && (
                               <div className="h-4 w-4 rounded-md bg-[#FFED00] text-slate-950 flex items-center justify-center font-bold text-[10px]">
@@ -1592,18 +1598,12 @@ export function ProductConfigurationFlow({
                               </div>
                             )}
                           </div>
-                          <div className="text-[10px] font-mono text-slate-500 mt-0.5">
-                            ₹{tier.unitPrice.toFixed(2)}/unit
-                          </div>
-                          <div className="text-xs font-bold text-slate-950 mt-1">
-                            {formatCurrency(tier.totalPrice)}
-                          </div>
                           {isMostPopular ? (
-                            <span className="inline-block mt-1.5 text-[9px] font-bold bg-[#FFED00] text-slate-950 px-1.5 py-0.5 rounded">
+                            <span className="inline-block mt-1 text-[9px] font-bold bg-[#FFED00] text-slate-950 px-1.5 py-0.5 rounded">
                               Most Popular
                             </span>
                           ) : discountPct > 0 ? (
-                            <span className="inline-block mt-1.5 text-[9px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">
+                            <span className="inline-block mt-1 text-[9px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">
                               Save {discountPct}%
                             </span>
                           ) : null}
@@ -1615,8 +1615,6 @@ export function ProductConfigurationFlow({
                   <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5">
                     {configuredPricingTiers.map((tier, idx) => {
                       const isSel = quantity === tier.quantity;
-                      const unitRate = tier.unitPrice;
-                      const totalAmt = tier.totalPrice;
                       return (
                         <button
                           key={tier.quantity}
@@ -1638,14 +1636,8 @@ export function ProductConfigurationFlow({
                               </div>
                             )}
                           </div>
-                          <div className="text-[10px] font-mono text-slate-500 mt-0.5">
-                            ₹{unitRate.toFixed(2)}/unit
-                          </div>
-                          <div className="text-xs font-bold text-slate-950 mt-1">
-                            {formatCurrency(totalAmt)}
-                          </div>
                           {idx === 0 && (
-                            <span className="inline-block mt-1.5 text-[9px] font-bold bg-[#FFED00] text-slate-950 px-1.5 py-0.5 rounded">
+                            <span className="inline-block mt-1 text-[9px] font-bold bg-[#FFED00] text-slate-950 px-1.5 py-0.5 rounded">
                               Most Popular
                             </span>
                           )}
@@ -2229,14 +2221,14 @@ export function ProductConfigurationFlow({
                 </div>
               )}
               <div className="flex justify-between text-slate-600">
-                <span>GST (18%)</span>
-                <span className="font-mono font-bold text-slate-900">+{formatCurrency(computedTax)}</span>
-              </div>
-              <div className="flex justify-between text-slate-600">
-                <span>Shipping</span>
+                <span>Courier & Delivery</span>
                 <span className="font-mono font-bold text-slate-900">
                   {computedShipping === 0 ? <span className="text-emerald-700">FREE</span> : `+${formatCurrency(computedShipping)}`}
                 </span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>GST (18% on Goods & Courier)</span>
+                <span className="font-mono font-bold text-slate-900">+{formatCurrency(computedTax)}</span>
               </div>
 
               <div className="pt-3 border-t border-slate-200 flex justify-between items-baseline">

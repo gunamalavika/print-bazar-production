@@ -19,6 +19,11 @@ import {
   RiUserSharedLine,
   RiBuilding4Line,
   RiFlashlightLine,
+  RiPaletteLine,
+  RiUserSettingsLine,
+  RiFilter3Line,
+  RiShieldCheckLine,
+  RiEyeLine,
 } from 'react-icons/ri';
 import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket-context';
@@ -31,6 +36,7 @@ export default function OperationsDashboardPage() {
   const { user: currentUser, isAuthenticated } = useAuth();
   const { isConnected, lastEvent, subscribeToOperations } = useSocket();
   const [metrics, setMetrics] = useState<any>(null);
+  const [activePipelineOrders, setActivePipelineOrders] = useState<any[]>([]);
   const [intakeOrders, setIntakeOrders] = useState<any[]>([]);
   const [unassignedDesign, setUnassignedDesign] = useState<any[]>([]);
   const [unassignedProduction, setUnassignedProduction] = useState<any[]>([]);
@@ -38,7 +44,10 @@ export default function OperationsDashboardPage() {
   const [designers, setDesigners] = useState<any[]>([]);
   const [operators, setOperators] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<'intake' | 'design' | 'production' | 'blocked'>('intake');
+  const [activeTab, setActiveTab] = useState<'active' | 'intake' | 'design' | 'production' | 'blocked'>('active');
+  const [activeSearch, setActiveSearch] = useState('');
+  const [selectedOperatorFilter, setSelectedOperatorFilter] = useState('ALL');
+  const [selectedStageFilter, setSelectedStageFilter] = useState('ALL');
 
   // Assignment Modal States
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
@@ -59,6 +68,7 @@ export default function OperationsDashboardPage() {
         blockedData,
         eligibleDesigners,
         eligibleOperators,
+        ordersData,
       ] = await Promise.all([
         api.getOperationsDashboard(),
         api.getOperationsIntakeOrders().catch(() => []),
@@ -67,6 +77,7 @@ export default function OperationsDashboardPage() {
         api.getOperationsBlockedOrders().catch(() => []),
         api.getEligibleDesigners().catch(() => []),
         api.getEligibleProductionOperators().catch(() => []),
+        api.getOperationsOrders({ limit: 100 }).catch(() => ({ orders: [] })),
       ]);
 
       const intakeList = Array.isArray(intakeData) ? intakeData : ((intakeData as any)?.data || (intakeData as any)?.orders || []);
@@ -75,8 +86,10 @@ export default function OperationsDashboardPage() {
       const blockedList = Array.isArray(blockedData) ? blockedData : ((blockedData as any)?.data || (blockedData as any)?.orders || []);
       const designerList = Array.isArray(eligibleDesigners) ? eligibleDesigners : ((eligibleDesigners as any)?.data || []);
       const operatorList = Array.isArray(eligibleOperators) ? eligibleOperators : ((eligibleOperators as any)?.data || []);
+      const pipelineList = Array.isArray(ordersData?.orders) ? ordersData.orders : Array.isArray(ordersData) ? ordersData : [];
 
       setMetrics(dashboardData);
+      setActivePipelineOrders(pipelineList);
       setIntakeOrders(intakeList);
       setUnassignedDesign(designList);
       setUnassignedProduction(prodList);
@@ -140,6 +153,245 @@ export default function OperationsDashboardPage() {
       setIsSubmitting(false);
     }
   };
+
+  // Helper to format Operator Working Status Badge
+  const getOperatorStatusBadge = (order: any) => {
+    const operator = order.assignedOperator || order.productionAssignment?.assignedUser;
+    const status = String(order.status || '').toUpperCase();
+
+    if (!operator) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-500 border border-slate-200">
+          <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+          <span>UNASSIGNED</span>
+        </span>
+      );
+    }
+
+    if (status === 'PRINTING') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 text-amber-950 border border-amber-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+          <span>PRINTING IN PROGRESS</span>
+        </span>
+      );
+    }
+
+    if (status === 'FINISHING') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-100 text-purple-950 border border-purple-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-purple-500 animate-pulse" />
+          <span>POST-PRESS FINISHING</span>
+        </span>
+      );
+    }
+
+    if (status === 'QUALITY_CHECK') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-100 text-cyan-950 border border-cyan-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-cyan-500" />
+          <span>FINAL QC GATE</span>
+        </span>
+      );
+    }
+
+    if (status === 'PACKING' || status === 'READY_FOR_DISPATCH' || status === 'OUT_FOR_DELIVERY' || status === 'DELIVERED') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-950 border border-emerald-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          <span>PRESS RUN COMPLETED</span>
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-100 text-blue-950 border border-blue-300">
+        <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+        <span>OPERATOR ACTIVE</span>
+      </span>
+    );
+  };
+
+  // Helper to format Designer Status Badge
+  const getDesignerStatusBadge = (order: any) => {
+    const designer = order.assignedDesigner || order.designAssignment?.assignedUser;
+    const status = String(order.status || '').toUpperCase();
+
+    if (!designer) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-500 border border-slate-200">
+          <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+          <span>NO DESIGNER</span>
+        </span>
+      );
+    }
+
+    if (status === 'CUSTOMER_APPROVAL_REQUIRED') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-100 text-purple-900 border border-purple-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-purple-500" />
+          <span>PROOF REVIEW</span>
+        </span>
+      );
+    }
+
+    if (status === 'ARTWORK_APPROVED' || status === 'PRODUCTION_QUEUE' || status === 'PRINTING') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          <span>PROOF APPROVED</span>
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+        <span>DESIGN IN PROGRESS</span>
+      </span>
+    );
+  };
+
+  // Helper to format Order Current Stage / State Badge & Progress Step
+  const getOrderStageBadge = (order: any) => {
+    const rawStatus = String(order.status || '').toUpperCase();
+
+    let label = 'Processing';
+    let step = '1/5 Intake';
+    let badgeClass = 'bg-slate-100 text-slate-800 border-slate-300';
+    let dotClass = 'bg-slate-400';
+    let isPulse = false;
+
+    if (rawStatus === 'INTAKE_PENDING' || rawStatus === 'PENDING' || rawStatus === 'ORDER_PLACED') {
+      label = 'Order Intake';
+      step = '1/5 Intake';
+      badgeClass = 'bg-emerald-50 text-emerald-900 border-emerald-300';
+      dotClass = 'bg-emerald-500';
+      isPulse = true;
+    } else if (rawStatus === 'DESIGN_PENDING' || rawStatus === 'DESIGN_REQUIRED' || rawStatus === 'DESIGN_IN_PROGRESS') {
+      label = 'Prepress Designing';
+      step = '2/5 Prepress';
+      badgeClass = 'bg-amber-50 text-amber-950 border-amber-300';
+      dotClass = 'bg-amber-500';
+      isPulse = true;
+    } else if (rawStatus === 'CUSTOMER_APPROVAL_REQUIRED' || rawStatus === 'ARTWORK_REVIEW') {
+      label = 'Proof Review & Sign-Off';
+      step = '2/5 Prepress';
+      badgeClass = 'bg-purple-50 text-purple-950 border-purple-300';
+      dotClass = 'bg-purple-500';
+      isPulse = true;
+    } else if (rawStatus === 'ARTWORK_APPROVED') {
+      label = 'Artwork Ready for Press';
+      step = '3/5 Queue';
+      badgeClass = 'bg-emerald-50 text-emerald-950 border-emerald-300';
+      dotClass = 'bg-emerald-500';
+    } else if (rawStatus === 'PRODUCTION_QUEUE') {
+      label = 'Production Floor Queue';
+      step = '3/5 Floor';
+      badgeClass = 'bg-blue-50 text-blue-950 border-blue-300';
+      dotClass = 'bg-blue-500';
+      isPulse = true;
+    } else if (rawStatus === 'PRINTING') {
+      label = 'Press Floor Printing';
+      step = '3/5 Floor';
+      badgeClass = 'bg-amber-100 text-amber-950 border-amber-400';
+      dotClass = 'bg-amber-600';
+      isPulse = true;
+    } else if (rawStatus === 'FINISHING') {
+      label = 'Post-Press Finishing';
+      step = '3/5 Finishing';
+      badgeClass = 'bg-purple-50 text-purple-950 border-purple-300';
+      dotClass = 'bg-purple-600';
+      isPulse = true;
+    } else if (rawStatus === 'QUALITY_CHECK') {
+      label = 'Final QC Inspection';
+      step = '4/5 Quality Gate';
+      badgeClass = 'bg-cyan-50 text-cyan-950 border-cyan-300';
+      dotClass = 'bg-cyan-600';
+      isPulse = true;
+    } else if (rawStatus === 'PACKING') {
+      label = 'Packing Station';
+      step = '5/5 Packing';
+      badgeClass = 'bg-emerald-50 text-emerald-950 border-emerald-300';
+      dotClass = 'bg-emerald-600';
+    } else if (rawStatus === 'READY_FOR_DISPATCH') {
+      label = 'Ready for Courier Pickup';
+      step = '5/5 Dispatch';
+      badgeClass = 'bg-emerald-100 text-emerald-950 border-emerald-400';
+      dotClass = 'bg-emerald-600';
+    } else if (rawStatus === 'OUT_FOR_DELIVERY') {
+      label = 'Out for Delivery';
+      step = 'In Transit';
+      badgeClass = 'bg-teal-50 text-teal-950 border-teal-300';
+      dotClass = 'bg-teal-600';
+      isPulse = true;
+    } else if (rawStatus === 'DELIVERED') {
+      label = 'Delivered & Settled';
+      step = 'Completed';
+      badgeClass = 'bg-emerald-100 text-emerald-900 border-emerald-300';
+      dotClass = 'bg-emerald-500';
+    } else if (rawStatus === 'ON_HOLD' || rawStatus === 'BLOCKED') {
+      label = 'Operational Block / Hold';
+      step = 'On Hold';
+      badgeClass = 'bg-rose-50 text-rose-950 border-rose-300';
+      dotClass = 'bg-rose-500';
+      isPulse = true;
+    } else if (rawStatus === 'CANCELLED') {
+      label = 'Order Cancelled';
+      step = 'Cancelled';
+      badgeClass = 'bg-slate-100 text-slate-600 border-slate-300';
+      dotClass = 'bg-slate-400';
+    }
+
+    return (
+      <div className="space-y-1">
+        <span
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10.5px] font-mono font-bold uppercase border shadow-2xs whitespace-nowrap ${badgeClass}`}
+        >
+          <span
+            className={`h-2 w-2 rounded-full shrink-0 ${dotClass} ${
+              isPulse ? 'animate-pulse' : ''
+            }`}
+          />
+          <span>{label}</span>
+        </span>
+        <div className="text-[10px] font-mono text-slate-400 flex items-center gap-1">
+          <span>Stage:</span>
+          <strong className="text-slate-700">{step}</strong>
+          <span>•</span>
+          <span className="text-[9px] uppercase text-slate-400">[{rawStatus}]</span>
+        </div>
+      </div>
+    );
+  };
+
+  // Filter Active Pipeline Orders
+  const filteredActiveOrders = activePipelineOrders.filter((o) => {
+    if (selectedOperatorFilter !== 'ALL') {
+      const opId = o.assignedOperator?.id || o.productionAssignment?.assignedUser?.id;
+      if (selectedOperatorFilter === 'UNASSIGNED') {
+        if (opId) return false;
+      } else if (opId !== selectedOperatorFilter) {
+        return false;
+      }
+    }
+
+    if (selectedStageFilter !== 'ALL') {
+      if (o.status !== selectedStageFilter) return false;
+    }
+
+    if (activeSearch.trim()) {
+      const q = activeSearch.toLowerCase();
+      const matchOrder = o.orderNumber?.toLowerCase().includes(q);
+      const matchCustomer = o.customer?.fullName?.toLowerCase().includes(q) || o.customer?.companyName?.toLowerCase().includes(q);
+      const matchProduct = o.items?.[0]?.productName?.toLowerCase().includes(q);
+      const matchOp = (o.assignedOperator?.fullName || o.productionAssignment?.assignedUser?.fullName)?.toLowerCase().includes(q);
+      const matchDes = (o.assignedDesigner?.fullName || o.designAssignment?.assignedUser?.fullName)?.toLowerCase().includes(q);
+      if (!matchOrder && !matchCustomer && !matchProduct && !matchOp && !matchDes) return false;
+    }
+
+    return true;
+  });
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-12">
@@ -277,12 +529,25 @@ export default function OperationsDashboardPage() {
           <span className="text-[11px] text-rose-700 font-medium mt-0.5 block">QC/Payment/File holds</span>
         </div>
 
-        <div className="bg-white border border-slate-200/90 rounded-xl p-4 shadow-xs">
-          <span className="text-[11px] font-mono uppercase font-semibold text-slate-500 block">IN PRODUCTION</span>
+        <div
+          onClick={() => setActiveTab('active')}
+          className={`border rounded-xl p-4 shadow-xs cursor-pointer transition-all ${
+            activeTab === 'active'
+              ? 'bg-blue-50/80 border-blue-400 ring-2 ring-blue-500/20 shadow-sm'
+              : 'bg-white border-slate-200/90 hover:border-blue-300 hover:bg-slate-50/50'
+          }`}
+        >
+          <span className="text-[11px] font-mono uppercase font-semibold text-slate-600 block flex items-center justify-between">
+            <span>IN PRODUCTION</span>
+            <RiUserSettingsLine className="h-3.5 w-3.5 text-blue-600" />
+          </span>
           <span className="text-[24px] font-black text-slate-900 mt-1 block tabular-nums">
             {metrics?.inProductionOrders ?? (isLoading ? '...' : 0)}
           </span>
-          <span className="text-[11px] text-slate-400 font-medium mt-0.5 block">Active on machines</span>
+          <span className="text-[11px] text-blue-600 font-medium mt-0.5 block flex items-center gap-1">
+            <span>View Operator Status</span>
+            <RiArrowRightLine className="h-3 w-3 inline" />
+          </span>
         </div>
 
         <div className="bg-white border border-slate-200/90 rounded-xl p-4 shadow-xs">
@@ -297,6 +562,21 @@ export default function OperationsDashboardPage() {
       {/* Actionable Dispatch Center Tabs */}
       <div className="bg-white border border-slate-200/90 rounded-xl shadow-xs overflow-hidden">
         <div className="flex border-b border-slate-200 bg-slate-50/70 p-2 gap-2 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('active')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'active'
+                ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80 ring-1 ring-slate-900/10'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <RiUserSettingsLine className="h-4 w-4 text-blue-600" />
+            <span>Active Operators & Pipeline</span>
+            <span className="px-1.5 py-0.2 bg-blue-100 text-blue-900 font-mono text-[10px] rounded-full font-bold">
+              {activePipelineOrders.length}
+            </span>
+          </button>
+
           <button
             onClick={() => setActiveTab('intake')}
             className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
@@ -358,6 +638,206 @@ export default function OperationsDashboardPage() {
           </button>
         </div>
 
+        {/* Tab: Active Operators & Pipeline Tracking */}
+        {activeTab === 'active' && (
+          <div className="p-5 space-y-4">
+            {/* Filter and Search Bar */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/70 p-3 rounded-lg border border-slate-200">
+              <div className="flex flex-1 items-center gap-2 w-full sm:w-auto">
+                <div className="relative flex-1 max-w-sm">
+                  <RiFilter3Line className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={activeSearch}
+                    onChange={(e) => setActiveSearch(e.target.value)}
+                    placeholder="Search by Order #, Operator, Customer, Product..."
+                    className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-md text-xs placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  {activeSearch && (
+                    <button
+                      onClick={() => setActiveSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <select
+                  value={selectedOperatorFilter}
+                  onChange={(e) => setSelectedOperatorFilter(e.target.value)}
+                  className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-md text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="ALL">All Operators ({operators.length})</option>
+                  <option value="UNASSIGNED">Unassigned Operator</option>
+                  {operators.map((op) => (
+                    <option key={op.id} value={op.id}>
+                      {op.fullName} ({op.activeLoad || 0} jobs)
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={selectedStageFilter}
+                  onChange={(e) => setSelectedStageFilter(e.target.value)}
+                  className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-md text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="ALL">All Stages</option>
+                  <option value="PRINTING">Printing Floor</option>
+                  <option value="FINISHING">Post-Press Finishing</option>
+                  <option value="QUALITY_CHECK">Quality Check</option>
+                  <option value="PRODUCTION_QUEUE">Production Queue</option>
+                  <option value="CUSTOMER_APPROVAL_REQUIRED">Proof Approval</option>
+                  <option value="DESIGN_PENDING">Design Queue</option>
+                  <option value="PACKING">Packing & Shipping</option>
+                </select>
+              </div>
+
+              <div className="text-[11px] font-mono text-slate-500 shrink-0">
+                Showing <strong className="text-slate-900">{filteredActiveOrders.length}</strong> of {activePipelineOrders.length} orders
+              </div>
+            </div>
+
+            {/* Table of Orders with Operator and Designer Status */}
+            {filteredActiveOrders.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 text-xs">
+                <RiUserSettingsLine className="h-8 w-8 text-slate-400 mx-auto mb-2 opacity-60" />
+                <p className="font-semibold text-slate-700">No orders match the current operator or stage filter.</p>
+                <p className="text-slate-400 mt-0.5">Try clearing the search query or selecting "All Operators".</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-500 font-mono text-[11px] bg-slate-50/50">
+                      <th className="py-3 px-3">ORDER #</th>
+                      <th className="py-3 px-3">CUSTOMER</th>
+                      <th className="py-3 px-3">PRODUCT & SPECS</th>
+                      <th className="py-3 px-3">ASSIGNED OPERATOR</th>
+                      <th className="py-3 px-3">OPERATOR STATUS</th>
+                      <th className="py-3 px-3">ASSIGNED DESIGNER</th>
+                      <th className="py-3 px-3">MACHINE & JOB</th>
+                      <th className="py-3 px-3">CURRENT ORDER STATE</th>
+                      <th className="py-3 px-3 text-right">DISPATCH ACTION</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredActiveOrders.map((order) => {
+                      const operator = order.assignedOperator || order.productionAssignment?.assignedUser;
+                      const designer = order.assignedDesigner || order.designAssignment?.assignedUser;
+                      const jc = order.jobCards?.[0];
+
+                      return (
+                        <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3 px-3 font-mono font-bold text-slate-900">
+                            <Link
+                              href={`/operations/orders/${order.id}`}
+                              className="hover:text-blue-600 hover:underline flex items-center gap-1.5"
+                            >
+                              <span>#{order.orderNumber}</span>
+                            </Link>
+                            <span className="text-[10px] text-slate-400 font-mono font-normal block">
+                              {formatDate(order.createdAt)}
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-3">
+                            <div className="font-semibold text-slate-800">
+                              {order.customer?.fullName || 'Walk-in Customer'}
+                            </div>
+                            <div className="text-[11px] text-slate-400 font-mono">
+                              {order.customer?.phone || order.customer?.companyName || 'No phone'}
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-3">
+                            <div className="text-slate-800 font-medium">
+                              {order.items?.[0]?.productName || `${order.items?.length || 0} Item(s)`}
+                            </div>
+                            <div className="text-[11px] text-slate-400">
+                              Qty: {order.items?.[0]?.quantity || 1} • {formatCurrency(Number(order.totalAmount || 0))}
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-3">
+                            {operator ? (
+                              <div>
+                                <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                  <RiPrinterLine className="h-3.5 w-3.5 text-blue-600" />
+                                  <span>{operator.fullName}</span>
+                                </div>
+                                <div className="text-[11px] text-slate-400 font-mono">{operator.email}</div>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => handleOpenAssign(order, 'PRODUCTION')}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100"
+                              >
+                                <RiUserSharedLine className="h-3 w-3" />
+                                <span>Assign Operator</span>
+                              </button>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-3">
+                            {getOperatorStatusBadge(order)}
+                          </td>
+
+                          <td className="py-3 px-3">
+                            {designer ? (
+                              <div>
+                                <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                                  <RiPaletteLine className="h-3.5 w-3.5 text-yellow-600" />
+                                  <span>{designer.fullName}</span>
+                                </div>
+                                <div className="mt-0.5">{getDesignerStatusBadge(order)}</div>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 italic">None required</span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-3 font-mono">
+                            {jc ? (
+                              <div>
+                                <div className="font-semibold text-slate-800">{jc.jobNumber}</div>
+                                <div className="text-[11px] text-slate-500">{jc.machine?.name || 'Auto Floor'}</div>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-sans">Pending Job Card</span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-3">
+                            {getOrderStageBadge(order)}
+                          </td>
+
+                          <td className="py-3 px-3 text-right space-x-1.5 whitespace-nowrap">
+                            <Button
+                              variant="secondary"
+                              size="xs"
+                              onClick={() => handleOpenAssign(order, 'PRODUCTION')}
+                              title="Assign or reassign production operator"
+                            >
+                              <RiPrinterLine className="h-3.5 w-3.5 mr-1 text-blue-600" />
+                              <span>{operator ? 'Reassign' : 'Assign Operator'}</span>
+                            </Button>
+                            <Link href={`/operations/orders/${order.id}`}>
+                              <Button variant="outline" size="xs">
+                                <span>Detail</span>
+                              </Button>
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Tab 0: New Order Intake Queue */}
         {activeTab === 'intake' && (
           <div className="p-5">
@@ -375,6 +855,9 @@ export default function OperationsDashboardPage() {
                       <th className="py-3 px-3">ORDER #</th>
                       <th className="py-3 px-3">CUSTOMER</th>
                       <th className="py-3 px-3">ITEMS / PRODUCT</th>
+                      <th className="py-3 px-3">CURRENT ORDER STATE</th>
+                      <th className="py-3 px-3">ASSIGNED OPERATOR</th>
+                      <th className="py-3 px-3">OPERATOR STATUS</th>
                       <th className="py-3 px-3">PAYMENT STATUS</th>
                       <th className="py-3 px-3">PRIORITY</th>
                       <th className="py-3 px-3">ORDER DATE</th>
@@ -382,7 +865,9 @@ export default function OperationsDashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {intakeOrders.map((order) => (
+                    {intakeOrders.map((order) => {
+                      const op = order.assignedOperator || order.productionAssignment?.assignedUser;
+                      return (
                       <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="py-3 px-3 font-mono font-bold text-slate-900">
                           <Link
@@ -403,6 +888,22 @@ export default function OperationsDashboardPage() {
                           <div className="text-[11px] text-slate-400">
                             Qty: {order.items?.[0]?.quantity || 1} • {formatCurrency(Number(order.totalAmount || 0))}
                           </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          {getOrderStageBadge(order)}
+                        </td>
+                        <td className="py-3 px-3">
+                          {op ? (
+                            <div className="font-semibold text-slate-800 flex items-center gap-1">
+                              <RiPrinterLine className="h-3 w-3 text-blue-600" />
+                              <span>{op.fullName}</span>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 font-mono">Unassigned</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3">
+                          {getOperatorStatusBadge(order)}
                         </td>
                         <td className="py-3 px-3">
                           <span
@@ -457,7 +958,8 @@ export default function OperationsDashboardPage() {
                           </Link>
                         </td>
                       </tr>
-                    ))}
+                    );
+                  })}
                   </tbody>
                 </table>
               </div>
@@ -482,6 +984,8 @@ export default function OperationsDashboardPage() {
                       <th className="py-3 px-3">ORDER #</th>
                       <th className="py-3 px-3">CUSTOMER</th>
                       <th className="py-3 px-3">ITEMS / PRODUCT</th>
+                      <th className="py-3 px-3">CURRENT ORDER STATE</th>
+                      <th className="py-3 px-3">DESIGN STATUS</th>
                       <th className="py-3 px-3">PRIORITY</th>
                       <th className="py-3 px-3">ORDER DATE</th>
                       <th className="py-3 px-3 text-right">DISPATCH ACTION</th>
@@ -509,6 +1013,12 @@ export default function OperationsDashboardPage() {
                           <div className="text-[11px] text-slate-400">
                             Qty: {order.items?.[0]?.quantity || 1} • {formatCurrency(Number(order.totalAmount || 0))}
                           </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          {getOrderStageBadge(order)}
+                        </td>
+                        <td className="py-3 px-3">
+                          {getDesignerStatusBadge(order)}
                         </td>
                         <td className="py-3 px-3">
                           <span
@@ -567,8 +1077,9 @@ export default function OperationsDashboardPage() {
                       <th className="py-3 px-3">ORDER #</th>
                       <th className="py-3 px-3">CUSTOMER</th>
                       <th className="py-3 px-3">JOB CARD & MACHINE</th>
+                      <th className="py-3 px-3">OPERATOR STATUS</th>
+                      <th className="py-3 px-3">CURRENT ORDER STATE</th>
                       <th className="py-3 px-3">PRIORITY</th>
-                      <th className="py-3 px-3">STAGE</th>
                       <th className="py-3 px-3 text-right">DISPATCH ACTION</th>
                     </tr>
                   </thead>
@@ -594,6 +1105,12 @@ export default function OperationsDashboardPage() {
                             <div className="text-[11px] text-slate-500">{jc?.machine?.name || 'Unassigned Press'}</div>
                           </td>
                           <td className="py-3 px-3">
+                            {getOperatorStatusBadge(order)}
+                          </td>
+                          <td className="py-3 px-3">
+                            {getOrderStageBadge(order)}
+                          </td>
+                          <td className="py-3 px-3">
                             <span
                               className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
                                 order.priority === 'URGENT'
@@ -605,9 +1122,6 @@ export default function OperationsDashboardPage() {
                             >
                               {order.priority || 'NORMAL'}
                             </span>
-                          </td>
-                          <td className="py-3 px-3 font-mono text-slate-600">
-                            {order.status}
                           </td>
                           <td className="py-3 px-3 text-right space-x-2">
                             <Button
@@ -666,8 +1180,8 @@ export default function OperationsDashboardPage() {
                             #{order.orderNumber}
                           </Link>
                         </td>
-                        <td className="py-3 px-3 font-mono font-semibold text-slate-700">
-                          {order.status}
+                        <td className="py-3 px-3">
+                          {getOrderStageBadge(order)}
                         </td>
                         <td className="py-3 px-3">
                           <div className="flex items-center gap-1.5 text-rose-700 font-semibold">
@@ -719,10 +1233,19 @@ export default function OperationsDashboardPage() {
                   <div className="font-bold text-slate-800">{d.fullName}</div>
                   <div className="text-[11px] text-slate-400 font-mono">{d.email}</div>
                 </div>
-                <div className="text-right">
+                <div className="flex items-center gap-2">
                   <span className="font-mono font-bold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200">
                     {d.activeLoad} active job(s)
                   </span>
+                  <button
+                    onClick={() => {
+                      setActiveSearch(d.fullName);
+                      setActiveTab('active');
+                    }}
+                    className="text-[11px] font-semibold text-yellow-700 hover:text-yellow-900 hover:underline px-2 py-0.5 rounded bg-yellow-50 border border-yellow-200"
+                  >
+                    View Status →
+                  </button>
                 </div>
               </div>
             ))}
@@ -748,10 +1271,19 @@ export default function OperationsDashboardPage() {
                   <div className="font-bold text-slate-800">{op.fullName}</div>
                   <div className="text-[11px] text-slate-400 font-mono">{op.email}</div>
                 </div>
-                <div className="text-right">
+                <div className="flex items-center gap-2">
                   <span className="font-mono font-bold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200">
                     {op.activeLoad} active job(s)
                   </span>
+                  <button
+                    onClick={() => {
+                      setSelectedOperatorFilter(op.id);
+                      setActiveTab('active');
+                    }}
+                    className="text-[11px] font-semibold text-blue-700 hover:text-blue-900 hover:underline px-2 py-0.5 rounded bg-blue-50 border border-blue-200"
+                  >
+                    View Status →
+                  </button>
                 </div>
               </div>
             ))}

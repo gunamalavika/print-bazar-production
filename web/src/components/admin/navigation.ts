@@ -22,6 +22,7 @@ import {
   RiScales3Line,
   RiCalculatorLine,
   RiBarChart2Line,
+  RiKanbanView2,
 } from 'react-icons/ri';
 
 export interface AdminNavItem {
@@ -190,6 +191,19 @@ export const CANONICAL_ADMIN_NAV: AdminNavItem[] = [
     section: 'QUALITY_GATES',
     order: 40,
     description: 'Pre-flight file verification & proof approvals',
+  },
+  {
+    id: 'design-process-kanban',
+    label: 'Design Process Kanban',
+    href: '/prepress/kanban',
+    icon: RiKanbanView2,
+    requiredPermissions: ['artwork.read'],
+    matchMode: 'all',
+    section: 'QUALITY_GATES',
+    order: 41,
+    badge: 'BOARD',
+    badgeVariant: 'yellow',
+    description: 'Design department process: Artwork Check → Designing → Waiting for Approval → Ready to Print',
   },
   {
     id: 'qc',

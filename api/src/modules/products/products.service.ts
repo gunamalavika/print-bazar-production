@@ -13,14 +13,35 @@ export interface SiteMarqueeItemDto {
 export interface SiteHeroImageDto {
   id: string;
   imageUrl: string;
+  mobileImageUrl?: string;
+  mobileAltText?: string;
   altText?: string;
   badgeText?: string;
+  badgeBgColor?: string;
+  badgeTextColor?: string;
   linkHref?: string;
   isActive: boolean;
+  // Per-slide H1 title, description, buttons, colors & font
+  title?: string;
+  titleHighlight?: string;
+  titleColor?: string;
+  titleFontFamily?: string;
+  description?: string;
+  descriptionColor?: string;
+  primaryBtnText?: string;
+  primaryBtnHref?: string;
+  primaryBtnBgColor?: string;
+  primaryBtnTextColor?: string;
+  secondaryBtnText?: string;
+  secondaryBtnHref?: string;
+  secondaryBtnBgColor?: string;
+  secondaryBtnTextColor?: string;
+  textPosition?: 'left' | 'center' | 'right';
 }
 
 export interface SiteSettingsDto {
   heroImageUrl: string;
+  heroMobileImageUrl?: string;
   heroAltText: string;
   heroBadgeText: string;
   heroTitle: string;
@@ -32,7 +53,17 @@ export interface SiteSettingsDto {
   heroSecondaryBtnText: string;
   heroSecondaryBtnHref: string;
   heroBannerLinkHref: string;
+  heroTitleColor?: string;
+  heroTitleFontFamily?: string;
+  heroDescriptionColor?: string;
+  heroPrimaryBtnBgColor?: string;
+  heroPrimaryBtnTextColor?: string;
+  heroSecondaryBtnBgColor?: string;
+  heroSecondaryBtnTextColor?: string;
+  heroTextPosition?: 'left' | 'center' | 'right';
   showHeroTextOverlay: boolean;
+  hideHeroTextOnMobile?: boolean;
+  mobileBannerMode?: 'single' | 'separate';
   showHeroBadge: boolean;
   showHeroHeading: boolean;
   showHeroDescription: boolean;
@@ -52,6 +83,7 @@ export interface SiteSettingsDto {
 
 const DEFAULT_SITE_SETTINGS: SiteSettingsDto = {
   heroImageUrl: '/images/home/hero-products.jpg',
+  heroMobileImageUrl: '',
   heroAltText: 'Print Bazzar Commercial Products',
   heroBadgeText: 'COMMERCIAL PRINTING & PACKAGING OS',
   heroTitle: 'Commercial Print Excellence,',
@@ -320,12 +352,15 @@ export class ProductsService {
       ...current,
       ...dto,
       heroImageUrl: dto.heroImageUrl ?? current.heroImageUrl,
+      heroMobileImageUrl: dto.heroMobileImageUrl ?? current.heroMobileImageUrl,
       heroAltText: dto.heroAltText ?? current.heroAltText,
       heroBadgeText: dto.heroBadgeText ?? current.heroBadgeText,
       heroStartingPrice: dto.heroStartingPrice ?? current.heroStartingPrice,
       heroStartingSubtitle: dto.heroStartingSubtitle ?? current.heroStartingSubtitle,
       heroSlaTitle: dto.heroSlaTitle ?? current.heroSlaTitle,
       heroSlaSubtitle: dto.heroSlaSubtitle ?? current.heroSlaSubtitle,
+      hideHeroTextOnMobile: dto.hideHeroTextOnMobile ?? current.hideHeroTextOnMobile,
+      mobileBannerMode: dto.mobileBannerMode ?? current.mobileBannerMode,
       heroImages: Array.isArray(dto.heroImages) ? dto.heroImages : current.heroImages,
       marqueeItems: Array.isArray(dto.marqueeItems) ? dto.marqueeItems : current.marqueeItems,
       updatedAt: new Date().toISOString(),

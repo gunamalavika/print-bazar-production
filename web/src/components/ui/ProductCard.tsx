@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Heart, Star } from 'lucide-react';
+import { Heart } from 'lucide-react';
 import { useWishlist } from '@/lib/wishlist';
 
 export interface ProductCardProps {
@@ -20,8 +20,6 @@ export interface ProductCardProps {
   sku?: string;
   categoryName?: string;
   productionDays?: number | string;
-  rating?: number;
-  ratingCount?: number;
   actionText?: string;
   className?: string;
   onAddToCart?: (id: string) => void;
@@ -40,8 +38,6 @@ export function ProductCard({
   image,
   fallbackImage = 'https://images.unsplash.com/photo-1589829085413-56de8ae18c73?w=800&auto=format&fit=crop&q=80',
   tag,
-  rating = 5,
-  ratingCount = 96,
   actionText = 'Order Now',
   className = '',
   onAddToCart,
@@ -143,19 +139,6 @@ export function ProductCard({
                 {priceUnit}
               </span>
             )}
-          </div>
-
-          {/* Star Rating & Review Count (reduced equal gap directly below price) */}
-          <div className="flex items-center gap-0.5 mt-1 sm:mt-1.5">
-            {[...Array(5)].map((_, i) => (
-              <Star
-                key={i}
-                className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-[#FACC15] text-[#FACC15]"
-              />
-            ))}
-            <span className="text-[10px] sm:text-[11px] text-neutral-400 font-medium ml-1 tabular-nums">
-              ({ratingCount})
-            </span>
           </div>
         </div>
       </div>

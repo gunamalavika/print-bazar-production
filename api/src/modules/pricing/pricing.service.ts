@@ -437,6 +437,7 @@ export class PricingService {
     const isSingleTypeProduct =
       product.pricingModel === 'SINGLE' ||
       product.pricingModel === 'SINGLE_RANGE' ||
+      product.pricingModel === 'VOLUME_TIER' ||
       (product.tags && product.tags.includes('SINGLE_TYPE'));
 
     if (isSingleTypeProduct && product.pricingMatrices && product.pricingMatrices.length > 0) {
@@ -1271,9 +1272,9 @@ export class PricingService {
         ? shippingBreakdown.finalShippingAmount
         : 0;
 
-      const grandTotal = Math.round(
-        (subtotal + shipTaxResult.gstAmount + estimatedShipping) * 100,
-      ) / 100;
+      const taxableBase = Math.round((subtotal + estimatedShipping) * 100) / 100;
+      const totalTax = Math.round(taxableBase * 0.18 * 100) / 100;
+      const grandTotal = Math.round((taxableBase + totalTax) * 100) / 100;
 
       const avgUnitPrice = totalVariantQuantity > 0
         ? Math.round((printItemsTotal / totalVariantQuantity) * 100) / 100
@@ -1578,22 +1579,24 @@ export class PricingService {
       dto.isInterState || false,
     );
 
-    const cgst = shipTaxResult.cgst;
-    const sgst = shipTaxResult.sgst;
-    const igst = shipTaxResult.igst;
-    const totalTax = shipTaxResult.gstAmount;
     const estimatedShipping = dto.shippingPincode
       ? shippingBreakdown.finalShippingAmount
       : 0;
     const courierRate = shippingBreakdown.baseShippingCharge;
     const freeShippingThreshold = shippingBreakdown.freeShippingThreshold;
 
+    const taxableBase = Math.round((subtotal + estimatedShipping) * 100) / 100;
+    const totalTax = Math.round(taxableBase * 0.18 * 100) / 100;
+    const cgst = Math.round((totalTax / 2) * 100) / 100;
+    const sgst = Math.round((totalTax - cgst) * 100) / 100;
+    const igst = totalTax;
+
     const allowCod = false;
     const codSurcharge = 0;
     const codCharge = 0;
     const paymentMethod = dto.paymentMethod || 'FULL';
 
-    const grandTotal = Math.round((subtotal + totalTax + estimatedShipping) * 100) / 100;
+    const grandTotal = Math.round((taxableBase + totalTax) * 100) / 100;
 
     // Enrich specifications snapshot with flow engine meta
     specificationsSnapshot['_artworkRequirement'] = {
