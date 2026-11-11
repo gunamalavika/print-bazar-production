@@ -148,17 +148,17 @@ export function BestSellers() {
     <section className="bg-white py-12 sm:py-16 lg:py-20 border-b border-neutral-200/70 w-full max-w-full overflow-hidden">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Section Header: Title & Subtitle on Left, Scroll Controls & View All on Right */}
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6 sm:mb-8">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-900 font-sans">
+        <div className="flex items-start sm:items-center justify-between gap-3 mb-4 sm:mb-6">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg sm:text-2xl font-bold tracking-tight text-neutral-900 font-sans">
               Best Sellers
             </h2>
-            <p className="text-xs sm:text-sm text-neutral-500 mt-1 font-sans">
-              Top performing and highest rated print essentials.
+            <p className="text-[11px] sm:text-xs text-neutral-500 mt-0.5 leading-tight sm:leading-normal line-clamp-1 sm:line-clamp-none font-sans">
+              Top performing and highest rated print essentials
             </p>
           </div>
 
-          <div className="flex items-center gap-3 self-end sm:self-auto">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 pt-0.5 sm:pt-0">
             {/* Desktop / Tablet Scroll Controls */}
             <div className="hidden sm:flex items-center gap-1.5">
               <button
@@ -192,26 +192,25 @@ export function BestSellers() {
             {/* View All Link */}
             <Link
               href="/products"
-              className="group inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-neutral-900 hover:text-black transition-colors ml-1"
+              className="group inline-flex items-center gap-1 text-[11.5px] sm:text-sm font-bold text-neutral-800 hover:text-black transition-colors whitespace-nowrap bg-neutral-100 sm:bg-transparent px-2.5 py-1 sm:p-0 rounded-full sm:rounded-none"
             >
-              <span>View All</span>
-              <span className="w-5 h-5 rounded-full bg-[#FFED00] text-black flex items-center justify-center font-bold shadow-2xs transition-transform duration-200 group-hover:translate-x-0.5">
-                <ArrowRight className="w-3 h-3 stroke-[2.5]" />
-              </span>
+              <span>View all</span>
+              <span className="hidden sm:inline"> bestsellers</span>
+              <ArrowRight className="w-3.5 h-3.5 stroke-[2.2] transition-transform duration-150 group-hover:translate-x-0.5" />
             </Link>
           </div>
         </div>
 
-        {/* 1 Row with Exactly 5 Products in View on Desktop + Remaining Scrollable */}
+        {/* 1 Row with 2.45 cards on mobile, 3 on tablet, 5 on desktop */}
         <div
           ref={scrollRef}
-          className="flex flex-nowrap gap-4 sm:gap-4 lg:gap-4 overflow-x-auto scroll-smooth scrollbar-none snap-x snap-mandatory pb-3 pt-1"
+          className="flex flex-nowrap gap-2.5 sm:gap-4 lg:gap-4 overflow-x-auto scroll-smooth scrollbar-none snap-x snap-mandatory pb-3 pt-1 -mx-4 px-4 sm:mx-0 sm:px-0"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {BEST_SELLER_PRODUCTS.map((prod) => (
             <div
               key={prod.id}
-              className="flex-shrink-0 snap-start w-[220px] min-w-[220px] sm:w-[calc((100%-2*16px)/3)] sm:min-w-[calc((100%-2*16px)/3)] lg:w-[calc((100%-4*16px)/5)] lg:min-w-[calc((100%-4*16px)/5)]"
+              className="flex-shrink-0 snap-start w-[calc((100vw-36px)/2.45)] min-w-[calc((100vw-36px)/2.45)] max-w-[calc((100vw-36px)/2.45)] sm:w-[calc((100%-2*16px)/3)] sm:min-w-[calc((100%-2*16px)/3)] sm:max-w-none lg:w-[calc((100%-4*16px)/5)] lg:min-w-[calc((100%-4*16px)/5)]"
             >
               <ProductCard
                 id={prod.id}

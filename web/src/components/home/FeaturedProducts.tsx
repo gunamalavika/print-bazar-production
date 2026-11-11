@@ -79,23 +79,24 @@ export function FeaturedProducts() {
   return (
     <section className="bg-white py-12 sm:py-16 lg:py-20 border-b border-neutral-200/70 w-full max-w-full overflow-hidden">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Section Header: "Trending Products" on left, "View all products →" on right */}
-        <div className="flex items-center justify-between mb-6 sm:mb-8">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 tracking-tight font-sans">
+        {/* Section Header: Responsive Title & View All */}
+        <div className="flex items-start sm:items-center justify-between gap-3 mb-4 sm:mb-6">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg sm:text-2xl font-bold text-neutral-900 tracking-tight font-sans">
               Trending Products
             </h2>
-            <p className="text-xs text-neutral-500 mt-0.5">
+            <p className="text-[11px] sm:text-xs text-neutral-500 mt-0.5 leading-tight sm:leading-normal line-clamp-1 sm:line-clamp-none font-sans">
               Hand-picked bestsellers and customer favorites directly from our press
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 pt-0.5 sm:pt-0">
             <Link
               href="/products"
-              className="group inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-neutral-600 hover:text-black transition-colors"
+              className="group inline-flex items-center gap-1 text-[11.5px] sm:text-sm font-bold text-neutral-800 hover:text-black transition-colors whitespace-nowrap bg-neutral-100 sm:bg-transparent px-2.5 py-1 sm:p-0 rounded-full sm:rounded-none"
             >
-              <span>View all products</span>
+              <span>View all</span>
+              <span className="hidden sm:inline"> products</span>
               <ArrowRight className="w-3.5 h-3.5 stroke-[2.2] transition-transform duration-150 group-hover:translate-x-0.5" />
             </Link>
 
@@ -134,10 +135,10 @@ export function FeaturedProducts() {
           </div>
         </div>
 
-        {/* Products Row: Cards in a Row on Desktop, Horizontally Scrollable */}
+        {/* Products Row: 2 Full Products + Half of 3rd Product visible on Mobile First View (2.45 cards) */}
         <div
           ref={scrollRef}
-          className="flex items-stretch gap-4 sm:gap-5 overflow-x-auto scrollbar-none scroll-smooth pb-3 pt-1 touch-pan-x"
+          className="flex items-stretch gap-2.5 sm:gap-4 lg:gap-5 overflow-x-auto scrollbar-none scroll-smooth pb-3 pt-1 touch-pan-x -mx-4 px-4 sm:mx-0 sm:px-0 snap-x snap-mandatory"
           style={{
             scrollbarWidth: 'none',
             msOverflowStyle: 'none',
@@ -154,7 +155,7 @@ export function FeaturedProducts() {
             return (
               <div
                 key={prod.id}
-                className="flex-shrink-0 w-[180px] min-w-[180px] sm:w-[calc((100%-2*16px)/3)] sm:min-w-[calc((100%-2*16px)/3)] lg:w-[calc((100%-4*20px)/5)] lg:min-w-[calc((100%-4*20px)/5)] lg:max-w-[calc((100%-4*20px)/5)]"
+                className="flex-shrink-0 snap-start w-[calc((100vw-36px)/2.45)] min-w-[calc((100vw-36px)/2.45)] max-w-[calc((100vw-36px)/2.45)] sm:w-[calc((100%-2*16px)/3)] sm:min-w-[calc((100%-2*16px)/3)] sm:max-w-none lg:w-[calc((100%-4*20px)/5)] lg:min-w-[calc((100%-4*20px)/5)] lg:max-w-[calc((100%-4*20px)/5)]"
               >
                 <ProductCard
                   id={prod.id}

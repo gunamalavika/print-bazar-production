@@ -101,54 +101,55 @@ export function Navbar() {
       <TopMarqueeBar />
 
       {/* 2. MAIN STOREFRONT HEADER */}
-      <header className="px-3 sm:px-8 py-2.5 sm:py-3.5 bg-white border-b border-[#E5E5E5] w-full relative z-30">
+      <header className="px-3 sm:px-8 py-2 sm:py-2.5 bg-white border-b border-[#E5E5E5] w-full relative z-30">
         <div className="mx-auto max-w-7xl flex items-center justify-between gap-2 sm:gap-4 lg:gap-8">
-          {/* Brand Logo */}
+          {/* Brand Logo - Sleek & compact on mobile, standard on desktop */}
           <Link href="/" className="flex items-center group flex-shrink-0" aria-label="Print Bazzar Home">
             <Image
               src="/brand-logo.png"
               alt="Print Bazzar"
-              width={212}
-              height={40}
+              width={160}
+              height={30}
               priority
               style={{ width: 'auto', height: 'auto' }}
-              className="h-7 sm:h-8 md:h-9 lg:h-10 w-auto object-contain transition-transform duration-200 group-hover:scale-102"
+              className="h-[17px] xs:h-[18px] sm:h-[24px] md:h-[28px] lg:h-[30px] w-auto object-contain transition-transform duration-200 group-hover:scale-102"
             />
           </Link>
 
           {/* Right Actions */}
-          <div className="flex items-center gap-2 sm:gap-2.5">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
             {/* Search Icon Button - Opens Side Drawer */}
             <button
               type="button"
               onClick={() => setSearchDrawerOpen(true)}
               aria-label="Open search drawer"
-              className="relative w-9 h-9 flex items-center justify-center text-black hover:text-black rounded-full hover:bg-neutral-100 transition-colors group cursor-pointer"
+              className="relative w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-black hover:text-black rounded-full hover:bg-neutral-100 transition-colors group cursor-pointer shrink-0"
               title="Search products"
             >
-              <Search className="h-[20px] w-[20px] text-black group-hover:scale-110 transition-transform" />
+              <Search className="h-[18px] w-[18px] sm:h-[20px] sm:w-[20px] text-black group-hover:scale-110 transition-transform" />
             </button>
+
             {/* Wishlist Button - Icon Only */}
             <Link
               href="/wishlist"
-              className="relative w-9 h-9 flex items-center justify-center text-black hover:text-black rounded-full hover:bg-neutral-100 transition-colors group"
+              className="relative w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-black hover:text-black rounded-full hover:bg-neutral-100 transition-colors group shrink-0"
               title="Saved Wishlist"
               aria-label="Wishlist"
             >
               <div className="relative flex items-center justify-center">
-                <Heart className="h-[20px] w-[20px] text-black group-hover:scale-110 transition-transform" />
+                <Heart className="h-[18px] w-[18px] sm:h-[20px] sm:w-[20px] text-black group-hover:scale-110 transition-transform" />
                 {wishlistCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-[17px] h-[17px] px-0.5 rounded-full bg-[#FFED00] text-black font-bold text-[9px] flex items-center justify-center border border-black shadow-xs">
+                  <span className="absolute -top-1 -right-1 sm:-top-1.5 sm:-right-1.5 min-w-[15px] sm:min-w-[17px] h-[15px] sm:h-[17px] px-0.5 rounded-full bg-[#FFED00] text-black font-bold text-[8.5px] sm:text-[9px] flex items-center justify-center border border-black shadow-xs">
                     {wishlistCount > 99 ? '99+' : wishlistCount}
                   </span>
                 )}
               </div>
             </Link>
 
-            {/* Cart Button - Icon Only */}
+            {/* Cart Button - Hidden on mobile view alone, visible on sm and above */}
             <Link
               href="/cart"
-              className="relative w-9 h-9 flex items-center justify-center text-black hover:text-black rounded-full hover:bg-neutral-100 transition-colors group"
+              className="relative hidden sm:flex w-9 h-9 items-center justify-center text-black hover:text-black rounded-full hover:bg-neutral-100 transition-colors group shrink-0"
               title="Shopping Cart"
               aria-label="Shopping Cart"
             >
@@ -162,18 +163,19 @@ export function Navbar() {
               </div>
             </Link>
 
-            {/* User Profile or Login */}
+            {/* User Profile or Login - Hidden on mobile view alone, visible on sm and above */}
             {isAuthenticated && user ? (
-              <div ref={userDropdownRef} className="relative z-50">
+              <div ref={userDropdownRef} className="relative z-50 shrink-0 hidden sm:block">
                 <button
                   type="button"
                   onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                  aria-label="User Account Menu"
                   className="flex items-center gap-2 px-3 py-1.5 rounded-[8px] border border-[#E5E7EB] hover:border-black text-[13px] font-semibold text-black bg-white transition cursor-pointer shadow-2xs"
                 >
                   <div className="h-5 w-5 rounded-full bg-[#FFED00] text-black font-bold text-[10px] flex items-center justify-center border border-black/10">
                     {user.fullName.charAt(0).toUpperCase()}
                   </div>
-                  <span className="hidden sm:inline max-w-[120px] truncate">
+                  <span className="max-w-[120px] truncate">
                     {user.fullName.split(' ')[0]}
                   </span>
                   <ChevronDown className="h-3 w-3 text-[#64748B]" />
@@ -236,20 +238,12 @@ export function Navbar() {
             ) : (
               <Link
                 href="/login"
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-[8px] bg-[#FFED00] text-black text-[13px] font-bold border border-black/10 shadow-xs hover:bg-[#F2E100] transition-colors cursor-pointer"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-[8px] bg-[#FFED00] text-black text-[13px] font-bold border border-black/10 shadow-xs hover:bg-[#F2E100] transition-colors cursor-pointer shrink-0"
               >
                 <User className="h-4 w-4" />
                 <span>Login</span>
               </Link>
             )}
-
-            {/* Mobile Menu Toggle */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 md:hidden text-black hover:bg-[#F5F5F5] rounded-[6px]"
-            >
-              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </button>
           </div>
         </div>
       </header>

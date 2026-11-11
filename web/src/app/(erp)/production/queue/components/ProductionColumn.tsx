@@ -67,15 +67,14 @@ export function ProductionColumn({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`w-[320px] flex-shrink-0 flex flex-col bg-slate-100/80 rounded-2xl border transition-all duration-200 ${
-        isDragOver
+      className={`w-[85vw] max-w-[320px] sm:w-[320px] flex-shrink-0 flex flex-col bg-slate-100/80 rounded-2xl border transition-all duration-200 ${isDragOver
           ? isValidDropTarget
             ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-400 shadow-md'
             : 'border-rose-400 bg-rose-50/30 ring-1 ring-rose-300'
           : isValidDropTarget && draggedCard
-          ? 'border-amber-400/80 bg-amber-50/20'
-          : 'border-slate-200/90'
-      }`}
+            ? 'border-amber-400/80 bg-amber-50/20'
+            : 'border-slate-200/90'
+        }`}
     >
       {/* Top Accent Color Bar */}
       <div
@@ -135,11 +134,10 @@ export function ProductionColumn({
         {/* Empty State / Dropzone */}
         {column.cards.length === 0 && (
           <div
-            className={`h-36 rounded-xl border-2 border-dashed flex flex-col items-center justify-center p-4 text-center transition-colors ${
-              isDragOver && isValidDropTarget
+            className={`h-36 rounded-xl border-2 border-dashed flex flex-col items-center justify-center p-4 text-center transition-colors ${isDragOver && isValidDropTarget
                 ? 'border-emerald-500 bg-emerald-100/50 text-emerald-800'
                 : 'border-slate-300/80 bg-slate-50/50 text-slate-400'
-            }`}
+              }`}
           >
             <RiInboxLine className="h-6 w-6 mb-1 text-slate-400" />
             <span className="text-xs font-semibold text-slate-600">No active jobs</span>

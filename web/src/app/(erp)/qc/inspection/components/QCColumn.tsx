@@ -70,7 +70,7 @@ export function QCColumn({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`w-[320px] flex-shrink-0 flex flex-col bg-slate-100/80 rounded-2xl border transition-all duration-200 ${
+      className={`w-[85vw] max-w-[320px] sm:w-[320px] flex-shrink-0 flex flex-col bg-slate-100/80 rounded-2xl border transition-all duration-200 ${
         isDragOver
           ? isValidDropTarget
             ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-400 shadow-md'

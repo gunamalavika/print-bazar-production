@@ -26,6 +26,14 @@ import {
 import { api, DynamicProduct, ProductCategoryItem, resolveImageUrl } from '@/lib/api';
 import { Button, Skeleton, EmptyState, ProductCard } from '@/components/ui';
 
+const PRODUCT_FALLBACK_IMAGES: Record<string, string> = {
+  'luxury-rollup-standee': '/images/home/prod-banners.jpg',
+  'custom-rigid-box': '/images/home/prod-boxes.jpg',
+  'premium-visiting-cards': '/images/home/prod-cards.jpg',
+  'visiting-card-pro': '/images/home/prod-cards.jpg',
+  't-shirt': '/images/home/prod-tshirts.jpg',
+};
+
 interface CategoryConfig {
   id: string;
   name: string;
@@ -117,6 +125,18 @@ function ProductsCatalogueContent() {
       setSearchQuery(searchParam);
     }
   }, [searchParams]);
+
+  // Prevent background scroll when mobile filter drawer is open
+  useEffect(() => {
+    if (mobileFilterOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [mobileFilterOpen]);
 
   // Load products and categories from backend
   useEffect(() => {
@@ -247,22 +267,22 @@ function ProductsCatalogueContent() {
     <div className="min-h-screen bg-[#FFFFFF] pb-24 w-full max-w-full overflow-x-clip font-sans">
       <div className="mx-auto max-w-[1400px] px-3.5 sm:px-6 lg:px-8 pt-5 sm:pt-7">
         {/* 1. CATALOGUE HERO SECTION */}
-        <div className="relative overflow-hidden rounded-[14px] sm:rounded-2xl bg-gradient-to-r from-[#FAF8F5] via-[#FFFDF7] to-[#FDFBF7] border border-[#EBE8DF] p-5 sm:p-7 lg:p-9 mb-7 shadow-xs">
-          <div className="flex flex-col lg:flex-row items-center justify-between gap-6 lg:gap-8">
+        <div className="relative overflow-hidden rounded-[14px] sm:rounded-2xl bg-gradient-to-r from-[#FAF8F5] via-[#FFFDF7] to-[#FDFBF7] border border-[#EBE8DF] p-4 sm:p-7 lg:p-9 mb-4 sm:mb-7 shadow-xs">
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-4 lg:gap-8">
             {/* Left Content */}
             <div className="max-w-2xl">
-              <div className="flex items-center gap-2.5 mb-2.5">
+              <div className="flex items-center gap-2 mb-1.5 sm:mb-2.5">
                 <span className="text-[10px] sm:text-[11px] font-mono font-bold tracking-widest text-[#B45309] uppercase">
                   Industrial Print Catalogue
                 </span>
-                <span className="h-[2px] w-12 bg-[#FFDD00]" />
+                <span className="h-[2px] w-8 sm:w-12 bg-[#FFDD00]" />
               </div>
 
-              <h1 className="text-[22px] sm:text-3xl lg:text-[34px] font-extrabold text-[#111827] tracking-tight leading-tight">
+              <h1 className="text-lg xs:text-xl sm:text-3xl lg:text-[34px] font-extrabold text-[#111827] tracking-tight leading-tight">
                 Manufacturing Substrates & Finishing.
               </h1>
 
-              <p className="mt-2 text-[12.5px] sm:text-[13.5px] text-[#64748B] leading-relaxed max-w-xl">
+              <p className="mt-1.5 sm:mt-2 text-xs sm:text-[13.5px] text-[#64748B] leading-relaxed max-w-xl">
                 Every product is produced on factory-calibrated Heidelberg offset, HP
                 Indigo digital, and Roland roll-fed machinery. Configure dimensions,
                 GSM, materials, and finishing options to receive instant server-backed
@@ -270,8 +290,8 @@ function ProductsCatalogueContent() {
               </p>
             </div>
 
-            {/* Right Mockup Image Asset */}
-            <div className="w-full lg:w-auto shrink-0 flex justify-center">
+            {/* Right Mockup Image Asset - Hidden on mobile to bring products above the fold */}
+            <div className="w-full lg:w-auto shrink-0 hidden sm:flex justify-center">
               <div className="relative w-full max-w-[420px] sm:max-w-[460px] aspect-[16/10] overflow-hidden rounded-xl border border-black/10 shadow-sm bg-white">
                 <img
                   src="/images/catalogue-hero.jpg"
@@ -284,31 +304,30 @@ function ProductsCatalogueContent() {
         </div>
 
         {/* 2. MOBILE CATEGORY SELECTOR & FILTER TRIGGER */}
-        <div className="lg:hidden mb-5 sticky top-[120px] z-20 bg-white/95 backdrop-blur-xs py-2 -mx-3.5 px-3.5 border-b border-[#E5E7EB]">
+        <div className="lg:hidden mb-4 sticky top-[72px] sm:top-[76px] z-20 bg-white/95 backdrop-blur-md py-2 -mx-3.5 px-3.5 border-b border-[#E5E7EB]">
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setMobileFilterOpen(!mobileFilterOpen)}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-white border border-[#E5E7EB] text-xs font-bold text-slate-800 shadow-2xs hover:border-black"
+              onClick={() => setMobileFilterOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-[#E5E7EB] text-xs font-bold text-black shadow-2xs hover:border-black shrink-0 transition-colors cursor-pointer"
             >
               <SlidersHorizontal className="h-3.5 w-3.5 text-black" />
-              <span>Categories ({SIDEBAR_CATEGORIES.length})</span>
-              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${mobileFilterOpen ? 'rotate-180' : ''}`} />
+              <span>Filter</span>
             </button>
 
-            {/* Quick horizontal category chip scroll */}
+            {/* Quick horizontal category chip scroll (ALL categories) */}
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-              {SIDEBAR_CATEGORIES.slice(0, 4).map((cat) => {
+              {SIDEBAR_CATEGORIES.map((cat) => {
                 const isSelected = selectedCatId === cat.id;
                 return (
                   <button
                     key={cat.id}
                     type="button"
                     onClick={() => handleSelectCategory(cat.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all shrink-0 cursor-pointer ${
                       isSelected
-                        ? 'bg-[#080808] text-white font-semibold'
-                        : 'bg-[#F8FAFC] text-slate-600 border border-[#E2E8F0]'
+                        ? 'bg-black text-white shadow-xs'
+                        : 'bg-[#F4F4F5] text-neutral-700 hover:bg-neutral-200 hover:text-black border border-transparent'
                     }`}
                   >
                     {cat.name}
@@ -317,39 +336,107 @@ function ProductsCatalogueContent() {
               })}
             </div>
           </div>
-
-          {/* Expandable Mobile Category Drawer */}
-          {mobileFilterOpen && (
-            <div className="mt-3 p-3 bg-white border border-[#E5E7EB] rounded-xl shadow-lg space-y-1 animate-in fade-in-50 duration-150">
-              <div className="px-2 py-1 text-[11px] font-bold text-slate-400 uppercase tracking-wider font-mono">
-                Select Category
-              </div>
-              {SIDEBAR_CATEGORIES.map((cat) => {
-                const isSelected = selectedCatId === cat.id;
-                const count = getCategoryCount(cat);
-                const Icon = cat.icon;
-                return (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => handleSelectCategory(cat.id)}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium transition-colors text-left ${
-                      isSelected
-                        ? 'bg-[#FFF9D6] text-black font-bold border-l-4 border-[#FFED00] pl-2.5'
-                        : 'text-slate-700 hover:bg-[#F8FAFC]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Icon className={`h-4 w-4 ${isSelected ? 'text-black' : 'text-slate-500'}`} />
-                      <span>{cat.name}</span>
-                    </div>
-                    <span className="text-xs text-slate-400">({count})</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
         </div>
+
+        {/* 2.5 MOBILE LEFT-SIDE FILTER DRAWER (Mobile Alone: lg:hidden) */}
+        {mobileFilterOpen && (
+          <div className="lg:hidden">
+            {/* Backdrop Scrim */}
+            <div
+              className="fixed inset-0 bg-black/60 z-[150] transition-opacity duration-300 animate-in fade-in-50"
+              onClick={() => setMobileFilterOpen(false)}
+              aria-hidden="true"
+            />
+
+            {/* Slide-In Left Drawer */}
+            <div
+              className="fixed inset-y-0 left-0 w-[290px] xs:w-[320px] max-w-[85vw] bg-white z-[151] shadow-2xl flex flex-col animate-in slide-in-from-left duration-250 ease-out"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Filter Categories"
+            >
+              {/* Drawer Header */}
+              <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#E5E7EB] bg-[#FAF8F5]">
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal className="h-4 w-4 text-black" />
+                  <span className="text-sm font-bold text-neutral-900 tracking-tight">Filter Categories</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMobileFilterOpen(false)}
+                  aria-label="Close category filter drawer"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-neutral-500 hover:text-black hover:bg-neutral-200/60 transition-colors cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Scrollable Category List */}
+              <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                <div className="px-2 py-1 text-[11px] font-mono font-bold text-neutral-400 uppercase tracking-wider">
+                  Select Category ({SIDEBAR_CATEGORIES.length})
+                </div>
+                <div className="space-y-1">
+                  {SIDEBAR_CATEGORIES.map((cat) => {
+                    const isSelected = selectedCatId === cat.id;
+                    const count = getCategoryCount(cat);
+                    const Icon = cat.icon;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => handleSelectCategory(cat.id)}
+                        className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-[13px] font-medium transition-all text-left cursor-pointer active:scale-[0.99] ${
+                          isSelected
+                            ? 'bg-[#FFF9D6] text-black font-bold border-l-4 border-[#FFED00] shadow-2xs'
+                            : 'text-neutral-700 hover:bg-[#F8FAFC] hover:text-black'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Icon
+                            className={`h-4 w-4 shrink-0 ${
+                              isSelected ? 'text-black stroke-[2.2]' : 'text-neutral-500'
+                            }`}
+                          />
+                          <span>{cat.name}</span>
+                        </div>
+                        <span
+                          className={`text-xs font-mono px-2 py-0.5 rounded-full ${
+                            isSelected
+                              ? 'bg-[#FFED00] text-black font-bold'
+                              : 'bg-neutral-100 text-neutral-500'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Drawer Bottom Action Bar */}
+              <div className="p-3.5 border-t border-[#E5E7EB] bg-white flex items-center gap-2 shadow-xs">
+                {selectedCatId !== 'ALL' && (
+                  <button
+                    type="button"
+                    onClick={() => handleSelectCategory('ALL')}
+                    className="flex-1 py-2.5 px-3 rounded-lg border border-neutral-300 text-xs font-bold text-neutral-700 hover:bg-neutral-100 transition-colors text-center cursor-pointer"
+                  >
+                    Reset All
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setMobileFilterOpen(false)}
+                  className="flex-1 py-2.5 px-3 rounded-lg bg-[#FFED00] text-black text-xs font-bold shadow-xs hover:bg-[#FACC15] transition-colors text-center cursor-pointer"
+                >
+                  View Results ({sortedAndFilteredProducts.length})
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 3. TWO-COLUMN CATALOGUE LAYOUT */}
         <div className="grid grid-cols-1 lg:grid-cols-[250px_1fr] gap-6 lg:gap-8 items-start relative">
@@ -446,20 +533,23 @@ function ProductsCatalogueContent() {
           {/* ================= RIGHT COLUMN: PRODUCT CATALOGUE ================= */}
           <main className="w-full min-w-0">
             {/* A. PRODUCT CATALOGUE TOOLBAR */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 mb-4.5 border-b border-[#E5E7EB]">
+            <div className="flex items-center justify-between gap-2 pb-2.5 mb-3.5 sm:mb-4.5 border-b border-[#E5E7EB]">
               {/* Category Title with Live Filtered Count */}
               <div>
-                <h2 className="text-[17px] sm:text-[18px] font-bold text-[#111827] tracking-tight">
-                  {currentCategoryTitle} ({sortedAndFilteredProducts.length})
+                <h2 className="text-sm xs:text-base sm:text-[18px] font-bold text-[#111827] tracking-tight flex items-baseline gap-1.5">
+                  <span>{currentCategoryTitle}</span>
+                  <span className="text-xs sm:text-sm font-semibold text-neutral-500 font-mono">
+                    ({sortedAndFilteredProducts.length})
+                  </span>
                 </h2>
               </div>
 
               {/* Sort & Grid/List View Controls */}
-              <div className="flex items-center gap-3 self-end sm:self-auto flex-wrap">
+              <div className="flex items-center gap-2">
                 {/* Search Term Tag (if searched) */}
                 {searchQuery && (
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#FEFCE8] text-[#854D0E] text-xs border border-yellow-200">
-                    <span>Query: &quot;{searchQuery}&quot;</span>
+                  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#FEFCE8] text-[#854D0E] text-[11px] border border-yellow-200">
+                    <span className="truncate max-w-[80px] xs:max-w-[120px]">&quot;{searchQuery}&quot;</span>
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
@@ -471,13 +561,13 @@ function ProductsCatalogueContent() {
                 )}
 
                 {/* Sort Dropdown */}
-                <div className="flex items-center gap-1.5 text-xs text-[#64748B]">
-                  <span className="font-normal text-[12px]">Sort by:</span>
+                <div className="flex items-center gap-1 text-xs text-[#64748B]">
+                  <span className="hidden xs:inline text-neutral-500 text-[11px]">Sort:</span>
                   <div className="relative">
                     <select
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value)}
-                      className="appearance-none bg-white border border-[#E5E7EB] hover:border-black/30 rounded-[8px] pl-3 pr-7 py-1.5 text-[12.5px] font-semibold text-[#111827] cursor-pointer shadow-2xs focus:outline-none focus:ring-1 focus:ring-black"
+                      className="appearance-none bg-white border border-[#E5E7EB] hover:border-black/30 rounded-lg pl-2.5 pr-6 py-1 text-xs font-semibold text-[#111827] cursor-pointer shadow-2xs focus:outline-none focus:ring-1 focus:ring-black"
                     >
                       <option value="featured">Featured</option>
                       <option value="price-asc">Price: Low to High</option>
@@ -485,7 +575,7 @@ function ProductsCatalogueContent() {
                       <option value="name-asc">Name: A to Z</option>
                       <option value="sla">Production SLA</option>
                     </select>
-                    <ChevronDown className="h-3 w-3 text-[#64748B] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <ChevronDown className="h-3 w-3 text-[#64748B] absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   </div>
                 </div>
               </div>
@@ -493,18 +583,18 @@ function ProductsCatalogueContent() {
 
             {/* B. LOADING SKELETONS */}
             {isLoading && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-4.5">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4.5">
                 {[...Array(8)].map((_, i) => (
                   <div
                     key={i}
-                    className="bg-white rounded-[14px] border border-[#E5E7EB] p-3.5 space-y-3"
+                    className="bg-white rounded-xl sm:rounded-[14px] border border-[#E5E7EB] p-2.5 sm:p-3.5 space-y-2 sm:space-y-3"
                   >
-                    <Skeleton className="aspect-[16/11] w-full rounded-[10px]" />
-                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="aspect-square w-full rounded-[10px]" />
+                    <Skeleton className="h-3.5 w-3/4" />
                     <Skeleton className="h-3 w-1/2" />
-                    <div className="pt-2 flex justify-between items-center">
-                      <Skeleton className="h-5 w-20" />
-                      <Skeleton className="h-8 w-24 rounded-[8px]" />
+                    <div className="pt-1.5 flex justify-between items-center">
+                      <Skeleton className="h-4 sm:h-5 w-14 sm:w-20" />
+                      <Skeleton className="h-7 sm:h-8 w-16 sm:w-24 rounded-[5px]" />
                     </div>
                   </div>
                 ))}
@@ -541,38 +631,31 @@ function ProductsCatalogueContent() {
               />
             )}
 
-            {/* D. PRODUCT GRID (MATCHING REFERENCE DESIGN) */}
+            {/* D. PRODUCT GRID (2 COLUMNS ON MOBILE, 3-4 ON DESKTOP, MATCHING HOME PAGE CARD DESIGN) */}
             {!isLoading && sortedAndFilteredProducts.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-4.5">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4.5">
                 {sortedAndFilteredProducts.map((product) => {
                   const primaryImage =
                     product.images?.find((img) => img.isPrimary) ||
                     product.images?.[0];
-                  const imageUrl = resolveImageUrl(primaryImage?.url);
+                  const fallbackImg =
+                    PRODUCT_FALLBACK_IMAGES[product.slug] || '/images/home/prod-cards.jpg';
+                  const imageUrl = primaryImage?.url ? resolveImageUrl(primaryImage.url) : fallbackImg;
+                  const price = Number(product.basePrice) || 0;
+                  const originalPrice = price > 0 ? Math.round(price * 1.35) : undefined;
 
                   return (
                     <ProductCard
                       key={product.id}
                       id={product.id}
                       name={product.name}
-                      description={
-                        product.description ||
-                        'High-definition industrial offset and digital specifications.'
-                      }
-                      price={Number(product.basePrice) || 0}
-                      pricePrefix="FROM"
-                      priceUnit={
-                        product.minQuantity
-                          ? `/ ${product.minQuantity} units`
-                          : '/ 100 units'
-                      }
+                      price={price}
+                      originalPrice={originalPrice}
                       href={`/products/${product.slug}`}
                       image={imageUrl}
-                      tag={product.isFeatured ? 'FEATURED' : undefined}
-                      sku={product.sku}
-                      categoryName={product.category?.name || 'Visiting Cards'}
-                      productionDays={product.productionDays || 2}
-                      actionText="Add to cart"
+                      fallbackImage={fallbackImg}
+                      tag={product.tags?.[0] || 'Popular'}
+                      actionText="Order Now"
                     />
                   );
                 })}

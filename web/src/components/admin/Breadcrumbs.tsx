@@ -62,30 +62,41 @@ export function Breadcrumbs() {
     <nav aria-label="Breadcrumb" className="flex items-center space-x-1.5 text-[11px] font-mono">
       <Link
         href="/admin/dashboard"
-        className="flex items-center gap-1 text-[#525252] hover:text-black transition-colors"
+        className="flex items-center gap-1 text-[#525252] hover:text-black transition-colors shrink-0"
         title="Admin Operations"
       >
         <RiHome4Line className="h-3.5 w-3.5 text-[#737373]" />
         <span className="font-semibold text-black uppercase tracking-wider">ERP</span>
       </Link>
 
-      {crumbs.map((crumb) => (
-        <React.Fragment key={crumb.href}>
-          <RiArrowRightSLine className="h-3.5 w-3.5 text-[#737373] flex-shrink-0" />
-          {crumb.isLast ? (
-            <span className="font-semibold text-black truncate max-w-[200px]" aria-current="page">
-              {crumb.label}
-            </span>
-          ) : (
-            <Link
-              href={crumb.href}
-              className="text-[#525252] hover:text-black transition-colors truncate max-w-[150px]"
-            >
-              {crumb.label}
-            </Link>
-          )}
-        </React.Fragment>
-      ))}
+      {/* Mobile view: Only show active page label (prevents truncation ellipses on small screens) */}
+      <div className="flex sm:hidden items-center gap-1 min-w-0">
+        <RiArrowRightSLine className="h-3.5 w-3.5 text-[#737373] flex-shrink-0" />
+        <span className="font-bold text-black text-[11px] truncate max-w-[130px] xs:max-w-[180px]">
+          {crumbs[crumbs.length - 1]?.label || 'Dashboard'}
+        </span>
+      </div>
+
+      {/* Desktop view: Full hierarchical breadcrumb chain */}
+      <div className="hidden sm:flex items-center space-x-1.5">
+        {crumbs.map((crumb) => (
+          <React.Fragment key={crumb.href}>
+            <RiArrowRightSLine className="h-3.5 w-3.5 text-[#737373] flex-shrink-0" />
+            {crumb.isLast ? (
+              <span className="font-semibold text-black truncate max-w-[200px]" aria-current="page">
+                {crumb.label}
+              </span>
+            ) : (
+              <Link
+                href={crumb.href}
+                className="text-[#525252] hover:text-black transition-colors truncate max-w-[150px]"
+              >
+                {crumb.label}
+              </Link>
+            )}
+          </React.Fragment>
+        ))}
+      </div>
     </nav>
   );
 }

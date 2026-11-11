@@ -69,9 +69,9 @@ export function ProductionFilters({
         </div>
 
         {/* Filter Dropdowns */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
           {/* Machine Filter */}
-          <div className="relative min-w-[150px]">
+          <div className="relative w-full xs:w-auto flex-1 min-w-[130px]">
             <select
               value={machineId}
               onChange={(e) => onMachineChange(e.target.value)}
@@ -88,7 +88,7 @@ export function ProductionFilters({
           </div>
 
           {/* Operator Filter */}
-          <div className="relative min-w-[140px]">
+          <div className="relative w-full xs:w-auto flex-1 min-w-[130px]">
             <select
               value={operatorId}
               onChange={(e) => onOperatorChange(e.target.value)}
@@ -105,7 +105,7 @@ export function ProductionFilters({
           </div>
 
           {/* Priority Filter */}
-          <div className="relative min-w-[120px]">
+          <div className="relative w-full xs:w-auto flex-1 min-w-[120px]">
             <select
               value={priority}
               onChange={(e) => onPriorityChange(e.target.value)}
@@ -121,7 +121,7 @@ export function ProductionFilters({
           </div>
 
           {/* SLA Filter */}
-          <div className="relative min-w-[120px]">
+          <div className="relative w-full xs:w-auto flex-1 min-w-[120px]">
             <select
               value={slaStatus}
               onChange={(e) => onSlaStatusChange(e.target.value)}
@@ -141,7 +141,7 @@ export function ProductionFilters({
               variant="outline"
               size="sm"
               onClick={onReset}
-              className="h-9 text-xs text-rose-600 hover:bg-rose-50 hover:border-rose-200"
+              className="w-full xs:w-auto h-9 text-xs text-rose-600 hover:bg-rose-50 hover:border-rose-200 justify-center"
             >
               <span>Reset</span>
             </Button>

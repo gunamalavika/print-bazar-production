@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { AdminHeader } from './AdminHeader';
 import { AdminSidebar } from './AdminSidebar';
+import { MobileStationBar } from './MobileStationBar';
 import { checkRouteAuthorization } from './navigation';
 import {
   RiLockLine,
@@ -95,6 +96,9 @@ export function AdminShell({ children }: AdminShellProps) {
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         {/* Dedicated Admin Header */}
         <AdminHeader onToggleSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)} />
+
+        {/* Universal Mobile Station Navigation Bar (Mobile Only: sm:hidden) */}
+        <MobileStationBar />
 
         {/* Main Operational Scrollable Workspace */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-6 bg-[#F8F8F8] custom-scrollbar">

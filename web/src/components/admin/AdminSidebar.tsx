@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { getVisibleAdminNavigation } from './navigation';
 import {
@@ -11,7 +11,67 @@ import {
   RiLogoutBoxRLine,
   RiSearch2Line,
   RiPrinterLine,
+  RiExchangeLine,
+  RiShieldCheckLine,
+  RiArrowRightSLine,
 } from 'react-icons/ri';
+
+const ROLE_CONFIG: Record<string, { label: string; short: string; destination: string; badgeColor: string }> = {
+  ADMIN_MANAGER: {
+    label: 'Admin / Manager',
+    short: 'Admin',
+    destination: '/admin/dashboard',
+    badgeColor: 'bg-amber-100 text-amber-900 border-amber-300',
+  },
+  OPERATIONAL_MANAGER: {
+    label: 'Operations Command',
+    short: 'Operations',
+    destination: '/operations',
+    badgeColor: 'bg-yellow-100 text-yellow-900 border-yellow-300',
+  },
+  DESIGNER_PREPRESS: {
+    label: 'Pre-Press & Design',
+    short: 'Prepress',
+    destination: '/prepress/artwork',
+    badgeColor: 'bg-blue-100 text-blue-900 border-blue-300',
+  },
+  PRODUCTION_OPERATOR: {
+    label: 'Production Operator',
+    short: 'Press Queue',
+    destination: '/production/queue',
+    badgeColor: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+  },
+  FINAL_QC_INSPECTOR: {
+    label: 'Final QC Inspector',
+    short: 'QC Gate',
+    destination: '/qc/inspection',
+    badgeColor: 'bg-teal-100 text-teal-900 border-teal-300',
+  },
+  PACKING_OPERATOR: {
+    label: 'Packing Operator',
+    short: 'Packaging',
+    destination: '/packing/station',
+    badgeColor: 'bg-orange-100 text-orange-900 border-orange-300',
+  },
+  DISPATCH_LOGISTICS: {
+    label: 'Dispatch Logistics',
+    short: 'Logistics',
+    destination: '/dispatch/manifest',
+    badgeColor: 'bg-purple-100 text-purple-900 border-purple-300',
+  },
+  SALES_OFFICE: {
+    label: 'Sales & Front Office',
+    short: 'Sales Desk',
+    destination: '/sales/orders',
+    badgeColor: 'bg-indigo-100 text-indigo-900 border-indigo-300',
+  },
+  ACCOUNTS: {
+    label: 'Accounts & Billing',
+    short: 'Finance',
+    destination: '/finance/payments',
+    badgeColor: 'bg-rose-100 text-rose-900 border-rose-300',
+  },
+};
 
 interface AdminSidebarProps {
   isOpen?: boolean;
@@ -20,13 +80,31 @@ interface AdminSidebarProps {
 
 export function AdminSidebar({ isOpen = false, onClose }: AdminSidebarProps) {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const router = useRouter();
+  const { user, logout, activeRole, switchActiveRole } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
+  const [isStationSwitcherOpen, setIsStationSwitcherOpen] = useState(false);
 
-  // Compute authorized sections strictly from backend permissions and role
+  // Extract all assigned multi-roles
+  const effectiveRoles = useMemo(() => {
+    if (Array.isArray(user?.roles) && user.roles.length > 0) {
+      return user.roles;
+    }
+    return user?.role ? [user.role] : [];
+  }, [user?.roles, user?.role]);
+
+  const currentRoleKey = activeRole || user?.role || effectiveRoles[0] || 'OPERATOR';
+  const currentRoleMeta = ROLE_CONFIG[currentRoleKey] || {
+    label: currentRoleKey.replace(/_/g, ' '),
+    short: currentRoleKey.replace(/_/g, ' '),
+    destination: '/admin/dashboard',
+    badgeColor: 'bg-slate-100 text-slate-800 border-slate-300',
+  };
+
+  // Compute authorized sections strictly from backend permissions and active role
   const authorizedSections = useMemo(() => {
-    return getVisibleAdminNavigation(user?.permissions || [], user?.role);
-  }, [user?.permissions, user?.role]);
+    return getVisibleAdminNavigation(user?.permissions || [], currentRoleKey, effectiveRoles);
+  }, [user?.permissions, currentRoleKey, effectiveRoles]);
 
   // Filter sections and items based on search query
   const filteredSections = useMemo(() => {
@@ -71,11 +149,11 @@ export function AdminSidebar({ isOpen = false, onClose }: AdminSidebarProps) {
             <Image
               src="/brand-logo.png"
               alt="Print Bazzar"
-              width={180}
-              height={34}
+              width={140}
+              height={26}
               priority
               style={{ width: 'auto', height: 'auto' }}
-              className="h-7 sm:h-8 w-auto object-contain transition-transform duration-200 group-hover:scale-102"
+              className="h-[22px] sm:h-[24px] md:h-[26px] w-auto object-contain transition-transform duration-200 group-hover:scale-102"
             />
             <div className="flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-[#166534]" />
@@ -110,6 +188,69 @@ export function AdminSidebar({ isOpen = false, onClose }: AdminSidebarProps) {
             <RiSearch2Line className="h-3.5 w-3.5 text-[#737373] absolute left-2.5 top-1/2 -translate-y-1/2" />
           </div>
         </div>
+
+        {/* Multi-Role Workstations Option */}
+        {effectiveRoles.length > 1 && (
+          <div className="px-3 py-2 border-b border-[#E5E5E5] bg-[#FEFCE8]">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-mono font-bold tracking-wider text-[#854D0E] uppercase flex items-center gap-1">
+                <span>ASSIGNED WORKSTATIONS</span>
+                <span className="px-1.5 py-0.2 rounded-full bg-amber-200 text-amber-900 text-[9px] font-semibold">
+                  {effectiveRoles.length}
+                </span>
+              </span>
+              <span className="text-[9.5px] font-mono font-medium text-amber-700">Multi-Role</span>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              {effectiveRoles.map((roleKey) => {
+                const conf = ROLE_CONFIG[roleKey] || {
+                  label: roleKey.replace(/_/g, ' '),
+                  short: roleKey.replace(/_/g, ' '),
+                  destination: '/admin/dashboard',
+                  badgeColor: 'bg-slate-100 text-slate-800 border-slate-300',
+                };
+                const isCurrentActive = currentRoleKey === roleKey;
+
+                return (
+                  <button
+                    key={roleKey}
+                    type="button"
+                    onClick={() => {
+                      switchActiveRole(roleKey);
+                      router.push(conf.destination);
+                      if (onClose) onClose();
+                    }}
+                    className={`flex items-center justify-between w-full px-2 py-1.5 rounded-[6px] text-left text-xs transition-all ${
+                      isCurrentActive
+                        ? 'bg-[#1C1917] text-amber-300 font-semibold shadow-2xs'
+                        : 'bg-white hover:bg-amber-100/80 text-slate-700 hover:text-black border border-amber-200/60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span
+                        className={`h-2 w-2 rounded-full shrink-0 ${
+                          isCurrentActive ? 'bg-amber-400 animate-pulse' : 'bg-slate-300'
+                        }`}
+                      />
+                      <span className="truncate text-[12px]">{conf.label}</span>
+                    </div>
+
+                    <span
+                      className={`text-[9.5px] font-mono font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                        isCurrentActive
+                          ? 'bg-amber-400 text-black'
+                          : 'text-amber-900 bg-amber-100/80'
+                      }`}
+                    >
+                      {isCurrentActive ? 'ACTIVE' : conf.short}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Navigation Sections */}
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 custom-scrollbar">
@@ -188,9 +329,16 @@ export function AdminSidebar({ isOpen = false, onClose }: AdminSidebarProps) {
               <span className="text-[13px] font-semibold text-black block truncate leading-tight">
                 {user?.fullName || 'Plant Operator'}
               </span>
-              <span className="text-[10px] font-mono text-[#737373] uppercase tracking-wider block truncate">
-                {formattedRole}
-              </span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-[10px] font-mono text-[#737373] uppercase tracking-wider block truncate">
+                  {currentRoleMeta.short}
+                </span>
+                {effectiveRoles.length > 1 && (
+                  <span className="text-[9px] font-mono font-bold px-1 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                    {effectiveRoles.length} ROLES
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 

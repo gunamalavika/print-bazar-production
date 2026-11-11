@@ -16,6 +16,7 @@ export interface AuthenticatedUser {
     | 'ADMIN_MANAGER';
   department?: string | null;
   customerId?: string | null;
+  roles?: string[];
   permissions: string[];
 }
 
@@ -668,6 +669,33 @@ export const api = {
 
   getCurrentUser: (): Promise<AuthenticatedUser> =>
     fetchApi<AuthenticatedUser>('/auth/me'),
+
+  // Enterprise Staff & User Management
+  getStaffList: (): Promise<any[]> =>
+    fetchApi<any[]>('/auth/staff'),
+
+  createStaffUser: (data: any): Promise<any> =>
+    fetchApi<any>('/auth/staff', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateStaffUser: (id: string, data: any): Promise<any> =>
+    fetchApi<any>(`/auth/staff/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteStaffUser: (id: string): Promise<any> =>
+    fetchApi<any>(`/auth/staff/${id}`, {
+      method: 'DELETE',
+    }),
+
+  resetStaffPassword: (id: string, password?: string): Promise<any> =>
+    fetchApi<any>(`/auth/staff/${id}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }),
 
   // Orders API (Customer & ERP)
   getOrders: (query?: { status?: string; search?: string; page?: number; limit?: number }) => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import {
   Users,
@@ -34,6 +34,13 @@ import {
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { api } from '@/lib/api';
+
+const isCustomerRole = (roleOrRoles: any): boolean => {
+  if (!roleOrRoles) return false;
+  if (typeof roleOrRoles === 'string') return roleOrRoles.toUpperCase() === 'CUSTOMER';
+  if (Array.isArray(roleOrRoles)) return roleOrRoles.some((r) => String(r).toUpperCase() === 'CUSTOMER');
+  return false;
+};
 
 export interface StaffMember {
   id: string;
@@ -253,37 +260,94 @@ export default function StaffAdminPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Load from local storage
-  useEffect(() => {
+  // Load from database and synchronize with local workstations
+  const loadStaff = useCallback(async () => {
+    try {
+      const backendStaff = await api.getStaffList();
+      if (Array.isArray(backendStaff) && backendStaff.length > 0) {
+        let localPrefs: Record<string, any> = {};
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+              parsed.forEach((p: any) => {
+                if (p.email) localPrefs[p.email.toLowerCase()] = p;
+                if (p.id) localPrefs[p.id] = p;
+              });
+            }
+          }
+        } catch {}
+
+        const nonCustomerStaff = backendStaff.filter(
+          (u: any) => !isCustomerRole(u.role) && !isCustomerRole(u.roles)
+        );
+
+        const normalized: StaffMember[] = nonCustomerStaff.map((u: any, idx: number) => {
+          const pref = localPrefs[u.email?.toLowerCase()] || localPrefs[u.id] || {};
+          const cleanName = u.fullName || u.name || 'Staff Member';
+          const username = u.username || u.email?.split('@')[0] || cleanName.toLowerCase().replace(/[^a-z0-9]/g, '.');
+
+          const backendRoles = Array.isArray(u.roles) ? u.roles.filter((r: any) => !isCustomerRole(r)) : [];
+          const prefRoles = Array.isArray(pref.roles) ? pref.roles.filter((r: any) => !isCustomerRole(r)) : [];
+
+          // Multi-role resolution: preserve multiple roles from backend or preferences
+          let assignedRoles: string[] = ['PRODUCTION_OPERATOR'];
+          if (backendRoles.length > 0) {
+            assignedRoles = backendRoles;
+          } else if (prefRoles.length > 0) {
+            assignedRoles = prefRoles;
+          } else if (u.role && !isCustomerRole(u.role)) {
+            assignedRoles = [u.role];
+          }
+
+          return {
+            id: u.id || `EMP-${(idx + 1).toString().padStart(2, '0')}`,
+            name: cleanName,
+            username,
+            email: u.email,
+            phone: u.phone || pref.phone || '',
+            password: pref.password || u.password || 'Admin@12345',
+            roles: assignedRoles,
+            department: u.department || pref.department || 'PRESS_OPERATIONS',
+            shift: u.shift || pref.shift || 'General (09:00 - 18:00)',
+            station: u.station || pref.station || (assignedRoles.includes('PRODUCTION_OPERATOR') ? 'HP Indigo 12000 Station' : 'Operations Command Center'),
+            status: u.isActive !== false ? 'ACTIVE_ON_FLOOR' : 'OFF_SHIFT',
+            loginEnabled: u.isActive !== false,
+          };
+        });
+
+        setStaffList(normalized);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+        } catch {}
+        return;
+      }
+    } catch (err) {
+      console.warn('Could not fetch staff from server, falling back to local roster:', err);
+    }
+
+    // Fallback to localStorage or INITIAL_STAFF_ROSTER
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const normalized = parsed.map((item: any) => {
-            const cleanName = item.name || 'Staff Member';
-            const defaultUser = cleanName.toLowerCase().replace(/[^a-z0-9]/g, '.');
-            return {
-              ...item,
-              username: item.username || defaultUser,
-              email: item.email || `${defaultUser}@printbazzar.com`,
-              password: item.password || 'Admin@12345',
-              phone: item.phone || '',
-              loginEnabled: item.loginEnabled !== false,
-              roles: Array.isArray(item.roles) && item.roles.length > 0
-                ? item.roles
-                : item.role ? [item.role] : ['PRODUCTION_OPERATOR'],
-            };
-          });
-          setStaffList(normalized);
+          const staffOnly = parsed.filter(
+            (s: any) => !isCustomerRole(s.role) && !isCustomerRole(s.roles)
+          );
+          setStaffList(staffOnly);
+          return;
         }
       }
-    } catch {
-      // Fallback to initial
-    } finally {
-      setIsLoaded(true);
-    }
+    } catch {}
+
+    setStaffList(INITIAL_STAFF_ROSTER);
   }, []);
+
+  useEffect(() => {
+    loadStaff().finally(() => setIsLoaded(true));
+  }, [loadStaff]);
 
   // Save changes to local storage
   const saveRoster = (newList: StaffMember[]) => {
@@ -360,9 +424,9 @@ export default function StaffAdminPage() {
   const handleOpenEditModal = (staff: StaffMember) => {
     setEditingStaffId(staff.id);
     setShowFormPassword(false);
-    const memberRoles = staff.roles && staff.roles.length > 0
-      ? staff.roles
-      : staff.role ? [staff.role] : ['PRODUCTION_OPERATOR'];
+    const memberRoles = Array.isArray(staff.roles) && staff.roles.length > 0
+      ? [...staff.roles]
+      : (staff.role ? [staff.role] : ['PRODUCTION_OPERATOR']);
 
     const cleanName = staff.name.toLowerCase().replace(/[^a-z0-9]/g, '.');
 
@@ -373,7 +437,7 @@ export default function StaffAdminPage() {
       email: staff.email || `${cleanName}@printbazzar.com`,
       password: staff.password || 'Admin@12345',
       phone: staff.phone || '',
-      roles: memberRoles,
+      roles: [...memberRoles],
       department: staff.department,
       shift: staff.shift,
       station: staff.station,
@@ -420,77 +484,96 @@ export default function StaffAdminPage() {
     setIsSubmitting(true);
     setFormError(null);
 
-    // Try registering in backend database if new and loginEnabled
-    if (!editingStaffId && formData.loginEnabled) {
-      try {
-        await api.register({
-          email: formData.email.trim().toLowerCase(),
-          password: formData.password || 'Admin@12345',
-          fullName: formData.name.trim(),
-          phone: formData.phone.trim() || undefined,
-        });
-      } catch (err: any) {
-        // If already exists or error, log notice but still proceed with roster save
-        console.info('Backend registration note:', err?.message || err);
-      }
-    }
-
+    const email = formData.email.trim().toLowerCase();
     const cleanUsername = formData.username.trim() || formData.name.toLowerCase().replace(/[^a-z0-9]/g, '.');
+    const assignedRoles = formData.roles.length > 0 ? [...formData.roles] : ['PRODUCTION_OPERATOR'];
 
-    if (editingStaffId) {
-      // Update existing
-      const updated = staffList.map((member) =>
-        member.id === editingStaffId
-          ? {
-              ...member,
-              name: formData.name.trim(),
-              username: cleanUsername,
-              email: formData.email.trim().toLowerCase(),
-              password: formData.password,
-              phone: formData.phone.trim(),
-              roles: formData.roles,
-              department: formData.department,
-              shift: formData.shift,
-              station: formData.station.trim(),
-              status: formData.status,
-              loginEnabled: formData.loginEnabled,
-            }
-          : member
-      );
-      saveRoster(updated);
-    } else {
-      // Add new
-      const exists = staffList.some(
-        (s) => s.id.toLowerCase() === formData.id.trim().toLowerCase()
-      );
-      const finalId = exists ? generateNextId() : formData.id.trim();
+    try {
+      if (editingStaffId) {
+        // Update user in PostgreSQL database and persistent metadata store
+        await api.updateStaffUser(editingStaffId, {
+          fullName: formData.name.trim(),
+          email,
+          password: formData.password,
+          phone: formData.phone.trim() || undefined,
+          role: assignedRoles[0],
+          roles: assignedRoles,
+          department: formData.department,
+          isActive: formData.loginEnabled,
+        });
 
-      const newMember: StaffMember = {
-        id: finalId,
-        name: formData.name.trim(),
-        username: cleanUsername,
-        email: formData.email.trim().toLowerCase(),
-        password: formData.password || 'Admin@12345',
-        phone: formData.phone.trim(),
-        roles: formData.roles,
-        department: formData.department,
-        shift: formData.shift,
-        station: formData.station.trim(),
-        status: formData.status,
-        loginEnabled: formData.loginEnabled,
-      };
-      saveRoster([newMember, ...staffList]);
+        // Update local roster
+        const updated = staffList.map((member) =>
+          member.id === editingStaffId
+            ? {
+                ...member,
+                name: formData.name.trim(),
+                username: cleanUsername,
+                email,
+                password: formData.password,
+                phone: formData.phone.trim(),
+                roles: assignedRoles,
+                department: formData.department,
+                shift: formData.shift,
+                station: formData.station.trim(),
+                status: formData.status,
+                loginEnabled: formData.loginEnabled,
+              }
+            : member
+        );
+        saveRoster(updated);
+      } else {
+        // Create user in PostgreSQL database with enterprise role and password
+        const created = await api.createStaffUser({
+          fullName: formData.name.trim(),
+          email,
+          password: formData.password || 'Admin@12345',
+          phone: formData.phone.trim() || undefined,
+          role: assignedRoles[0],
+          roles: assignedRoles,
+          department: formData.department,
+          isActive: formData.loginEnabled,
+        });
+
+        const newMember: StaffMember = {
+          id: created.id || generateNextId(),
+          name: formData.name.trim(),
+          username: cleanUsername,
+          email,
+          password: formData.password || 'Admin@12345',
+          phone: formData.phone.trim(),
+          roles: assignedRoles,
+          department: formData.department,
+          shift: formData.shift,
+          station: formData.station.trim(),
+          status: formData.status,
+          loginEnabled: formData.loginEnabled,
+        };
+        saveRoster([newMember, ...staffList]);
+      }
+
+      await loadStaff();
+      setIsModalOpen(false);
+      setEditingStaffId(null);
+    } catch (err: any) {
+      console.error('Failed to save staff to enterprise database:', err);
+      setFormError(err?.message || 'Failed to save staff member to enterprise database.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsSubmitting(false);
-    setIsModalOpen(false);
   };
 
   // Handle Delete Confirmation
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!staffToDelete) return;
-    const updated = staffList.filter((s) => s.id !== staffToDelete.id);
-    saveRoster(updated);
+    try {
+      await api.deleteStaffUser(staffToDelete.id);
+      await loadStaff();
+    } catch (err: any) {
+      console.warn('Backend delete note:', err?.message || err);
+      const updated = staffList.filter((s) => s.id !== staffToDelete.id);
+      saveRoster(updated);
+    }
     setStaffToDelete(null);
   };
 
@@ -511,6 +594,10 @@ export default function StaffAdminPage() {
   // Filtered List
   const filteredStaff = useMemo(() => {
     return staffList.filter((member) => {
+      // Exclude customer accounts completely from Staff Roster
+      if (isCustomerRole(member.role) || isCustomerRole(member.roles)) {
+        return false;
+      }
       // Shift filter
       if (selectedShiftFilter !== 'ALL' && !member.shift.startsWith(selectedShiftFilter)) {
         return false;
@@ -538,13 +625,17 @@ export default function StaffAdminPage() {
     });
   }, [staffList, selectedShiftFilter, selectedDeptFilter, searchQuery]);
 
-  // Statistics
-  const totalStaffCount = staffList.length;
-  const onDutyCount = staffList.filter((s) => s.status === 'ACTIVE_ON_FLOOR').length;
-  const multiRoleCount = staffList.filter(
+  // Statistics (excluding any customer role)
+  const eligibleStaffList = useMemo(() => {
+    return staffList.filter((s) => !isCustomerRole(s.role) && !isCustomerRole(s.roles));
+  }, [staffList]);
+
+  const totalStaffCount = eligibleStaffList.length;
+  const onDutyCount = eligibleStaffList.filter((s) => s.status === 'ACTIVE_ON_FLOOR').length;
+  const multiRoleCount = eligibleStaffList.filter(
     (s) => (s.roles?.length || (s.role ? 1 : 0)) > 1
   ).length;
-  const activeStationsCount = new Set(staffList.map((s) => s.station)).size;
+  const activeStationsCount = new Set(eligibleStaffList.map((s) => s.station)).size;
 
   return (
     <div className="space-y-6">

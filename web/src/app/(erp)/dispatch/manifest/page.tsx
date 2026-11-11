@@ -202,12 +202,12 @@ export default function DispatchStationPage() {
       )}
 
       {/* Mode Tabs */}
-      <div className="flex border-b border-slate-200">
+      <div className="flex border-b border-slate-200 overflow-x-auto no-scrollbar">
         {canPack && (
           <button
             type="button"
             onClick={() => setActiveTab('PACKING')}
-            className={`px-5 py-3 text-[13px] transition ${
+            className={`px-4 sm:px-5 py-3 text-[13px] transition shrink-0 whitespace-nowrap ${
               activeTab === 'PACKING'
                 ? 'border-b-2 border-slate-900 text-slate-900 font-semibold bg-white'
                 : 'border-transparent text-slate-500 font-medium hover:text-slate-800'
@@ -219,7 +219,7 @@ export default function DispatchStationPage() {
         <button
           type="button"
           onClick={() => setActiveTab('COURIER_HANDOVER')}
-          className={`px-5 py-3 text-[13px] transition ${
+          className={`px-4 sm:px-5 py-3 text-[13px] transition shrink-0 whitespace-nowrap ${
             activeTab === 'COURIER_HANDOVER'
               ? 'border-b-2 border-slate-900 text-slate-900 font-semibold bg-white'
               : 'border-transparent text-slate-500 font-medium hover:text-slate-800'
@@ -230,7 +230,7 @@ export default function DispatchStationPage() {
         <button
           type="button"
           onClick={() => setActiveTab('STORE_PICKUP')}
-          className={`px-5 py-3 text-[13px] transition ${
+          className={`px-4 sm:px-5 py-3 text-[13px] transition shrink-0 whitespace-nowrap ${
             activeTab === 'STORE_PICKUP'
               ? 'border-b-2 border-slate-900 text-slate-900 font-semibold bg-white'
               : 'border-transparent text-slate-500 font-medium hover:text-slate-800'

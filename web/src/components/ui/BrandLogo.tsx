@@ -28,11 +28,11 @@ export interface BrandLogoProps {
 }
 
 const SIZE_MAP = {
-  xs: 'h-6 sm:h-7 w-auto',
-  sm: 'h-7 sm:h-8 w-auto',
-  md: 'h-8 sm:h-9 md:h-10 w-auto',
-  lg: 'h-10 sm:h-11 md:h-12 w-auto',
-  xl: 'h-12 sm:h-14 md:h-16 w-auto',
+  xs: 'h-[18px] sm:h-[20px] w-auto',
+  sm: 'h-[22px] sm:h-[24px] w-auto',
+  md: 'h-[24px] sm:h-[26px] md:h-[28px] lg:h-[30px] w-auto',
+  lg: 'h-[30px] sm:h-[34px] md:h-[36px] w-auto',
+  xl: 'h-[38px] sm:h-[42px] md:h-[46px] w-auto',
   custom: '',
 };
 
@@ -52,8 +52,8 @@ export function BrandLogo({
   const logoSrc = isIconOnly
     ? '/logo-icon.png'
     : isDark
-    ? '/brand-logo-white.png'
-    : '/brand-logo.png';
+      ? '/brand-logo-white.png'
+      : '/brand-logo.png';
 
   const width = isIconOnly ? 180 : 964;
   const height = isIconOnly ? 180 : 182;
@@ -78,22 +78,20 @@ export function BrandLogo({
         <div className="flex flex-col justify-center min-w-0">
           {badge && (
             <span
-              className={`text-[9px] sm:text-[10px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider uppercase inline-block w-fit ${
-                badgeVariant === 'yellow'
+              className={`text-[9px] sm:text-[10px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider uppercase inline-block w-fit ${badgeVariant === 'yellow'
                   ? 'bg-[#FFED00] text-black border border-neutral-300'
                   : badgeVariant === 'dark'
-                  ? 'bg-black text-[#FFED00]'
-                  : 'border border-neutral-400 text-neutral-600'
-              }`}
+                    ? 'bg-black text-[#FFED00]'
+                    : 'border border-neutral-400 text-neutral-600'
+                }`}
             >
               {badge}
             </span>
           )}
           {subtitle && (
             <span
-              className={`text-[9px] sm:text-[10px] font-medium tracking-wider uppercase mt-0.5 ${
-                isDark ? 'text-neutral-400' : 'text-neutral-500'
-              }`}
+              className={`text-[9px] sm:text-[10px] font-medium tracking-wider uppercase mt-0.5 ${isDark ? 'text-neutral-400' : 'text-neutral-500'
+                }`}
             >
               {subtitle}
             </span>

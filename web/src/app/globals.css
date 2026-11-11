@@ -262,8 +262,29 @@ html {
   animation-play-state: paused;
 }
 
+/* Reviews Continuous Marquee Animation (Pauses on Hover / Touch) */
+@keyframes reviews-marquee-slide {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.animate-reviews-marquee {
+  animation: reviews-marquee-slide 42s linear infinite;
+  will-change: transform;
+}
+
+.animate-reviews-marquee:hover,
+.group-marquee:hover .animate-reviews-marquee {
+  animation-play-state: paused;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-pb-marquee {
+  .animate-pb-marquee,
+  .animate-reviews-marquee {
     animation: none;
     transform: none;
   }

@@ -431,16 +431,23 @@ export function isNavItemAuthorized(item: AdminNavItem, userPermissions: string[
  */
 export function getVisibleAdminNavigation(
   userPermissions: string[],
-  userRole?: string
+  userRole?: string,
+  userRoles?: string[]
 ): AdminNavSection[] {
   if (!userPermissions || !Array.isArray(userPermissions)) {
     return [];
   }
 
-  // 1. Filter authorized items (and enforce role-level section exclusions for PRODUCTION_OPERATOR)
+  const effectiveRoles = Array.isArray(userRoles) && userRoles.length > 0
+    ? userRoles
+    : (userRole ? [userRole] : []);
+
+  const isOperatorOnly = effectiveRoles.length === 1 && effectiveRoles[0] === 'PRODUCTION_OPERATOR';
+
+  // 1. Filter authorized items (and enforce role-level section exclusions ONLY if strictly PRODUCTION_OPERATOR only)
   const authorizedItems = CANONICAL_ADMIN_NAV.filter((item) => {
     if (
-      userRole === 'PRODUCTION_OPERATOR' &&
+      isOperatorOnly &&
       (item.section === 'OPERATIONS_COORDINATION' || item.section === 'CATALOGUE_INVENTORY')
     ) {
       return false;

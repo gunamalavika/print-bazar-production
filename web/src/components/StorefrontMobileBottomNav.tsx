@@ -60,7 +60,7 @@ export function StorefrontMobileBottomNav() {
 
   return (
     <nav
-      className="md:hidden fixed bottom-0 inset-x-0 w-full max-w-[100vw] z-[100] bg-white/98 backdrop-blur-md border-t border-[#E5E5E5] shadow-elevated"
+      className="md:hidden fixed bottom-0 inset-x-0 w-full max-w-[100vw] z-[100] bg-white border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.06)]"
       style={{
         position: 'fixed',
         bottom: 0,
@@ -73,7 +73,7 @@ export function StorefrontMobileBottomNav() {
       }}
       aria-label="Mobile Navigation"
     >
-      <div className="grid grid-cols-4 h-14 items-center px-1 w-full max-w-full">
+      <div className="grid grid-cols-4 h-[58px] items-stretch w-full max-w-full">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isExact = pathname === item.href;
@@ -87,25 +87,32 @@ export function StorefrontMobileBottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`relative flex flex-col items-center justify-center h-full min-h-[44px] px-0.5 touch-manipulation transition-colors ${
-                isActive ? 'text-black font-semibold' : 'text-[#737373] hover:text-black font-normal'
+              className={`relative flex flex-col items-center justify-center h-full px-1 touch-manipulation transition-all duration-150 active:scale-95 ${
+                isActive ? 'text-black' : 'text-[#737373] hover:text-black'
               }`}
             >
+              {/* Active Indicator Bar on Top */}
+              {isActive && (
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[2.5px] bg-[#FFED00] rounded-b-full shadow-xs" />
+              )}
+
               <div className="relative flex items-center justify-center">
-                <div
-                  className={`p-1 rounded-full transition-transform ${
-                    isActive ? 'bg-[#FFED00] text-black scale-105' : 'text-current'
+                <Icon
+                  className={`h-5 w-5 transition-transform duration-150 ${
+                    isActive ? 'text-black stroke-[2.2] scale-105' : 'text-[#737373] stroke-[1.8]'
                   }`}
-                >
-                  <Icon className="h-4 w-4" />
-                </div>
+                />
                 {item.isCart && cartCount > 0 && (
-                  <span className="absolute -top-1 -right-2 h-4 min-w-[16px] px-1 rounded-full bg-[#FFED00] text-black font-bold text-[9px] font-mono flex items-center justify-center border border-black shadow-xs">
-                    {cartCount}
+                  <span className="absolute -top-1.5 -right-2.5 h-4 min-w-[16px] px-1 rounded-full bg-[#FFED00] text-black font-bold text-[9px] font-mono flex items-center justify-center border border-black shadow-xs">
+                    {cartCount > 99 ? '99+' : cartCount}
                   </span>
                 )}
               </div>
-              <span className="text-[10px] font-medium tracking-tight leading-none mt-0.5 truncate max-w-full text-center">
+              <span
+                className={`text-[10.5px] tracking-tight leading-none mt-1 truncate max-w-full text-center transition-colors ${
+                  isActive ? 'font-bold text-black' : 'font-medium text-[#737373]'
+                }`}
+              >
                 {item.label}
               </span>
             </Link>

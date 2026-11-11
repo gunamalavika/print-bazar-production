@@ -414,7 +414,7 @@ export default function OperationsDashboardPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center flex-wrap gap-2 sm:gap-3 w-full sm:w-auto mt-2 sm:mt-0">
           {isConnected ? (
             <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-mono font-bold text-emerald-700 shadow-xs">
               <span className="relative flex h-2 w-2">
@@ -435,13 +435,13 @@ export default function OperationsDashboardPage() {
             size="sm"
             onClick={loadData}
             isLoading={isLoading}
-            className="text-slate-700"
+            className="text-slate-700 flex-1 sm:flex-initial justify-center"
           >
             <RiRefreshLine className="h-4 w-4 mr-1.5" />
             <span>Refresh Telemetry</span>
           </Button>
-          <Link href="/operations/orders">
-            <Button variant="primary" size="sm">
+          <Link href="/operations/orders" className="flex-1 sm:flex-initial">
+            <Button variant="primary" size="sm" className="w-full justify-center">
               <span>All Operational Orders</span>
               <RiArrowRightLine className="h-4 w-4 ml-1.5" />
             </Button>
@@ -561,7 +561,7 @@ export default function OperationsDashboardPage() {
 
       {/* Actionable Dispatch Center Tabs */}
       <div className="bg-white border border-slate-200/90 rounded-xl shadow-xs overflow-hidden">
-        <div className="flex border-b border-slate-200 bg-slate-50/70 p-2 gap-2 overflow-x-auto">
+        <div className="flex border-b border-slate-200 bg-slate-50/70 p-2 gap-2 overflow-x-auto no-scrollbar">
           <button
             onClick={() => setActiveTab('active')}
             className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
@@ -642,15 +642,15 @@ export default function OperationsDashboardPage() {
         {activeTab === 'active' && (
           <div className="p-5 space-y-4">
             {/* Filter and Search Bar */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/70 p-3 rounded-lg border border-slate-200">
-              <div className="flex flex-1 items-center gap-2 w-full sm:w-auto">
-                <div className="relative flex-1 max-w-sm">
+            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-slate-50/70 p-3 rounded-lg border border-slate-200">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
+                <div className="relative flex-1 w-full sm:w-auto sm:max-w-xs md:max-w-sm">
                   <RiFilter3Line className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
                   <input
                     type="text"
                     value={activeSearch}
                     onChange={(e) => setActiveSearch(e.target.value)}
-                    placeholder="Search by Order #, Operator, Customer, Product..."
+                    placeholder="Search Order #, Operator, Customer, Product..."
                     className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-md text-xs placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                   {activeSearch && (
@@ -663,37 +663,39 @@ export default function OperationsDashboardPage() {
                   )}
                 </div>
 
-                <select
-                  value={selectedOperatorFilter}
-                  onChange={(e) => setSelectedOperatorFilter(e.target.value)}
-                  className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-md text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="ALL">All Operators ({operators.length})</option>
-                  <option value="UNASSIGNED">Unassigned Operator</option>
-                  {operators.map((op) => (
-                    <option key={op.id} value={op.id}>
-                      {op.fullName} ({op.activeLoad || 0} jobs)
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <select
+                    value={selectedOperatorFilter}
+                    onChange={(e) => setSelectedOperatorFilter(e.target.value)}
+                    className="w-full sm:w-auto px-2.5 py-1.5 bg-white border border-slate-300 rounded-md text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="ALL">All Operators ({operators.length})</option>
+                    <option value="UNASSIGNED">Unassigned Operator</option>
+                    {operators.map((op) => (
+                      <option key={op.id} value={op.id}>
+                        {op.fullName} ({op.activeLoad || 0} jobs)
+                      </option>
+                    ))}
+                  </select>
 
-                <select
-                  value={selectedStageFilter}
-                  onChange={(e) => setSelectedStageFilter(e.target.value)}
-                  className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-md text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="ALL">All Stages</option>
-                  <option value="PRINTING">Printing Floor</option>
-                  <option value="FINISHING">Post-Press Finishing</option>
-                  <option value="QUALITY_CHECK">Quality Check</option>
-                  <option value="PRODUCTION_QUEUE">Production Queue</option>
-                  <option value="CUSTOMER_APPROVAL_REQUIRED">Proof Approval</option>
-                  <option value="DESIGN_PENDING">Design Queue</option>
-                  <option value="PACKING">Packing & Shipping</option>
-                </select>
+                  <select
+                    value={selectedStageFilter}
+                    onChange={(e) => setSelectedStageFilter(e.target.value)}
+                    className="w-full sm:w-auto px-2.5 py-1.5 bg-white border border-slate-300 rounded-md text-xs text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="ALL">All Stages</option>
+                    <option value="PRINTING">Printing Floor</option>
+                    <option value="FINISHING">Post-Press Finishing</option>
+                    <option value="QUALITY_CHECK">Quality Check</option>
+                    <option value="PRODUCTION_QUEUE">Production Queue</option>
+                    <option value="CUSTOMER_APPROVAL_REQUIRED">Proof Approval</option>
+                    <option value="DESIGN_PENDING">Design Queue</option>
+                    <option value="PACKING">Packing & Shipping</option>
+                  </select>
+                </div>
               </div>
 
-              <div className="text-[11px] font-mono text-slate-500 shrink-0">
+              <div className="text-[11px] font-mono text-slate-500 shrink-0 text-right sm:text-left">
                 Showing <strong className="text-slate-900">{filteredActiveOrders.length}</strong> of {activePipelineOrders.length} orders
               </div>
             </div>

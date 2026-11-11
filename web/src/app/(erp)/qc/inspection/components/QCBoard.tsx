@@ -149,12 +149,12 @@ export function QCBoard() {
       artworkVersion ||
       (specs?.artworkUrl
         ? {
-            fileUrl: specs.artworkUrl,
-            storageKey: specs.artworkStorageKey,
-            originalFileName: 'Customer_Artwork',
-            resolutionDpi: specs.resolutionDpi || 300,
-            actualMegapixels: specs.actualMegapixels || 12,
-          }
+          fileUrl: specs.artworkUrl,
+          storageKey: specs.artworkStorageKey,
+          originalFileName: 'Customer_Artwork',
+          resolutionDpi: specs.resolutionDpi || 300,
+          actualMegapixels: specs.actualMegapixels || 12,
+        }
         : null);
 
     return {
@@ -407,19 +407,17 @@ export function QCBoard() {
         </div>
 
         {/* Action Buttons: Live sync & auto refresh */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto mt-2 sm:mt-0">
           <button
             onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 transition ${
-              autoRefresh
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1.5 transition flex-1 sm:flex-initial ${autoRefresh
                 ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                 : 'bg-slate-100 text-slate-600 border-slate-200'
-            }`}
+              }`}
           >
             <span
-              className={`h-2 w-2 rounded-full ${
-                autoRefresh ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
-              }`}
+              className={`h-2 w-2 rounded-full ${autoRefresh ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                }`}
             />
             <span>{autoRefresh ? 'Live Auto-Sync (15s)' : 'Auto-Sync Off'}</span>
           </button>
@@ -429,7 +427,7 @@ export function QCBoard() {
             size="sm"
             onClick={() => loadQueues()}
             disabled={isRefreshing}
-            className="flex items-center gap-1.5 h-9"
+            className="flex items-center justify-center gap-1.5 h-9 flex-1 sm:flex-initial"
           >
             <RiRefreshLine className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span>Refresh</span>

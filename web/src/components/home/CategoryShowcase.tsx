@@ -87,23 +87,24 @@ export function CategoryShowcase() {
   return (
     <section className="bg-[#FAFAFA] border-b border-neutral-200/70 py-10 sm:py-14 lg:py-16 w-full max-w-full overflow-hidden">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Section Header: "Shop by Category" & "View all categories →" */}
-        <div className="flex items-center justify-between mb-6 sm:mb-8">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 tracking-tight font-sans">
+        {/* Section Header: Responsive Title & View All */}
+        <div className="flex items-start sm:items-center justify-between gap-3 mb-4 sm:mb-6">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg sm:text-2xl font-bold text-neutral-900 tracking-tight font-sans">
               Shop by Category
             </h2>
-            <p className="text-xs text-neutral-500 mt-0.5">
+            <p className="text-[11px] sm:text-xs text-neutral-500 mt-0.5 leading-tight sm:leading-normal line-clamp-1 sm:line-clamp-none font-sans">
               Explore our full printing and custom packaging categories
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 pt-0.5 sm:pt-0">
             <Link
               href="/products"
-              className="group inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-neutral-600 hover:text-black transition-colors"
+              className="group inline-flex items-center gap-1 text-[11.5px] sm:text-sm font-bold text-neutral-800 hover:text-black transition-colors whitespace-nowrap bg-neutral-200/60 sm:bg-transparent px-2.5 py-1 sm:p-0 rounded-full sm:rounded-none"
             >
-              <span>View all categories</span>
+              <span>View all</span>
+              <span className="hidden sm:inline"> categories</span>
               <ArrowRight className="w-3.5 h-3.5 stroke-[2.2] transition-transform duration-150 group-hover:translate-x-0.5" />
             </Link>
 
@@ -115,11 +116,10 @@ export function CategoryShowcase() {
                   onClick={() => scroll('left')}
                   disabled={!canScrollLeft}
                   aria-label="Scroll left"
-                  className={`w-7 h-7 rounded-full flex items-center justify-center border transition-all ${
-                    canScrollLeft
+                  className={`w-7 h-7 rounded-full flex items-center justify-center border transition-all ${canScrollLeft
                       ? 'border-neutral-300 text-neutral-800 hover:bg-neutral-100 hover:border-neutral-400 active:scale-95 cursor-pointer'
                       : 'border-neutral-200 text-neutral-300 cursor-not-allowed opacity-50'
-                  }`}
+                    }`}
                 >
                   <ChevronLeft className="w-4 h-4 stroke-[2.2]" />
                 </button>
@@ -129,11 +129,10 @@ export function CategoryShowcase() {
                   onClick={() => scroll('right')}
                   disabled={!canScrollRight}
                   aria-label="Scroll right"
-                  className={`w-7 h-7 rounded-full flex items-center justify-center border transition-all ${
-                    canScrollRight
+                  className={`w-7 h-7 rounded-full flex items-center justify-center border transition-all ${canScrollRight
                       ? 'border-neutral-300 text-neutral-800 hover:bg-neutral-100 hover:border-neutral-400 active:scale-95 cursor-pointer'
                       : 'border-neutral-200 text-neutral-300 cursor-not-allowed opacity-50'
-                  }`}
+                    }`}
                 >
                   <ChevronRight className="w-4 h-4 stroke-[2.2]" />
                 </button>
@@ -145,7 +144,7 @@ export function CategoryShowcase() {
         {/* Horizontal Scrollable Row */}
         <div
           ref={scrollRef}
-          className="flex items-start gap-3 sm:gap-4 overflow-x-auto scrollbar-none scroll-smooth pb-2 pt-1 touch-pan-x"
+          className="flex items-start gap-3 sm:gap-4 overflow-x-auto scrollbar-none scroll-smooth pb-2 pt-1 touch-pan-x -mx-4 px-4 sm:mx-0 sm:px-0"
           style={{
             scrollbarWidth: 'none',
             msOverflowStyle: 'none',

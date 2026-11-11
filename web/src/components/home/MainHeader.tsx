@@ -30,18 +30,18 @@ export function MainHeader() {
   };
 
   return (
-    <header className="bg-white border-b border-brand-border px-4 sm:px-8 py-3 sticky top-0 z-40">
+    <header className="bg-white border-b border-brand-border px-4 sm:px-8 py-2.5 sm:py-3 sticky top-0 z-40">
       <div className="mx-auto max-w-7xl flex items-center justify-between gap-6">
         {/* Brand Logo */}
         <Link href="/" className="flex items-center group flex-shrink-0" aria-label="Print Bazzar Home">
           <Image
             src="/brand-logo.png"
             alt="Print Bazzar"
-            width={212}
-            height={40}
+            width={160}
+            height={30}
             priority
             style={{ width: 'auto', height: 'auto' }}
-            className="h-8 sm:h-9 md:h-10 w-auto object-contain transition-transform duration-200 group-hover:scale-102"
+            className="h-[24px] sm:h-[26px] md:h-[28px] lg:h-[30px] w-auto object-contain transition-transform duration-200 group-hover:scale-102"
           />
         </Link>
 

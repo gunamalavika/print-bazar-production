@@ -113,40 +113,42 @@ export function QCMetrics({ metrics }: QCMetricsProps) {
           </div>
         </div>
 
-        {/* Holds & Technical Blocks */}
+        {/* Holds & Technical Blocks (Spans 2 columns on mobile for balanced layout) */}
         <div
-          className={`border rounded-xl p-3.5 shadow-xs flex flex-col justify-between transition-colors ${
+          className={`col-span-2 sm:col-span-1 border rounded-xl p-3.5 shadow-xs flex flex-row sm:flex-col items-center sm:items-stretch justify-between transition-colors ${
             metrics.holdsCount > 0
               ? 'bg-rose-50/60 border-rose-300'
               : 'bg-white border-slate-200/90'
           }`}
         >
-          <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-1.5 sm:justify-between">
+              <span
+                className={`text-[10px] font-mono uppercase font-bold ${
+                  metrics.holdsCount > 0 ? 'text-rose-900' : 'text-slate-500'
+                }`}
+              >
+                HOLDS & DEFECTS
+              </span>
+              <RiAlertLine
+                className={`h-4 w-4 ${metrics.holdsCount > 0 ? 'text-rose-600' : 'text-slate-400'}`}
+              />
+            </div>
             <span
-              className={`text-[10px] font-mono uppercase font-bold ${
-                metrics.holdsCount > 0 ? 'text-rose-900' : 'text-slate-500'
+              className={`text-[10px] font-medium block mt-0.5 sm:mt-1 ${
+                metrics.holdsCount > 0 ? 'text-rose-700 font-bold' : 'text-slate-500'
               }`}
             >
-              HOLDS & DEFECTS
+              {metrics.holdsCount > 0 ? 'Rework Required' : 'Zero Blocks'}
             </span>
-            <RiAlertLine
-              className={`h-4 w-4 ${metrics.holdsCount > 0 ? 'text-rose-600' : 'text-slate-400'}`}
-            />
           </div>
-          <div className="mt-1 flex items-baseline gap-2">
+          <div className="text-right sm:text-left mt-0 sm:mt-1">
             <span
               className={`text-[22px] font-bold font-mono leading-none ${
                 metrics.holdsCount > 0 ? 'text-rose-950' : 'text-slate-900'
               }`}
             >
               {metrics.holdsCount}
-            </span>
-            <span
-              className={`text-[10px] font-medium ${
-                metrics.holdsCount > 0 ? 'text-rose-700 font-bold' : 'text-slate-500'
-              }`}
-            >
-              {metrics.holdsCount > 0 ? 'Rework Required' : 'Zero Blocks'}
             </span>
           </div>
         </div>

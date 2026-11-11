@@ -775,11 +775,11 @@ export default function LoginPage() {
           <Image
             src="/brand-logo.png"
             alt="Print Bazzar"
-            width={240}
-            height={46}
+            width={175}
+            height={33}
             priority
             style={{ width: 'auto', height: 'auto' }}
-            className="h-10 sm:h-12 w-auto object-contain transition-transform duration-200 group-hover:scale-102"
+            className="h-[28px] sm:h-[32px] md:h-[34px] w-auto object-contain transition-transform duration-200 group-hover:scale-102"
           />
           <div className="flex items-center gap-2">
             <span className="bg-black text-[#FFED00] text-[10px] font-mono font-bold px-1.5 py-0.5 rounded">

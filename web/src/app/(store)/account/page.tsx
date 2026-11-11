@@ -407,19 +407,19 @@ export default function CustomerAccountPage() {
           </div>
 
           {/* Action CTAs */}
-          <div className="flex flex-wrap items-center gap-2 pt-2 md:pt-0">
+          <div className="flex flex-wrap items-center gap-2 pt-2 md:pt-0 w-full md:w-auto">
             {user?.role && user.role !== 'CUSTOMER' && (
-              <Link href={getRoleDestination(user.role)}>
-                <Button variant="outline" size="sm" className="flex items-center gap-1.5 font-medium min-h-[36px]">
+              <Link href={getRoleDestination(user.role)} className="flex-1 sm:flex-initial">
+                <Button variant="outline" size="sm" className="w-full justify-center flex items-center gap-1.5 font-medium min-h-[36px]">
                   <span>ERP Console</span>
-                  <RiExternalLinkLine className="h-3.5 w-3.5" />
+                  <RiExternalLinkLine className="h-3.5 w-3.5 shrink-0" />
                 </Button>
               </Link>
             )}
 
-            <Link href="/products">
-              <Button variant="primary" size="sm" className="font-medium text-black flex items-center gap-1.5 shadow-xs min-h-[36px]">
-                <RiAddLine className="h-4 w-4" />
+            <Link href="/products" className="flex-1 sm:flex-initial">
+              <Button variant="primary" size="sm" className="w-full justify-center font-medium text-black flex items-center gap-1.5 shadow-xs min-h-[36px]">
+                <RiAddLine className="h-4 w-4 shrink-0" />
                 <span>Configure Job</span>
               </Button>
             </Link>
@@ -429,9 +429,9 @@ export default function CustomerAccountPage() {
               variant="ghost"
               size="sm"
               onClick={() => logout()}
-              className="text-[#B91C1C] hover:bg-[#FEF2F2] flex items-center gap-1 font-medium min-h-[36px]"
+              className="text-[#B91C1C] hover:bg-[#FEF2F2] flex items-center justify-center gap-1 font-medium min-h-[36px] flex-1 sm:flex-initial"
             >
-              <RiLogoutBoxRLine className="h-4 w-4" />
+              <RiLogoutBoxRLine className="h-4 w-4 shrink-0" />
               <span>Sign Out</span>
             </Button>
           </div>
@@ -510,56 +510,76 @@ export default function CustomerAccountPage() {
       {/* ------------------------------------------------------------- */}
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
         {/* Navigation Tabs Bar */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200 custom-scrollbar">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2 pt-1 border-b border-slate-200 -mx-4 px-4 sm:mx-0 sm:px-0">
           <button
             type="button"
             onClick={() => setActiveTab('orders')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            className={`px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 whitespace-nowrap cursor-pointer ${
               activeTab === 'orders'
                 ? 'bg-slate-900 text-white shadow-xs font-black'
-                : 'bg-white text-slate-700 border border-slate-200 hover:border-slate-400'
+                : 'bg-white text-slate-700 border border-slate-200 hover:border-slate-400 hover:bg-slate-50'
             }`}
           >
-            <RiShoppingBag3Line className="h-4 w-4" />
-            <span>My Orders Master ({orders.length})</span>
+            <RiShoppingBag3Line className="h-4 w-4 shrink-0 text-[#FFED00]" />
+            <span>My Orders Master</span>
+            <span
+              className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full ${
+                activeTab === 'orders' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+              }`}
+            >
+              {orders.length}
+            </span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('approvals')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            className={`px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 whitespace-nowrap cursor-pointer ${
               activeTab === 'approvals'
                 ? 'bg-slate-900 text-white shadow-xs font-black'
-                : 'bg-white text-slate-700 border border-slate-200 hover:border-slate-400'
+                : 'bg-white text-slate-700 border border-slate-200 hover:border-slate-400 hover:bg-slate-50'
             }`}
           >
-            <RiCheckDoubleLine className="h-4 w-4 text-[#E3A008]" />
-            <span>Proof Approvals ({stats.pendingProofsCount})</span>
+            <RiCheckDoubleLine className="h-4 w-4 shrink-0 text-[#E3A008]" />
+            <span>Proof Approvals</span>
+            {stats.pendingProofsCount > 0 ? (
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-950 animate-pulse">
+                {stats.pendingProofsCount}
+              </span>
+            ) : (
+              <span
+                className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full ${
+                  activeTab === 'approvals' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+                }`}
+              >
+                0
+              </span>
+            )}
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('invoices')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            className={`px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 whitespace-nowrap cursor-pointer ${
               activeTab === 'invoices'
                 ? 'bg-slate-900 text-white shadow-xs font-black'
-                : 'bg-white text-slate-700 border border-slate-200 hover:border-slate-400'
+                : 'bg-white text-slate-700 border border-slate-200 hover:border-slate-400 hover:bg-slate-50'
             }`}
           >
-            <RiFileTextLine className="h-4 w-4" />
+            <RiFileTextLine className="h-4 w-4 shrink-0 text-slate-400" />
             <span>GST Tax Invoices</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('profile')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            className={`px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 whitespace-nowrap cursor-pointer ${
               activeTab === 'profile'
                 ? 'bg-slate-900 text-white shadow-xs font-black'
-                : 'bg-white text-slate-700 border border-slate-200 hover:border-slate-400'
+                : 'bg-white text-slate-700 border border-slate-200 hover:border-slate-400 hover:bg-slate-50'
             }`}
           >
-            <RiBuilding4Line className="h-4 w-4" />
+            <RiBuilding4Line className="h-4 w-4 shrink-0 text-slate-400" />
             <span>Company Profile & Addresses</span>
           </button>
         </div>
@@ -584,7 +604,7 @@ export default function CustomerAccountPage() {
               </div>
 
               {/* Status Filters */}
-              <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 -mx-2 px-2 sm:mx-0 sm:px-0">
                 {[
                   { id: 'ALL', label: `All (${orders.length})` },
                   { id: 'ACTIVE', label: `In Production (${stats.activeCount})` },
@@ -595,7 +615,7 @@ export default function CustomerAccountPage() {
                     key={st.id}
                     type="button"
                     onClick={() => setStatusFilter(st.id as any)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex-shrink-0 cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition shrink-0 whitespace-nowrap cursor-pointer ${
                       statusFilter === st.id
                         ? 'bg-slate-900 text-white shadow-xs'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -734,56 +754,57 @@ export default function CustomerAccountPage() {
                         </div>
 
                         {/* Action Buttons Strip: Reorder, Track, Sign Proof, Invoice */}
-                        <div className="md:col-span-4 flex flex-wrap md:flex-col items-end gap-2 justify-end">
+                        <div className="md:col-span-4 flex flex-col sm:flex-row md:flex-col items-stretch sm:items-end gap-2 justify-end w-full">
                           {/* Easy 1-Click Reorder Button to Cart & Checkout */}
                           <Button
                             type="button"
                             variant="primary"
                             size="sm"
                             onClick={() => firstItem && handleDirectReorderCheckout(ord, firstItem)}
-                            className="w-full sm:w-auto font-black flex items-center justify-center gap-1.5 shadow-xs bg-[#FFED00] hover:bg-[#E3A008] text-slate-950"
+                            className="w-full sm:w-auto font-black flex items-center justify-center gap-1.5 shadow-xs bg-[#FFED00] hover:bg-[#E3A008] text-slate-950 py-2 sm:py-1.5"
                             title="Duplicate order to cart and proceed directly to checkout"
                           >
-                            <RiRefreshLine className="h-4 w-4 stroke-[2]" />
+                            <RiRefreshLine className="h-4 w-4 stroke-[2] shrink-0" />
                             <span>Reorder to Checkout</span>
                           </Button>
 
-                          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                          <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto justify-end">
                             {ord.proofRequired && (
-                              <Link href={`/tracking/${ord.orderNumber}`}>
+                              <Link href={`/tracking/${ord.orderNumber}`} className="col-span-2 sm:col-span-1">
                                 <Button
                                   type="button"
                                   variant="secondary"
                                   size="sm"
-                                  className="flex items-center gap-1 font-bold"
+                                  className="w-full justify-center flex items-center gap-1 font-bold"
                                 >
-                                  <RiCheckDoubleLine className="h-4 w-4" />
+                                  <RiCheckDoubleLine className="h-4 w-4 shrink-0 text-[#E3A008]" />
                                   <span>Sign Proof</span>
                                 </Button>
                               </Link>
                             )}
 
-                            <Link href={`/tracking/${ord.orderNumber}`}>
+                            <Link href={`/tracking/${ord.orderNumber}`} className="flex-1 sm:flex-initial">
                               <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                className="flex items-center gap-1 font-bold"
+                                className="w-full justify-center flex items-center gap-1 font-bold"
                               >
-                                <RiEyeLine className="h-3.5 w-3.5" />
+                                <RiEyeLine className="h-3.5 w-3.5 shrink-0" />
                                 <span>Track Live</span>
                               </Button>
                             </Link>
 
-                            <Link href={`/invoices/${ord.orderNumber}`}>
+                            <Link href={`/invoices/${ord.orderNumber}`} className="flex-1 sm:flex-initial">
                               <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
                                 title="View Tax Invoice"
-                                className="p-2"
+                                className="w-full justify-center flex items-center gap-1 p-2 font-bold"
                               >
-                                <RiFileTextLine className="h-4 w-4 text-slate-700" />
+                                <RiFileTextLine className="h-4 w-4 shrink-0 text-slate-700" />
+                                <span className="sm:hidden text-xs">Invoice</span>
                               </Button>
                             </Link>
                           </div>
@@ -825,10 +846,10 @@ export default function CustomerAccountPage() {
                       Prepress engineers have generated the 12-point calibration proof. Production is on hold
                       awaiting your verified authorization.
                     </p>
-                    <div className="pt-2 flex items-center gap-3">
-                      <Link href={`/tracking/${ord.orderNumber}`}>
-                        <Button variant="primary" size="md" className="font-bold flex items-center gap-1.5">
-                          <RiCheckDoubleLine className="h-4 w-4" />
+                    <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                      <Link href={`/tracking/${ord.orderNumber}`} className="w-full sm:w-auto">
+                        <Button variant="primary" size="md" className="w-full justify-center font-bold flex items-center gap-1.5">
+                          <RiCheckDoubleLine className="h-4 w-4 shrink-0 text-slate-950" />
                           <span>Inspect High-Res Proof & Sign-Off</span>
                         </Button>
                       </Link>
@@ -870,24 +891,24 @@ export default function CustomerAccountPage() {
             ) : (
               <div className="divide-y divide-slate-100">
                 {orders.map((ord) => (
-                  <div key={ord.id} className="py-3.5 flex items-center justify-between gap-4">
+                  <div key={ord.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+                      <div className="h-10 w-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
                         <RiFileTextLine className="h-5 w-5" />
                       </div>
-                      <div>
-                        <span className="text-xs font-bold text-slate-900 block">
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-slate-900 block truncate">
                           INV-{ord.orderNumber}
                         </span>
-                        <span className="text-[11px] text-slate-500 font-mono">
+                        <span className="text-[11px] text-slate-500 font-mono block truncate">
                           Date: {formatDate(ord.createdAt)} • Amount: {formatCurrency(ord.totalAmount)}
                         </span>
                       </div>
                     </div>
 
-                    <Link href={`/invoices/${ord.orderNumber}`}>
-                      <Button variant="outline" size="sm" className="font-bold flex items-center gap-1.5">
-                        <RiFileTextLine className="h-3.5 w-3.5" />
+                    <Link href={`/invoices/${ord.orderNumber}`} className="w-full sm:w-auto">
+                      <Button variant="outline" size="sm" className="w-full justify-center font-bold flex items-center gap-1.5">
+                        <RiFileTextLine className="h-3.5 w-3.5 shrink-0" />
                         <span>View & Print Invoice</span>
                       </Button>
                     </Link>

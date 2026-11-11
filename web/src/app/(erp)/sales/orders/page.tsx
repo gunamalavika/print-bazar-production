@@ -136,22 +136,22 @@ export default function AdminOrdersPage() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full sm:w-auto mt-2 sm:mt-0">
+          <div className="relative w-full sm:w-64">
             <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               placeholder="Search Order ID, Customer..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-4 h-9 rounded-lg border border-slate-200 bg-white text-[13px] font-normal focus:border-slate-900 focus:outline-none w-64 shadow-xs"
+              className="pl-9 pr-4 h-9 rounded-lg border border-slate-200 bg-white text-[13px] font-normal focus:border-slate-900 focus:outline-none w-full shadow-xs"
             />
           </div>
 
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-900 shadow-xs focus:outline-none"
+            className="w-full sm:w-auto h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-900 shadow-xs focus:outline-none"
           >
             <option value="ALL">All Stages ({orders.length})</option>
             <option value="CUSTOMER_APPROVAL_REQUIRED">Proof Approval Gate</option>
@@ -163,8 +163,8 @@ export default function AdminOrdersPage() {
             <option value="ON_HOLD">On Hold / Exceptions</option>
           </select>
 
-          <Link href="/sales/walk-in">
-            <Button variant="primary" size="md" className="flex items-center gap-1.5 font-bold shadow-xs">
+          <Link href="/sales/walk-in" className="w-full sm:w-auto">
+            <Button variant="primary" size="md" className="w-full justify-center flex items-center gap-1.5 font-bold shadow-xs">
               <Plus className="h-4 w-4" />
               <span>New Walk-in Order</span>
             </Button>

@@ -790,10 +790,10 @@ export default function ArtworkPrepressPage() {
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100 border border-slate-200 rounded-lg">
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100 border border-slate-200 rounded-lg overflow-x-auto no-scrollbar max-w-full">
           <Link
             href="/prepress/kanban"
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-md text-[13px] font-semibold text-slate-700 hover:text-slate-950 hover:bg-white transition"
+            className="flex items-center gap-2 px-3.5 py-1.5 rounded-md text-[13px] font-semibold text-slate-700 hover:text-slate-950 hover:bg-white transition shrink-0 whitespace-nowrap"
           >
             <RiKanbanView2 className="h-4 w-4 text-amber-600" />
             <span>Design Process Kanban</span>
@@ -803,7 +803,7 @@ export default function ArtworkPrepressPage() {
               setActiveTab('DESIGN_STUDIO');
               setDesignSubFilter('ACTIVE');
             }}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-md text-[13px] font-semibold transition ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-md text-[13px] font-semibold transition shrink-0 whitespace-nowrap ${
               activeTab === 'DESIGN_STUDIO' && designSubFilter !== 'PASSED'
                 ? 'bg-amber-300 text-slate-900 shadow-sm border border-slate-300'
                 : 'text-slate-600 hover:text-slate-900'
@@ -817,7 +817,7 @@ export default function ArtworkPrepressPage() {
               setActiveTab('PASSED_TO_PRODUCTION');
               setDesignSubFilter('PASSED');
             }}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-md text-[13px] font-semibold transition ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-md text-[13px] font-semibold transition shrink-0 whitespace-nowrap ${
               activeTab === 'PASSED_TO_PRODUCTION' || (activeTab === 'DESIGN_STUDIO' && designSubFilter === 'PASSED')
                 ? 'bg-emerald-600 text-white shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
@@ -828,7 +828,7 @@ export default function ArtworkPrepressPage() {
           </button>
           <button
             onClick={() => setActiveTab('PREFLIGHT')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-md text-[13px] font-semibold transition ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-md text-[13px] font-semibold transition shrink-0 whitespace-nowrap ${
               activeTab === 'PREFLIGHT'
                 ? 'bg-slate-900 text-white shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'

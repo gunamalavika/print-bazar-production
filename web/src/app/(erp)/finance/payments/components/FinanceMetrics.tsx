@@ -117,27 +117,36 @@ export function FinanceMetrics({ metrics }: FinanceMetricsProps) {
           <span className="text-[10px] text-slate-400 font-medium font-mono">Target: 98%</span>
         </div>
 
-        {/* Overdue / Recovery */}
+        {/* Overdue / Recovery (Spans 2 columns on mobile for balanced layout) */}
         <div
-          className={`border rounded-xl p-3.5 shadow-xs flex flex-col justify-between transition-colors ${
+          className={`col-span-2 sm:col-span-1 border rounded-xl p-3.5 shadow-xs flex flex-row sm:flex-col items-center sm:items-stretch justify-between transition-colors ${
             metrics.overdueAmount > 0
               ? 'bg-rose-50/60 border-rose-300'
               : 'bg-white border-slate-200/90'
           }`}
         >
-          <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-1.5 sm:justify-between">
+              <span
+                className={`text-[10px] font-mono uppercase font-bold ${
+                  metrics.overdueAmount > 0 ? 'text-rose-900' : 'text-slate-500'
+                }`}
+              >
+                OVERDUE CREDIT
+              </span>
+              <RiAlertLine
+                className={`h-4 w-4 ${metrics.overdueAmount > 0 ? 'text-rose-600' : 'text-slate-400'}`}
+              />
+            </div>
             <span
-              className={`text-[10px] font-mono uppercase font-bold ${
-                metrics.overdueAmount > 0 ? 'text-rose-900' : 'text-slate-500'
+              className={`text-[10px] font-medium font-mono block mt-0.5 sm:mt-1 ${
+                metrics.overdueAmount > 0 ? 'text-rose-700 font-bold' : 'text-slate-500'
               }`}
             >
-              OVERDUE CREDIT
+              {metrics.overdueAmount > 0 ? `${metrics.overdueCount} Past Due` : 'Zero Overdue'}
             </span>
-            <RiAlertLine
-              className={`h-4 w-4 ${metrics.overdueAmount > 0 ? 'text-rose-600' : 'text-slate-400'}`}
-            />
           </div>
-          <div className="mt-1 flex items-baseline gap-1.5 truncate">
+          <div className="text-right sm:text-left mt-0 sm:mt-1">
             <span
               className={`text-[20px] font-bold font-mono leading-none truncate ${
                 metrics.overdueAmount > 0 ? 'text-rose-950' : 'text-slate-900'
@@ -146,13 +155,6 @@ export function FinanceMetrics({ metrics }: FinanceMetricsProps) {
               {formatCurrency(metrics.overdueAmount)}
             </span>
           </div>
-          <span
-            className={`text-[10px] font-medium font-mono ${
-              metrics.overdueAmount > 0 ? 'text-rose-700 font-bold' : 'text-slate-500'
-            }`}
-          >
-            {metrics.overdueAmount > 0 ? `${metrics.overdueCount} Past Due` : 'Zero Overdue'}
-          </span>
         </div>
       </div>
     </div>

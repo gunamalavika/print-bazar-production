@@ -89,9 +89,9 @@ export function Footer() {
                 <Image
                   src="/brand-logo-white.png"
                   alt="Print Bazzar"
-                  width={212}
-                  height={40}
-                  className="h-8 sm:h-9 md:h-10 w-auto object-contain transition-transform duration-200 group-hover:scale-102"
+                  width={160}
+                  height={30}
+                  className="h-[24px] sm:h-[26px] md:h-[28px] lg:h-[30px] w-auto object-contain transition-transform duration-200 group-hover:scale-102"
                 />
               </Link>
               <p className="text-xs sm:text-[13px] text-neutral-400 font-medium mt-1.5">
