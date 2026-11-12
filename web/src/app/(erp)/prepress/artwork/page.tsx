@@ -593,12 +593,12 @@ export default function ArtworkPrepressPage() {
       const orderIdToSubmit = selectedDesignOrder.id || (selectedDesignOrder as any).orderId;
       await api.submitMultipleDesignWorks(orderIdToSubmit, {
         files: uploadedFilesPayload,
-        prepressNotes: prepressNotes || 'Design works prepared and submitted by Prepress Designer for OE review.',
+        prepressNotes: prepressNotes || 'Design works prepared and submitted by Prepress Designer. Released directly to Production.',
         resolutionDpi: Number(resolutionDpi) || 300,
       });
 
       setActionSuccess(
-        `✓ Successfully uploaded ${filesToProcess.length} design work(s) for Order #${selectedDesignOrder.orderNumber}! Routed to OE for confirmation.`
+        `✓ Successfully uploaded ${filesToProcess.length} design work(s) for Order #${selectedDesignOrder.orderNumber}! Released directly to Production Queue.`
       );
 
       stagedFiles.forEach((f) => {
@@ -609,7 +609,7 @@ export default function ArtworkPrepressPage() {
       setPrepressNotes('');
       setIsSpecsConfirmed(false);
       await fetchDesignQueue();
-      setDesignSubFilter('NEEDS_OE_CONFIRMATION');
+      setDesignSubFilter('PASSED');
       setTimeout(() => setActionSuccess(''), 6000);
     } catch (err: any) {
       setActionError(err.message || 'Failed to upload and submit design works');
@@ -626,11 +626,11 @@ export default function ArtworkPrepressPage() {
       await api.confirmArtworkWork({
         orderItemId,
         artworkVersionId,
-        oeNotes: oeConfirmNotes || 'Confirmed by OE for production release',
+        oeNotes: oeConfirmNotes || 'Confirmed and released directly to production',
       });
 
       setActionSuccess(
-        `✓ Authoritative work confirmed for Order #${selectedDesignOrder?.orderNumber}! Locked for production queue.`
+        `✓ Authoritative work confirmed for Order #${selectedDesignOrder?.orderNumber}! Locked and released to production queue.`
       );
       setOeConfirmNotes('');
       setConfirmingVersionId(null);
@@ -695,7 +695,7 @@ export default function ArtworkPrepressPage() {
         resolutionDpi: Number(resolutionDpi) || 300,
       });
 
-      setActionSuccess(`Design for Order #${selectedDesignOrder.orderNumber} successfully completed and routed to OE for Production Assignment!`);
+      setActionSuccess(`Design for Order #${selectedDesignOrder.orderNumber} successfully completed and released directly to Production Queue!`);
       setUploadFile(null);
       setPrepressNotes('');
       setIsSpecsConfirmed(false);
@@ -877,11 +877,11 @@ export default function ArtworkPrepressPage() {
                 <p className="text-[12px] text-slate-500 mt-0.5">
                   {activeTab === 'PASSED_TO_PRODUCTION' || designSubFilter === 'PASSED'
                     ? (isDesigner
-                        ? 'Completed designs verified and routed by you to OE for Production Assignment.'
-                        : 'Completed designs verified and routed downstream to OE for Production Assignment.')
+                        ? 'Completed designs verified and released directly to Production Queue.'
+                        : 'Completed designs verified and released directly to Production Queue.')
                     : (isDesigner
-                        ? 'Orders assigned to you for custom design preparation before OE Production Assignment.'
-                        : 'Orders requiring custom design preparation before OE Production Assignment.')}
+                        ? 'Orders assigned to you for custom design preparation. Uploaded designs release directly to Production.'
+                        : 'Orders requiring custom design preparation. Uploaded designs release directly to Production.')}
                 </p>
               </div>
 
@@ -975,14 +975,14 @@ export default function ArtworkPrepressPage() {
                 {activeTab === 'PASSED_TO_PRODUCTION' || designSubFilter === 'PASSED' ? (
                   <>
                     <CheckCircle className="h-10 w-10 text-slate-300 mx-auto mb-2" />
-                    <p className="text-[14px] font-medium text-slate-700">No Routed Orders Found</p>
-                    <p className="text-[12px] text-slate-400 mt-1">Orders will appear here once designs are completed and routed to OE.</p>
+                    <p className="text-[14px] font-medium text-slate-700">No Production Orders Found</p>
+                    <p className="text-[12px] text-slate-400 mt-1">Orders will appear here once designs are completed and released to Production.</p>
                   </>
                 ) : (
                   <>
                     <Paintbrush className="h-10 w-10 text-slate-300 mx-auto mb-2" />
                     <p className="text-[14px] font-medium text-slate-700">No Orders in Design Queue</p>
-                    <p className="text-[12px] text-slate-400 mt-1">All design service requests have been completed and routed to OE.</p>
+                    <p className="text-[12px] text-slate-400 mt-1">All design service requests have been completed and released to Production.</p>
                     {passedOrders.length > 0 && (
                       <button
                         onClick={() => {
@@ -1033,7 +1033,7 @@ export default function ArtworkPrepressPage() {
                             ) : order.isPassedToProduction ? (
                               <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1 shadow-2xs">
                                 <CheckCircle className="h-3 w-3 text-emerald-600" />
-                                ROUTED TO OE
+                                IN PRODUCTION
                               </span>
                             ) : (
                               <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
@@ -1252,7 +1252,7 @@ export default function ArtworkPrepressPage() {
                     </p>
                   </div>
                   <p className="text-[11.5px] text-rose-900/90 font-medium">
-                    ⚠️ Please update your design files according to the directives above, stage your corrected candidate files below, and click <strong>&quot;UPLOAD CANDIDATE WORK & ROUTE TO OE&quot;</strong>.
+                    ⚠️ Please update your design files according to the directives above, stage your corrected candidate files below, and click <strong>&quot;UPLOAD CANDIDATE WORK & MOVE DIRECT TO PRODUCTION&quot;</strong>.
                   </p>
                 </div>
               )}
@@ -1661,7 +1661,7 @@ export default function ArtworkPrepressPage() {
 
               {/* Work Panel Action Area */}
               {selectedDesignOrder.isPassedToProduction ? (
-                /* ROUTED TO OE FOR PRODUCTION ASSIGNMENT HANDOFF PANEL */
+                /* RELEASED DIRECTLY TO PRODUCTION QUEUE PANEL */
                 <div className="border-t border-slate-200 pt-4 space-y-4">
                   <div className="p-4 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50/40 rounded-xl border border-emerald-200 shadow-2xs space-y-3">
                     <div className="flex items-center justify-between">
@@ -1671,29 +1671,29 @@ export default function ArtworkPrepressPage() {
                         </div>
                         <div>
                           <h4 className="text-[14px] font-black uppercase tracking-wider text-emerald-950 font-display">
-                            Routed to OE for Production Assignment
+                            Released to Production Queue
                           </h4>
                           <span className="text-[11px] font-mono text-emerald-800 font-bold block">
-                            Order #{selectedDesignOrder.orderNumber} • Awaiting OE Operator Assignment
+                            Order #{selectedDesignOrder.orderNumber} • Live in Production Queue
                           </span>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <Link
-                          href={`/operations/orders?search=${selectedDesignOrder.orderNumber}`}
+                          href={`/production/queue?search=${selectedDesignOrder.orderNumber}`}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition shadow-xs"
                         >
-                          <span>OE Orders Queue</span>
+                          <span>Production Queue</span>
                           <ArrowRight className="h-3.5 w-3.5" />
                         </Link>
                         <span className="text-[10px] font-mono font-bold bg-emerald-200 text-emerald-900 px-2.5 py-1 rounded-full border border-emerald-300 shadow-2xs">
-                          ROUTED TO OE
+                          IN PRODUCTION
                         </span>
                       </div>
                     </div>
 
                     <p className="text-[12px] text-emerald-900/90 leading-relaxed">
-                      This custom design has been finalized, verified against customer specifications, and routed to the Operations Coordinator (OE) to assign a production operator.
+                      This design has been verified against specifications, approved, and released directly to the shop-floor Production Queue with Job Cards auto-generated.
                     </p>
 
                     {/* Target Station Card */}
@@ -1712,8 +1712,8 @@ export default function ArtworkPrepressPage() {
                           <span className="text-[10px] font-mono uppercase font-bold text-slate-400 block tracking-wider">
                             Assigned Production Operator
                           </span>
-                          <span className="text-[13px] font-black text-slate-900 block mt-0.5">
-                            {selectedDesignOrder.assignedOperator?.fullName || 'Pending OE Operator Assignment'}
+                          <span className="text-[13px] font-black text-slate-900 block mt-0.5 text-emerald-950">
+                            {selectedDesignOrder.assignedOperator?.fullName || 'Production Operator (Auto-Assigned)'}
                           </span>
                         </div>
                       </div>
@@ -1742,7 +1742,7 @@ export default function ArtworkPrepressPage() {
                       {selectedDesignOrder.passedPrepressNotes && (
                         <div className="pt-2 border-t border-emerald-100">
                           <span className="text-[10px] font-mono uppercase font-bold text-slate-400 block tracking-wider">
-                            Designer Handoff Notes & OE Directives:
+                            Designer Production Directives:
                           </span>
                           <p className="text-[12px] text-slate-800 bg-emerald-50/60 p-2 rounded border border-emerald-200/80 mt-1 italic">
                             &quot;{selectedDesignOrder.passedPrepressNotes}&quot;
@@ -1782,7 +1782,7 @@ export default function ArtworkPrepressPage() {
                               <span>Artwork Versions & Candidate Works</span>
                             </span>
                             <span className="text-[11px] text-slate-500">
-                              {uniqueVersions.length} version(s) on file • {hasConfirmed ? 'Confirmed for Production' : 'Awaiting OE Decision'}
+                              {uniqueVersions.length} version(s) on file • {hasConfirmed ? 'Confirmed for Production' : 'Ready for Production Release'}
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -1804,9 +1804,9 @@ export default function ArtworkPrepressPage() {
                                 CONFIRMED WORK
                               </span>
                             ) : (
-                              <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-900 px-2.5 py-1 rounded-full border border-amber-300 flex items-center gap-1 shadow-2xs">
-                                <Clock className="h-3 w-3 text-amber-600" />
-                                OE DECISION PENDING
+                              <span className="text-[10px] font-mono font-bold bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-full border border-emerald-300 flex items-center gap-1 shadow-2xs">
+                                <CheckCircle className="h-3 w-3 text-emerald-600" />
+                                PRODUCTION READY
                               </span>
                             )}
                           </div>
@@ -2090,7 +2090,7 @@ export default function ArtworkPrepressPage() {
                                     </a>
                                   )}
 
-                                  {isOE && (
+                                  {(isDesigner || isOE) && (
                                     <>
                                       {isThisConfirmed ? (
                                         <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-1 rounded flex items-center gap-1">
@@ -2127,10 +2127,10 @@ export default function ArtworkPrepressPage() {
                   <div>
                     <h4 className="text-[12px] font-bold text-slate-800 uppercase tracking-wider mb-1 flex items-center gap-1.5">
                       <UploadCloud className="h-4 w-4 text-slate-700" />
-                      <span>Upload Artwork Candidate Works (Multiple Files Supported)</span>
+                      <span>Upload Artwork Candidate Works (Direct Production Release)</span>
                     </h4>
                     <p className="text-[12px] text-slate-500 mb-2.5">
-                      Prepress designers can select and upload multiple candidate designs, variations, or proofs (PDF / AI / TIFF / PNG / JPG). The OE will review and choose the confirmed work.
+                      Prepress designers can select and upload candidate designs, variations, or production proofs (PDF / AI / TIFF / PNG / JPG). Uploaded work automatically approves and releases directly to the Production Queue with Job Cards generated.
                     </p>
 
                     {/* Multi-File Upload Input & Drag Area */}
@@ -2244,7 +2244,7 @@ export default function ArtworkPrepressPage() {
 
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
-                      Prepress Notes & Directives for OE / Production
+                      Prepress Notes & Directives for Production
                     </label>
                     <textarea
                       rows={2}
@@ -2268,7 +2268,7 @@ export default function ArtworkPrepressPage() {
                         I have reviewed and verified customer specifications for these candidate designs
                       </span>
                       <span className="text-[11px] text-amber-800 block mt-0.5">
-                        Confirming that candidate artworks strictly adhere to customer specifications before routing to OE for confirmed work selection.
+                        Confirming that candidate artworks strictly adhere to customer specifications and are ready for direct release to the shop-floor Production Queue.
                       </span>
                     </div>
                   </label>
@@ -2281,10 +2281,10 @@ export default function ArtworkPrepressPage() {
                     <UploadCloud className="h-4 w-4" />
                     <span>
                       {isSubmittingDesign
-                        ? 'Uploading & Routing Candidate Works...'
+                        ? 'Uploading & Releasing Directly to Production...'
                         : stagedFiles.length > 1
-                          ? `UPLOAD ${stagedFiles.length} CANDIDATE WORKS & ROUTE TO OE`
-                          : 'UPLOAD CANDIDATE WORK & ROUTE TO OE'}
+                          ? `UPLOAD ${stagedFiles.length} CANDIDATE WORKS & MOVE DIRECT TO PRODUCTION`
+                          : 'UPLOAD CANDIDATE WORK & MOVE DIRECT TO PRODUCTION'}
                     </span>
                   </button>
                 </div>

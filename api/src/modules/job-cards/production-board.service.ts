@@ -167,10 +167,11 @@ export class ProductionBoardService {
     // 2. Fetch active Job Cards with all necessary relations
     const jobCardsWhere: Prisma.JobCardWhereInput = {};
 
-    // Strict individual ownership: Operator ONLY sees tasks assigned to their user ID
+    // Operator visibility: Operator sees their assigned tasks, plus unassigned queued tasks in QC_APPROVED ready for pickup
     if (user.role === UserRole.PRODUCTION_OPERATOR) {
       jobCardsWhere.OR = [
         { operatorId: user.sub },
+        { operatorId: null },
         {
           order: {
             assignments: {

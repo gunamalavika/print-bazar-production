@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -19,6 +20,7 @@ import { JwtPayload } from '../../common/types/roles';
 import * as crypto from 'crypto';
 import { extractDimensionsFromFile, extractImageDimensions } from '../../common/utils/image-dimensions.util';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
+import { JobCardEngineService } from '../job-cards/job-card-engine.service';
 
 export interface RegisterArtworkDto {
   orderItemId: string;
@@ -58,6 +60,7 @@ export class ArtworkService {
     private readonly auditService: AuditService,
     private readonly eventEmitter: EventEmitter2,
     private readonly storageService: SupabaseStorageService,
+    @Optional() private readonly jobCardEngine?: JobCardEngineService,
   ) {}
 
   /**
@@ -686,6 +689,11 @@ export class ArtworkService {
           include: {
             artworkVersions: { orderBy: { versionNumber: 'desc' } },
             personalizationRecords: true,
+            jobCards: {
+              include: {
+                operator: { select: { id: true, fullName: true, email: true, role: true } },
+              },
+            },
           },
         },
         statusHistory: {
@@ -697,6 +705,12 @@ export class ArtworkService {
         },
       },
       orderBy: { createdAt: 'desc' },
+    });
+
+    const defaultProductionOperator = await this.prisma.user.findFirst({
+      where: { role: UserRole.PRODUCTION_OPERATOR, isActive: true },
+      select: { id: true, fullName: true, email: true, role: true },
+      orderBy: { createdAt: 'asc' },
     });
 
     return orders.map((o) => {
@@ -727,9 +741,6 @@ export class ArtworkService {
         (a) => a.taskType === AssignmentTaskType.PRODUCTION,
       );
 
-      const assignedDesigner = activeDesignAssignment?.assignedUser || completedDesignAssignment?.assignedUser || null;
-      const assignedOperator = activeProdAssignment?.assignedUser || anyProdAssignment?.assignedUser || null;
-
       // Check if design is completed & passed to production
       const allItemVersions = o.items.flatMap((it) => it.artworkVersions || []);
       const approvedArtworkVersion =
@@ -755,6 +766,14 @@ export class ArtworkService {
           OrderStatus.OUT_FOR_DELIVERY,
           OrderStatus.DELIVERED,
         ].includes(o.status as any);
+
+      const assignedDesigner = activeDesignAssignment?.assignedUser || completedDesignAssignment?.assignedUser || null;
+      const jobCardOperator = o.items.flatMap((it) => it.jobCards || []).find((j) => j.operator)?.operator || null;
+      const assignedOperator =
+        activeProdAssignment?.assignedUser ||
+        anyProdAssignment?.assignedUser ||
+        jobCardOperator ||
+        (isPassedToProduction ? defaultProductionOperator : null);
 
       // Station / Stage handoff details
       let passedToStation = 'Design Studio';
@@ -834,20 +853,49 @@ export class ArtworkService {
         approvedArtworkVersion?.prepressNotes ||
         null;
 
-      // Extract OE revision directives if this job was returned for corrections
-      const latestReturnEntry = o.statusHistory?.find(
-        (h) =>
-          h.toStatus === OrderStatus.DESIGN_REQUIRED &&
-          (h.reason?.toLowerCase().includes('return') ||
-            h.reason?.toLowerCase().includes('correction') ||
-            Boolean(h.notes)),
+      // Extract OE revision directives ONLY if this job was genuinely returned for corrections from review/production
+      const isActualRevisionReturn = Boolean(
+        allItemVersions.length > 0 &&
+        (
+          activeDesignAssignment?.reason?.startsWith('OE Revision Directives:') ||
+          o.statusHistory?.some(
+            (h) =>
+              h.toStatus === OrderStatus.DESIGN_REQUIRED &&
+              (h.fromStatus === OrderStatus.ARTWORK_REVIEW ||
+                h.fromStatus === OrderStatus.PRODUCTION_QUEUE ||
+                h.fromStatus === OrderStatus.ARTWORK_APPROVED) &&
+              (h.reason?.toLowerCase().includes('return') ||
+                h.reason?.toLowerCase().includes('correction') ||
+                h.reason?.includes('Directives:')),
+          )
+        )
       );
-      const revisionDirectives =
-        activeDesignAssignment?.reason?.startsWith('OE Revision Directives:')
-          ? activeDesignAssignment.reason.replace(/^OE Revision Directives:\s*/i, '').trim()
-          : latestReturnEntry?.notes || (latestReturnEntry?.reason?.includes('Directives:') ? latestReturnEntry.reason.split('Directives:')[1]?.trim() : null) || null;
-      const returnedBy = latestReturnEntry?.changedBy?.fullName || null;
-      const returnedAt = latestReturnEntry?.createdAt || null;
+
+      const latestReturnEntry = isActualRevisionReturn
+        ? o.statusHistory?.find(
+            (h) =>
+              h.toStatus === OrderStatus.DESIGN_REQUIRED &&
+              (h.fromStatus === OrderStatus.ARTWORK_REVIEW ||
+                h.fromStatus === OrderStatus.PRODUCTION_QUEUE ||
+                h.fromStatus === OrderStatus.ARTWORK_APPROVED) &&
+              (h.reason?.toLowerCase().includes('return') ||
+                h.reason?.toLowerCase().includes('correction') ||
+                h.reason?.includes('Directives:')),
+          )
+        : null;
+
+      const revisionDirectives = isActualRevisionReturn
+        ? (activeDesignAssignment?.reason?.startsWith('OE Revision Directives:')
+            ? activeDesignAssignment.reason.replace(/^OE Revision Directives:\s*/i, '').trim()
+            : latestReturnEntry?.notes ||
+              (latestReturnEntry?.reason?.includes('Directives:')
+                ? latestReturnEntry.reason.split('Directives:')[1]?.trim()
+                : null) ||
+              null)
+        : null;
+
+      const returnedBy = isActualRevisionReturn ? (latestReturnEntry?.changedBy?.fullName || null) : null;
+      const returnedAt = isActualRevisionReturn ? (latestReturnEntry?.createdAt || null) : null;
 
       return {
         id: o.id,
@@ -1090,38 +1138,66 @@ export class ArtworkService {
         },
       });
 
-      // 4. Transition Master Order to ARTWORK_APPROVED
+      // 4. Auto-assign directly to an active PRODUCTION OPERATOR (bypassing OE)
+      const eligibleOperator = await tx.user.findFirst({
+        where: { role: UserRole.PRODUCTION_OPERATOR, isActive: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      if (eligibleOperator) {
+        await tx.orderAssignment.create({
+          data: {
+            orderId: order.id,
+            taskType: AssignmentTaskType.PRODUCTION,
+            assignedUserId: eligibleOperator.id,
+            assignedByUserId: userId,
+            status: AssignmentStatus.ACTIVE,
+            reason: 'Design completed by Prepress Designer and routed directly to Production Operator.',
+          },
+        });
+      }
+
+      // 5. Transition Master Order directly to PRODUCTION_QUEUE
       const updatedOrder = await tx.order.update({
         where: { id: order.id },
         data: {
-          status: OrderStatus.ARTWORK_APPROVED,
-          customerStatus: 'PREPARING_ORDER',
+          status: OrderStatus.PRODUCTION_QUEUE,
+          customerStatus: 'IN_PRODUCTION',
         },
       });
 
-      // 5. Record sequential status history
+      // 6. Record sequential status history
       await tx.orderStatusHistory.create({
         data: {
           orderId: order.id,
           fromStatus: order.status,
-          toStatus: OrderStatus.ARTWORK_APPROVED,
+          toStatus: OrderStatus.PRODUCTION_QUEUE,
           changedById: userId,
-          reason: `Design completed by studio team (v${nextVersion}). Ready for OE Production Assignment.`,
+          reason: `Design completed by Prepress Designer (v${nextVersion}). Moved directly to PRODUCTION OPERATOR.`,
           notes: dto.prepressNotes,
         },
       });
 
-      return { artwork, order: updatedOrder };
+      return { artwork, order: updatedOrder, operatorId: eligibleOperator?.id };
     });
+
+    // Auto-generate Job Cards directly for production shop-floor
+    if (this.jobCardEngine) {
+      try {
+        await this.jobCardEngine.generateJobCardForOrderItem(item.id, userId, result.operatorId);
+      } catch (err: any) {
+        this.logger.warn(`JobCard generation for item ${item.id}: ${err?.message}`);
+      }
+    }
 
     await this.auditService.log({
       actorId: userId,
-      action: 'DESIGN_COMPLETED',
+      action: 'DESIGN_COMPLETED_DIRECT_PRODUCTION',
       entity: 'Order',
       entityId: order.id,
       orderId: order.id,
-      newState: { status: OrderStatus.ARTWORK_APPROVED, artworkVersionId: result.artwork.id },
-      reason: `Design completed and routed to OE for Production Assignment`,
+      newState: { status: OrderStatus.PRODUCTION_QUEUE, artworkVersionId: result.artwork.id },
+      reason: `Design completed and moved directly to Production Operator`,
     });
 
     this.eventEmitter.emit('design.completed', {
@@ -1212,6 +1288,8 @@ export class ArtworkService {
           ? `[${file.label}] ${dto.prepressNotes || ''}`.trim()
           : dto.prepressNotes || 'Submitted by prepress studio team';
 
+        const isPrimary = i === 0;
+
         const artwork = await tx.artworkVersion.create({
           data: {
             orderItemId: item.id,
@@ -1222,14 +1300,25 @@ export class ArtworkService {
             fileSize: file.fileSize || 1024 * 1024,
             checksum,
             resolutionDpi: file.resolutionDpi || dto.resolutionDpi || 300,
-            status: ArtworkStatus.PENDING_REVIEW,
-            isApproved: false,
+            status: isPrimary ? ArtworkStatus.PROOF_APPROVED : ArtworkStatus.PENDING_REVIEW,
+            isApproved: isPrimary,
+            approvedAt: isPrimary ? new Date() : null,
             prepressNotes: combinedNotes,
             uploadedBy: userId,
           },
         });
 
         createdVersions.push(artwork);
+      }
+
+      // Automatically lock the primary candidate work as the approved version on the order item
+      if (createdVersions.length > 0) {
+        await tx.orderItem.update({
+          where: { id: item.id },
+          data: {
+            approvedArtworkVersionId: createdVersions[0].id,
+          },
+        });
       }
 
       // Mark any active DESIGN assignment as COMPLETED
@@ -1242,11 +1331,11 @@ export class ArtworkService {
         data: {
           status: AssignmentStatus.COMPLETED,
           completedAt: new Date(),
-          reason: `Prepress uploaded ${dto.files.length} design work candidate(s). Routed for OE Confirmation.`,
+          reason: `Prepress uploaded ${dto.files.length} design candidate work(s). Moved directly to Production Operator.`,
         },
       });
 
-      // If user had no recorded design assignment, record one as COMPLETED for audit and ownership
+      // Record design assignment completion for user if not previously recorded
       const hasAssignmentForUser = order.assignments.some((a) => a.assignedUserId === userId);
       if (!hasAssignmentForUser) {
         await tx.orderAssignment.create({
@@ -1257,17 +1346,36 @@ export class ArtworkService {
             taskType: AssignmentTaskType.DESIGN,
             status: AssignmentStatus.COMPLETED,
             completedAt: new Date(),
-            reason: `Prepress uploaded ${dto.files.length} design work candidate(s). Routed for OE Confirmation.`,
+            reason: `Prepress uploaded ${dto.files.length} design candidate work(s). Moved directly to Production Operator.`,
           },
         });
       }
 
-      // Update Order Status to ARTWORK_REVIEW (meaning candidate works are ready for OE confirmation)
+      // Auto-assign directly to an active PRODUCTION OPERATOR (bypassing OE)
+      const eligibleOperator = await tx.user.findFirst({
+        where: { role: UserRole.PRODUCTION_OPERATOR, isActive: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      if (eligibleOperator) {
+        await tx.orderAssignment.create({
+          data: {
+            orderId: order.id,
+            taskType: AssignmentTaskType.PRODUCTION,
+            assignedUserId: eligibleOperator.id,
+            assignedByUserId: userId,
+            status: AssignmentStatus.ACTIVE,
+            reason: 'Candidate artwork uploaded by Prepress Designer and auto-assigned directly to Production Operator.',
+          },
+        });
+      }
+
+      // Update Order Status directly to PRODUCTION_QUEUE (bypassing OE confirmation gate)
       const updatedOrder = await tx.order.update({
         where: { id: order.id },
         data: {
-          status: OrderStatus.ARTWORK_REVIEW,
-          customerStatus: 'DESIGN_IN_PROGRESS',
+          status: OrderStatus.PRODUCTION_QUEUE,
+          customerStatus: 'IN_PRODUCTION',
         },
       });
 
@@ -1275,24 +1383,33 @@ export class ArtworkService {
         data: {
           orderId: order.id,
           fromStatus: order.status,
-          toStatus: OrderStatus.ARTWORK_REVIEW,
+          toStatus: OrderStatus.PRODUCTION_QUEUE,
           changedById: userId,
-          reason: `Prepress studio uploaded ${dto.files.length} artwork candidate(s). Awaiting OE confirmation.`,
+          reason: `Prepress uploaded ${dto.files.length} candidate artwork file(s). Moved directly to PRODUCTION OPERATOR (bypassing OE approval).`,
           notes: dto.prepressNotes,
         },
       });
 
-      return { versions: createdVersions, order: updatedOrder };
+      return { versions: createdVersions, order: updatedOrder, operatorId: eligibleOperator?.id };
     });
+
+    // Auto-generate Job Cards directly for production shop-floor
+    if (this.jobCardEngine) {
+      try {
+        await this.jobCardEngine.generateJobCardForOrderItem(item.id, userId, result.operatorId);
+      } catch (err: any) {
+        this.logger.warn(`JobCard generation for item ${item.id}: ${err?.message}`);
+      }
+    }
 
     await this.auditService.log({
       actorId: userId,
-      action: 'DESIGN_MULTIPLE_UPLOADED',
+      action: 'DESIGN_MULTIPLE_UPLOADED_DIRECT_PRODUCTION',
       entity: 'Order',
       entityId: order.id,
       orderId: order.id,
-      newState: { status: OrderStatus.ARTWORK_REVIEW, fileCount: dto.files.length },
-      reason: `Prepress uploaded ${dto.files.length} artwork candidate files for OE review`,
+      newState: { status: OrderStatus.PRODUCTION_QUEUE, fileCount: dto.files.length },
+      reason: `Prepress uploaded ${dto.files.length} candidate artwork files and moved directly to Production Operator`,
     });
 
     this.eventEmitter.emit('design.submitted_multiple', {
@@ -1300,16 +1417,26 @@ export class ArtworkService {
       orderNumber: order.orderNumber,
       fileCount: dto.files.length,
       versions: createdVersions,
+      directToProduction: true,
     });
+
+    if (createdVersions.length > 0) {
+      this.eventEmitter.emit('artwork.confirmed', {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        artworkVersionId: createdVersions[0].id,
+        versionNumber: createdVersions[0].versionNumber,
+      });
+    }
 
     return result;
   }
 
   /**
-   * Operations Coordinator (OE) or Admin confirms which uploaded ArtworkVersion
+   * Operations Coordinator (OE), Prepress Designer, or Admin confirms which uploaded ArtworkVersion
    * is the authoritative, verified work that will move to production.
    * Sets isApproved = true on that version, isApproved = false on all others,
-   * locks approvedArtworkVersionId on OrderItem, and marks order as ARTWORK_APPROVED.
+   * locks approvedArtworkVersionId on OrderItem, and marks order as PRODUCTION_QUEUE.
    */
   async confirmArtworkWork(
     orderItemId: string,
@@ -1320,14 +1447,15 @@ export class ArtworkService {
     const userId = typeof user === 'string' ? user : user.sub;
     const userRole = typeof user === 'string' ? null : user.role;
 
-    // RBAC: Only OE, Admin, or Management can decide confirmed work
+    // RBAC: Prepress Designers, Operations Coordinators, or Admins can confirm authoritative work for production
     if (
       userRole &&
       userRole !== UserRole.OPERATIONAL_MANAGER &&
-      userRole !== UserRole.ADMIN_MANAGER
+      userRole !== UserRole.ADMIN_MANAGER &&
+      userRole !== UserRole.DESIGNER_PREPRESS
     ) {
       throw new ForbiddenException(
-        'Only the Operations Coordinator (OE) or Administrator can confirm artwork for production.',
+        'Only Prepress Designers, Operations Coordinators, or Administrators can confirm artwork for production.',
       );
     }
 
@@ -1371,7 +1499,7 @@ export class ArtworkService {
           status: ArtworkStatus.PROOF_APPROVED,
           approvedAt: new Date(),
           prepressNotes: oeNotes
-            ? `${version.prepressNotes || ''} | OE Confirmed: ${oeNotes}`.trim()
+            ? `${version.prepressNotes || ''} | Confirmed: ${oeNotes}`.trim()
             : version.prepressNotes,
         },
       });
@@ -1384,38 +1512,78 @@ export class ArtworkService {
         },
       });
 
-      // 4. Update order status to ARTWORK_APPROVED
-      const updatedOrder = await tx.order.update({
-        where: { id: order.id },
-        data: {
-          status: OrderStatus.ARTWORK_APPROVED,
-          customerStatus: 'PREPARING_ORDER',
+      // 4. Ensure an active PRODUCTION assignment to a Production Operator exists
+      const existingProdAssignment = await tx.orderAssignment.findFirst({
+        where: {
+          orderId: order.id,
+          taskType: AssignmentTaskType.PRODUCTION,
+          status: AssignmentStatus.ACTIVE,
         },
       });
 
-      // 5. Audit history
+      let confirmedOperatorId = existingProdAssignment?.assignedUserId;
+      if (!existingProdAssignment) {
+        const eligibleOperator = await tx.user.findFirst({
+          where: { role: UserRole.PRODUCTION_OPERATOR, isActive: true },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        if (eligibleOperator) {
+          confirmedOperatorId = eligibleOperator.id;
+          await tx.orderAssignment.create({
+            data: {
+              orderId: order.id,
+              taskType: AssignmentTaskType.PRODUCTION,
+              assignedUserId: eligibleOperator.id,
+              assignedByUserId: userId,
+              status: AssignmentStatus.ACTIVE,
+              reason: 'Artwork confirmed and assigned directly to Production Operator.',
+            },
+          });
+        }
+      }
+
+      // 5. Update order status directly to PRODUCTION_QUEUE (bypassing OE intermediate queues)
+      const updatedOrder = await tx.order.update({
+        where: { id: order.id },
+        data: {
+          status: OrderStatus.PRODUCTION_QUEUE,
+          customerStatus: 'IN_PRODUCTION',
+        },
+      });
+
+      // 6. Audit history
       await tx.orderStatusHistory.create({
         data: {
           orderId: order.id,
           fromStatus: order.status,
-          toStatus: OrderStatus.ARTWORK_APPROVED,
+          toStatus: OrderStatus.PRODUCTION_QUEUE,
           changedById: userId,
-          reason: `OE confirmed Artwork Version v${version.versionNumber} (${version.originalFileName}) as authoritative work for production.`,
+          reason: `Artwork Version v${version.versionNumber} (${version.originalFileName}) confirmed and released directly to Production Operator.`,
           notes: oeNotes,
         },
       });
 
-      return { confirmedVersion, order: updatedOrder };
+      return { confirmedVersion, order: updatedOrder, operatorId: confirmedOperatorId };
     });
+
+    // Auto-generate Job Cards directly for production shop-floor
+    if (this.jobCardEngine) {
+      try {
+        await this.jobCardEngine.generateJobCardForOrderItem(item.id, userId, result.operatorId);
+      } catch (err: any) {
+        this.logger.warn(`JobCard generation for item ${item.id}: ${err?.message}`);
+      }
+    }
 
     await this.auditService.log({
       actorId: userId,
-      action: 'ARTWORK_OE_CONFIRMED',
+      action: 'ARTWORK_CONFIRMED_DIRECT_PRODUCTION',
       entity: 'Order',
       entityId: order.id,
       orderId: order.id,
-      newState: { status: OrderStatus.ARTWORK_APPROVED, confirmedArtworkVersionId: artworkVersionId },
-      reason: `OE confirmed Artwork Version v${version.versionNumber} for production run`,
+      newState: { status: OrderStatus.PRODUCTION_QUEUE, confirmedArtworkVersionId: artworkVersionId },
+      reason: `Artwork Version v${version.versionNumber} confirmed and moved directly to Production Operator`,
     });
 
     this.eventEmitter.emit('artwork.confirmed', {

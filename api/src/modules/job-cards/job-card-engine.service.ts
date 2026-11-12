@@ -8,7 +8,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Priority, JobCardStatus, AssignmentTaskType, AssignmentStatus } from '@prisma/client';
+import { Priority, JobCardStatus, AssignmentTaskType, AssignmentStatus, OrderStatus, UserRole } from '@prisma/client';
 import { JwtPayload } from '../../common/types/roles';
 
 @Injectable()
@@ -24,7 +24,7 @@ export class JobCardEngineService {
   /**
    * Automatically generate a production Job Card for an Order Item upon passing QC & Payment
    */
-  async generateJobCardForOrderItem(orderItemId: string, actorId?: string) {
+  async generateJobCardForOrderItem(orderItemId: string, actorId?: string, targetOperatorId?: string) {
     const item = await this.prisma.orderItem.findUnique({
       where: { id: orderItemId },
       include: {
@@ -56,12 +56,14 @@ export class JobCardEngineService {
       return existingJob;
     }
 
-    // 2. Validate Payment Gate (Full Payment, Authorized, or Advance Split Milestone)
+    // 2. Validate Payment Gate (Full Payment, Authorized, Advance Split Milestone, or Production Queue Release)
     const order = item.order;
     const isPaid =
       order.paymentStatus === 'PAID' ||
       order.paymentStatus === 'AUTHORIZED' ||
       order.paymentStatus === 'PARTIALLY_PAID' ||
+      order.status === OrderStatus.PRODUCTION_QUEUE ||
+      order.status === OrderStatus.PRINTING ||
       Number(order.paidAmount) > 0;
 
     if (!isPaid) {
@@ -95,12 +97,30 @@ export class JobCardEngineService {
 
     // 7. Atomic Creation
     const jobCard = await this.prisma.$transaction(async (tx) => {
+      // Find operator if active assignment exists or targetOperatorId
+      let assignedOperatorId: string | null = targetOperatorId || null;
+      if (!assignedOperatorId) {
+        const prodAssignment = await tx.orderAssignment.findFirst({
+          where: { orderId: order.id, taskType: AssignmentTaskType.PRODUCTION, status: AssignmentStatus.ACTIVE },
+        });
+        if (prodAssignment) {
+          assignedOperatorId = prodAssignment.assignedUserId;
+        } else {
+          const defaultOp = await tx.user.findFirst({
+            where: { role: UserRole.PRODUCTION_OPERATOR, isActive: true },
+            orderBy: { createdAt: 'asc' },
+          });
+          assignedOperatorId = defaultOp?.id || null;
+        }
+      }
+
       const created = await tx.jobCard.create({
         data: {
           jobNumber,
           orderId: order.id,
           orderItemId: item.id,
           approvedArtworkVersionId: approvedArtworkId,
+          operatorId: assignedOperatorId,
           status: JobCardStatus.QUEUED,
           priority: order.priority,
           currentStation: operationSequence[0]?.station || 'PRINTING',

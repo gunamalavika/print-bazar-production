@@ -512,6 +512,14 @@ export function checkRouteAuthorization(
     };
   }
 
+  // Prepress Designers have verified oversight to view released production queue jobs
+  if (userRole === 'DESIGNER_PREPRESS' && pathname.startsWith('/production/queue')) {
+    return {
+      isAuthorized: true,
+      requiredPermissions: matchingItem.requiredPermissions,
+    };
+  }
+
   const authorized = isNavItemAuthorized(matchingItem, userPermissions);
   return {
     isAuthorized: authorized,
