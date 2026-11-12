@@ -107,10 +107,10 @@ export const COLOR_SWATCH_PRESETS = [
 export const SITE_SETTINGS_STORAGE_KEY = 'pb2_site_settings';
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
-  heroImageUrl: '/images/home/hero-products.jpg',
-  heroMobileImageUrl: '',
-  heroAltText: 'Print Bazzar Commercial Products',
-  heroBadgeText: 'COMMERCIAL PRINTING & PACKAGING OS',
+  heroImageUrl: '/uploads/products/Modern_Warehouse_Storage_Aisles_1793731996649.webp',
+  heroMobileImageUrl: '/uploads/products/Modern_Pharmaceutical_Wellness_Display_1793995492360.png',
+  heroAltText: 'Modern Warehouse Storage Aisles',
+  heroBadgeText: 'CALIBRATED TO ISO 12647',
   heroTitle: 'Commercial Print Excellence,',
   heroHighlightText: 'Engineered',
   heroTitleSuffix: 'for Scale.',
@@ -121,7 +121,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   heroSecondaryBtnText: 'EXPLORE 2026 CATALOGUE',
   heroSecondaryBtnHref: '/products',
   heroBannerLinkHref: '/products',
-  showHeroTextOverlay: true,
+  showHeroTextOverlay: false,
   showHeroBadge: true,
   showHeroHeading: true,
   showHeroDescription: true,
@@ -136,11 +136,20 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   heroSlaSubtitle: 'Express Shop Floor Run',
   heroImages: [
     {
-      id: 'hero-default-1',
-      imageUrl: '/images/home/hero-products.jpg',
-      altText: 'Print Bazzar Commercial Products',
+      id: 'hero-1793731996663',
+      imageUrl: '/uploads/products/Modern_Warehouse_Storage_Aisles_1793731996649.webp',
+      altText: 'Modern Warehouse Storage Aisles',
       badgeText: 'CALIBRATED TO ISO 12647',
       isActive: true,
+      mobileImageUrl: '/uploads/products/Modern_Pharmaceutical_Wellness_Display_1793995492360.png',
+    },
+    {
+      id: 'hero-1793730423718',
+      imageUrl: '/uploads/products/Corporate_Foundation__Vision_in_Action_1793730423640.png',
+      altText: 'Print Bazzar Commercial Products',
+      badgeText: '',
+      isActive: true,
+      mobileImageUrl: '/uploads/products/Clinical_Dermatology_Skincare_Collection_1793995495541.png',
     },
   ],
   marqueeItems: [
@@ -163,6 +172,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
       isActive: true,
     },
   ],
+  mobileBannerMode: 'separate',
 };
 
 export function resolveSiteAssetUrl(url?: string | null): string {
@@ -235,9 +245,15 @@ export async function saveSiteSettings(
   return payload;
 }
 
-export function useSiteSettings() {
-  const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
-  const [isLoaded, setIsLoaded] = useState(false);
+export function useSiteSettings(initialSettings?: SiteSettings) {
+  const [settings, setSettings] = useState<SiteSettings>(() => {
+    if (initialSettings) return initialSettings;
+    if (typeof window !== 'undefined') {
+      return getCachedSiteSettings();
+    }
+    return DEFAULT_SITE_SETTINGS;
+  });
+  const [isLoaded, setIsLoaded] = useState(() => Boolean(initialSettings || typeof window !== 'undefined'));
 
   const syncFromStorage = useCallback(() => {
     setSettings(getCachedSiteSettings());

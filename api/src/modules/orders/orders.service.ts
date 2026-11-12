@@ -1,6 +1,7 @@
 import {
   Injectable,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
   Logger,
 } from '@nestjs/common';
@@ -207,6 +208,7 @@ export class OrdersService {
       let existing = await this.prisma.customer.findFirst({
         where: {
           OR: [
+            ...(creatorUserId ? [{ userId: creatorUserId }] : []),
             ...(customerInfo.email ? [{ email: customerInfo.email }] : []),
             ...(customerInfo.phone ? [{ phone: customerInfo.phone }] : []),
           ],
@@ -215,6 +217,7 @@ export class OrdersService {
       if (!existing) {
         existing = await this.prisma.customer.create({
           data: {
+            ...(creatorUserId ? { userId: creatorUserId } : {}),
             fullName: customerInfo.fullName || 'Walk-in Customer',
             email: customerInfo.email || `walkin-${Date.now()}@printbazzar.local`,
             phone: customerInfo.phone || 'N/A',
@@ -226,6 +229,7 @@ export class OrdersService {
         existing = await this.prisma.customer.update({
           where: { id: existing.id },
           data: {
+            ...(creatorUserId && !existing.userId ? { userId: creatorUserId } : {}),
             fullName: customerInfo.fullName || existing.fullName,
             companyName: customerInfo.companyName || existing.companyName,
             gstin: customerInfo.gstin || existing.gstin,
@@ -907,6 +911,242 @@ export class OrdersService {
     return order;
   }
 
+  private static readonly PRODUCTION_AND_BEYOND_STATUSES: OrderStatus[] = [
+    OrderStatus.PRODUCTION_QUEUE,
+    OrderStatus.PRINTING,
+    OrderStatus.FINISHING,
+    OrderStatus.QUALITY_CHECK,
+    OrderStatus.PACKING,
+    OrderStatus.READY_FOR_DISPATCH,
+    OrderStatus.OUT_FOR_DELIVERY,
+    OrderStatus.DELIVERED,
+  ];
+
+  /**
+   * Determines whether an order has entered production or post-production stages.
+   * Once an order moves to production (PRODUCTION_QUEUE, PRINTING, FINISHING, etc.),
+   * cancellation is strictly locked.
+   */
+  hasOrderMovedToProduction(order: {
+    status: OrderStatus | string;
+    statusHistory?: Array<{ fromStatus?: string | null; toStatus: string }>;
+    jobCards?: Array<{ status: string }>;
+    items?: Array<{ jobCards?: Array<{ status: string }>; [key: string]: any }>;
+  }): boolean {
+    const currentStatus = order.status as OrderStatus;
+    if (OrdersService.PRODUCTION_AND_BEYOND_STATUSES.includes(currentStatus)) {
+      return true;
+    }
+
+    if (
+      order.statusHistory?.some(
+        (h) =>
+          OrdersService.PRODUCTION_AND_BEYOND_STATUSES.includes(h.toStatus as OrderStatus) ||
+          (h.fromStatus && OrdersService.PRODUCTION_AND_BEYOND_STATUSES.includes(h.fromStatus as OrderStatus)),
+      )
+    ) {
+      return true;
+    }
+
+    const activeProductionJobStatuses = [
+      'ASSIGNED',
+      'PRINTING',
+      'PRINTING_COMPLETED',
+      'FINISHING',
+      'FINISHING_COMPLETED',
+      'QC_INSPECTION',
+      'PASSED',
+      'COMPLETED',
+    ];
+    if (order.jobCards?.some((jc) => activeProductionJobStatuses.includes(jc.status))) {
+      return true;
+    }
+    if (order.items?.some((it) => it.jobCards?.some((jc) => activeProductionJobStatuses.includes(jc.status)))) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Determines if an order can be cancelled by the customer.
+   * Allowed only before the order moves to production and if not already cancelled.
+   */
+  isOrderCancellable(order: {
+    status: OrderStatus | string;
+    statusHistory?: Array<{ fromStatus?: string | null; toStatus: string }>;
+    jobCards?: Array<{ status: string }>;
+    items?: Array<{ jobCards?: Array<{ status: string }>; [key: string]: any }>;
+  }): boolean {
+    if (order.status === OrderStatus.CANCELLED) {
+      return false;
+    }
+    return !this.hasOrderMovedToProduction(order);
+  }
+
+  /**
+   * Cancel an order before it moves to production.
+   * Once the order moves to PRODUCTION_QUEUE or beyond, cancellation is blocked.
+   */
+  async cancelOrder(orderId: string, reason?: string, currentUser?: JwtPayload) {
+    const order = await this.prisma.order.findFirst({
+      where: {
+        OR: [{ id: orderId }, { orderNumber: orderId }],
+      },
+      include: {
+        customer: true,
+        items: {
+          include: {
+            variants: true,
+            artworkVersions: { orderBy: { versionNumber: 'desc' }, take: 1 },
+            jobCards: true,
+          },
+        },
+        jobCards: true,
+        statusHistory: {
+          include: { changedBy: { select: { fullName: true, role: true } } },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Order '${orderId}' not found`);
+    }
+
+    // Ownership check for CUSTOMER role
+    if (currentUser?.role === UserRole.CUSTOMER) {
+      let isOwner = false;
+      if (currentUser.customerId && order.customerId === currentUser.customerId) {
+        isOwner = true;
+      } else if (currentUser.sub && order.customer?.userId === currentUser.sub) {
+        isOwner = true;
+      } else if (
+        currentUser.email &&
+        order.customer?.email &&
+        order.customer.email.toLowerCase() === currentUser.email.toLowerCase()
+      ) {
+        isOwner = true;
+      } else if (currentUser.sub && (this.prisma as any).user?.findUnique) {
+        const dbUser = await this.prisma.user.findUnique({
+          where: { id: currentUser.sub },
+          include: { customerProfile: true },
+        });
+        if (
+          dbUser &&
+          ((dbUser.customerProfile && dbUser.customerProfile.id === order.customerId) ||
+            (dbUser.email && order.customer?.email?.toLowerCase() === dbUser.email.toLowerCase()) ||
+            (dbUser.phone && order.customer?.phone === dbUser.phone))
+        ) {
+          isOwner = true;
+        }
+      }
+
+      if (!isOwner) {
+        throw new ForbiddenException('You are not authorized to cancel this order.');
+      }
+    }
+
+    if (order.status === OrderStatus.CANCELLED) {
+      throw new BadRequestException('Order is already cancelled.');
+    }
+
+    if (this.hasOrderMovedToProduction(order)) {
+      throw new BadRequestException(
+        'Order cannot be cancelled because it has already moved to production.',
+      );
+    }
+
+    const fromStatus = order.status;
+    const cancelReason = reason?.trim()
+      ? `Cancelled by ${currentUser?.role === UserRole.CUSTOMER ? 'customer' : 'staff'}: ${reason.trim()}`
+      : 'Order cancelled before production.';
+
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      // Cancel any active assignments if present
+      if ((tx as any).orderAssignment?.updateMany) {
+        await tx.orderAssignment.updateMany({
+          where: {
+            orderId: order.id,
+            status: 'ACTIVE',
+          },
+          data: {
+            status: 'CANCELLED',
+            reason: cancelReason,
+          },
+        });
+      }
+
+      const updated = await tx.order.update({
+        where: { id: order.id },
+        data: {
+          status: OrderStatus.CANCELLED,
+          customerStatus: CustomerVisibleStatus.CANCELLED,
+          ...(order.paymentStatus === PaymentStatus.PENDING
+            ? { paymentStatus: PaymentStatus.CANCELLED }
+            : {}),
+        },
+        include: {
+          customer: { select: { fullName: true, email: true, phone: true, companyName: true } },
+          items: {
+            include: {
+              variants: true,
+              artworkVersions: { orderBy: { versionNumber: 'desc' }, take: 1 },
+            },
+          },
+          statusHistory: {
+            include: { changedBy: { select: { fullName: true, role: true } } },
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+      });
+
+      const newHistory = await tx.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          fromStatus,
+          toStatus: OrderStatus.CANCELLED,
+          changedById: currentUser?.sub,
+          reason: cancelReason,
+          notes: reason?.trim() || null,
+        },
+        include: {
+          changedBy: { select: { fullName: true, role: true } },
+        },
+      });
+
+      return {
+        ...updated,
+        statusHistory: [newHistory, ...(updated.statusHistory || [])],
+      };
+    });
+
+    await this.auditService.log({
+      actorId: currentUser?.sub,
+      action: 'CANCEL_ORDER',
+      entity: 'Order',
+      entityId: order.id,
+      orderId: order.id,
+      previousState: { status: fromStatus, customerStatus: order.customerStatus },
+      newState: { status: OrderStatus.CANCELLED, customerStatus: CustomerVisibleStatus.CANCELLED },
+      reason: cancelReason,
+    });
+
+    this.eventEmitter.emit('order.cancelled', {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      fromStatus,
+      reason: cancelReason,
+      actorId: currentUser?.sub,
+    });
+
+    return {
+      ...updatedOrder,
+      canCancel: false,
+      hasMovedToProduction: false,
+    };
+  }
+
   /**
    * Search and Filter Orders for ERP Control Center or Customer Portal
    */
@@ -928,6 +1168,21 @@ export class OrdersService {
       }
       if (currentUser.sub) {
         customerOr.push({ customer: { userId: currentUser.sub } });
+        if ((this.prisma as any).user?.findUnique) {
+          const dbUser = await this.prisma.user.findUnique({
+            where: { id: currentUser.sub },
+            include: { customerProfile: true },
+          });
+          if (dbUser?.customerProfile?.id) {
+            customerOr.push({ customerId: dbUser.customerProfile.id });
+          }
+          if (dbUser?.email) {
+            customerOr.push({ customer: { email: { equals: dbUser.email.toLowerCase(), mode: 'insensitive' } } });
+          }
+          if (dbUser?.phone) {
+            customerOr.push({ customer: { phone: dbUser.phone } });
+          }
+        }
       }
 
       if (customerOr.length > 0) {
@@ -981,7 +1236,14 @@ export class OrdersService {
               },
             },
           },
-          packages: { select: { id: true, packageNumber: true, status: true } },
+          jobCards: { select: { id: true, jobNumber: true, status: true, currentStation: true } },
+          statusHistory: {
+            include: { changedBy: { select: { fullName: true, role: true } } },
+            orderBy: { createdAt: 'desc' },
+          },
+          packages: {
+            include: { shipment: true },
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -990,8 +1252,14 @@ export class OrdersService {
       this.prisma.order.count({ where }),
     ]);
 
+    const enrichedOrders = orders.map((ord) => ({
+      ...ord,
+      hasMovedToProduction: this.hasOrderMovedToProduction(ord),
+      canCancel: this.isOrderCancellable(ord),
+    }));
+
     return {
-      data: orders,
+      data: enrichedOrders,
       meta: {
         page,
         limit,
@@ -1028,6 +1296,7 @@ export class OrdersService {
             },
           },
         },
+        jobCards: true,
         payments: true,
         invoices: true,
         packages: { include: { shipment: true } },
@@ -1051,6 +1320,10 @@ export class OrdersService {
       throw new NotFoundException(`Order '${orderId}' not found`);
     }
 
-    return order;
+    return {
+      ...order,
+      hasMovedToProduction: this.hasOrderMovedToProduction(order),
+      canCancel: this.isOrderCancellable(order),
+    };
   }
 }

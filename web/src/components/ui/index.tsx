@@ -161,6 +161,7 @@ export function StatusBadge({
     dotColor = 'bg-[#854D0E]';
   } else if (
     norm.includes('HOLD') ||
+    norm.includes('CANCEL') ||
     norm.includes('REJECTED') ||
     norm.includes('FAILED') ||
     norm.includes('DELAYED') ||

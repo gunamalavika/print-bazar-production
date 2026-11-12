@@ -242,11 +242,11 @@ export function QCJobCard({
             <div className="flex items-center gap-1">
               <button
                 onClick={() => onAction(card, 'QC_PASS')}
-                className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] px-2.5 py-1 rounded-md shadow-xs transition active:scale-95"
-                title="1-Click Pass 100% and release"
+                className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] px-2.5 py-1 rounded-md shadow-xs transition active:scale-95 cursor-pointer"
+                title="Follow Physical QC Checklist to Pass & Release to Packing"
               >
                 <RiCheckFill className="h-3 w-3" />
-                <span>Pass Gate</span>
+                <span>QC Checklist & Pass</span>
               </button>
               <button
                 onClick={() => onAction(card, 'QC_HOLD')}

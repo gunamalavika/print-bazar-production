@@ -492,7 +492,8 @@ export function getVisibleAdminNavigation(
 export function checkRouteAuthorization(
   pathname: string,
   userPermissions: string[],
-  userRole?: string
+  userRole?: string,
+  userRoles?: string[]
 ): { isAuthorized: boolean; requiredPermissions: string[] } {
   const matchingItem = [...CANONICAL_ADMIN_NAV]
     .sort((a, b) => b.href.length - a.href.length)
@@ -502,8 +503,14 @@ export function checkRouteAuthorization(
     return { isAuthorized: true, requiredPermissions: [] };
   }
 
+  const effectiveRoles = Array.isArray(userRoles) && userRoles.length > 0
+    ? userRoles
+    : (userRole ? [userRole] : []);
+
+  const isOperatorOnly = effectiveRoles.length === 1 && effectiveRoles[0] === 'PRODUCTION_OPERATOR';
+
   if (
-    userRole === 'PRODUCTION_OPERATOR' &&
+    isOperatorOnly &&
     (matchingItem.section === 'OPERATIONS_COORDINATION' || matchingItem.section === 'CATALOGUE_INVENTORY')
   ) {
     return {
@@ -513,7 +520,10 @@ export function checkRouteAuthorization(
   }
 
   // Prepress Designers have verified oversight to view released production queue jobs
-  if (userRole === 'DESIGNER_PREPRESS' && pathname.startsWith('/production/queue')) {
+  if (
+    (effectiveRoles.includes('DESIGNER_PREPRESS') || userRole === 'DESIGNER_PREPRESS') &&
+    pathname.startsWith('/production/queue')
+  ) {
     return {
       isAuthorized: true,
       requiredPermissions: matchingItem.requiredPermissions,

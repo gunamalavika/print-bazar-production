@@ -3,6 +3,7 @@ import { OrdersService } from './orders.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingService } from '../pricing/pricing.service';
 import { ShippingGstService } from '../shipping-gst/shipping-gst.service';
+import { ShippingCalculatorService } from '../shipping/shipping-calculator.service';
 import { AuditService } from '../audit/audit.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PersonalizationTemplateService } from '../products/personalization/personalization-template.service';
@@ -29,8 +30,13 @@ describe('OrdersService - Personalization Integration & Regression', () => {
       },
       order: {
         findFirst: jest.fn(),
+        findMany: jest.fn(),
         count: jest.fn().mockResolvedValue(0),
         create: jest.fn(),
+        update: jest.fn(),
+      },
+      orderAssignment: {
+        updateMany: jest.fn(),
       },
       address: {
         create: jest.fn(),
@@ -110,12 +116,30 @@ describe('OrdersService - Personalization Integration & Regression', () => {
       getTemplateById: jest.fn(),
     };
 
+    const shippingCalculatorService = {
+      calculateShipping: jest.fn().mockResolvedValue({
+        finalShippingAmount: 50,
+        isFreeShippingApplied: false,
+        zone: 'LOCAL',
+        destinationPincode: '600001',
+        productWeightGrams: 500,
+        packaging: { weightGrams: 50 },
+        actualWeightGrams: 550,
+        billableWeightGrams: 550,
+        rateCard: 'STANDARD',
+        matchedSlab: '0-500g',
+        baseShippingCharge: 50,
+        additionalWeightCharge: 0,
+      }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrdersService,
         { provide: PrismaService, useValue: prisma },
         { provide: PricingService, useValue: pricingService },
         { provide: ShippingGstService, useValue: shippingGstService },
+        { provide: ShippingCalculatorService, useValue: shippingCalculatorService },
         { provide: AuditService, useValue: auditService },
         { provide: EventEmitter2, useValue: eventEmitter },
         { provide: PersonalizationTemplateService, useValue: personalizationService },
@@ -322,6 +346,81 @@ describe('OrdersService - Personalization Integration & Regression', () => {
         },
         'admin-user-id',
       ),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should allow customer to cancel an order before it moves to production', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'ord-pre-prod',
+      orderNumber: 'PB-20261113-0001',
+      customerId: 'cust-1',
+      status: 'ORDER_REVIEW',
+      customerStatus: 'ORDER_RECEIVED',
+      paymentStatus: 'PENDING',
+      customer: { id: 'cust-1', userId: 'user-cust-1', email: 'test@example.com' },
+      items: [],
+      jobCards: [],
+      statusHistory: [{ id: 'h-1', toStatus: 'ORDER_CREATED' }],
+    });
+
+    prisma.order.update.mockResolvedValue({
+      id: 'ord-pre-prod',
+      orderNumber: 'PB-20261113-0001',
+      status: 'CANCELLED',
+      customerStatus: 'CANCELLED',
+      paymentStatus: 'CANCELLED',
+      statusHistory: [],
+    });
+
+    prisma.orderStatusHistory.create.mockResolvedValue({
+      id: 'h-2',
+      fromStatus: 'ORDER_REVIEW',
+      toStatus: 'CANCELLED',
+      reason: 'Cancelled by customer: Ordered by mistake',
+      createdAt: new Date(),
+    });
+
+    const result = await service.cancelOrder('ord-pre-prod', 'Ordered by mistake', {
+      sub: 'user-cust-1',
+      email: 'test@example.com',
+      role: 'CUSTOMER' as any,
+      customerId: 'cust-1',
+    });
+
+    expect(result.status).toBe('CANCELLED');
+    expect(result.canCancel).toBe(false);
+    expect(prisma.order.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'ord-pre-prod' },
+        data: expect.objectContaining({
+          status: 'CANCELLED',
+          customerStatus: 'CANCELLED',
+        }),
+      }),
+    );
+  });
+
+  it('should block order cancellation once the order has moved to production', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      id: 'ord-in-prod',
+      orderNumber: 'PB-20261113-0002',
+      customerId: 'cust-1',
+      status: 'PRODUCTION_QUEUE',
+      customerStatus: 'PREPARING_ORDER',
+      paymentStatus: 'PAID',
+      customer: { id: 'cust-1', userId: 'user-cust-1', email: 'test@example.com' },
+      items: [],
+      jobCards: [{ id: 'jc-1', status: 'QUEUED' }],
+      statusHistory: [{ id: 'h-1', toStatus: 'PRODUCTION_QUEUE' }],
+    });
+
+    await expect(
+      service.cancelOrder('ord-in-prod', 'Changed mind', {
+        sub: 'user-cust-1',
+        email: 'test@example.com',
+        role: 'CUSTOMER' as any,
+        customerId: 'cust-1',
+      }),
     ).rejects.toThrow(BadRequestException);
   });
 });

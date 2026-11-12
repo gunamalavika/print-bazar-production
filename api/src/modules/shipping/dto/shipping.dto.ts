@@ -108,8 +108,13 @@ export class CreateShippingZoneDto {
   @IsString()
   zoneCode: string;
 
+  @IsOptional()
   @IsString()
-  zoneName: string;
+  zoneName?: string;
+
+  @IsOptional()
+  @IsString()
+  name?: string;
 
   @IsOptional()
   @IsString()
@@ -130,8 +135,22 @@ export class CreateShippingZoneDto {
   zoneSurcharge?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  baseSurcharge?: number;
+
+  @IsOptional()
   @IsString()
   estimatedDeliveryDays?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  codAllowed?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  codFee?: number;
 
   @IsOptional()
   @IsBoolean()
@@ -149,6 +168,10 @@ export class UpdateShippingZoneDto {
 
   @IsOptional()
   @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
   description?: string;
 
   @IsOptional()
@@ -166,8 +189,22 @@ export class UpdateShippingZoneDto {
   zoneSurcharge?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  baseSurcharge?: number;
+
+  @IsOptional()
   @IsString()
   estimatedDeliveryDays?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  codAllowed?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  codFee?: number;
 
   @IsOptional()
   @IsBoolean()

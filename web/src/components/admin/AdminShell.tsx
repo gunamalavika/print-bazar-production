@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
@@ -22,7 +22,7 @@ interface AdminShellProps {
 export function AdminShell({ children }: AdminShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isAuthenticated, isLoading, logout, getRoleDestination } = useAuth();
+  const { user, isAuthenticated, isLoading, logout, getRoleDestination, activeRole } = useAuth();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Authentication validation
@@ -75,14 +75,25 @@ export function AdminShell({ children }: AdminShellProps) {
     );
   }
 
+  // Extract all assigned multi-roles
+  const effectiveRoles = useMemo(() => {
+    if (Array.isArray(user?.roles) && user.roles.length > 0) {
+      return user.roles;
+    }
+    return user?.role ? [user.role] : [];
+  }, [user?.roles, user?.role]);
+
+  const currentRole = activeRole || user?.role || effectiveRoles[0];
+
   // 2. CHECK ROUTE-LEVEL AUTHORIZATION FOR CURRENT INTERNAL USER
   const { isAuthorized, requiredPermissions } = checkRouteAuthorization(
     pathname,
     user?.permissions || [],
-    user?.role
+    currentRole,
+    effectiveRoles
   );
 
-  const roleDestination = getRoleDestination(user?.role);
+  const roleDestination = getRoleDestination(currentRole || user?.role);
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#F8F8F8] flex">

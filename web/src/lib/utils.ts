@@ -29,6 +29,22 @@ export function formatDate(dateString?: string | Date | null): string {
   }
 }
 
+export function formatDateTime(dateString?: string | Date | null): string {
+  if (!dateString) return '—';
+  try {
+    const d = new Date(dateString);
+    return new Intl.DateTimeFormat('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(d);
+  } catch {
+    return String(dateString);
+  }
+}
+
 export function getEstimatedDeliveryText(productionDays: number = 2): {
   dispatchDate: string;
   deliveryRange: string;
@@ -160,4 +176,71 @@ export function getNextAvailableProductSku(existingProducts?: Array<{ sku?: stri
     }
   }
   return `PB-${maxNum + 1}`;
+}
+
+const PRODUCTION_AND_BEYOND_STATUSES = [
+  'PRODUCTION_QUEUE',
+  'PRINTING',
+  'FINISHING',
+  'QUALITY_CHECK',
+  'PACKING',
+  'READY_FOR_DISPATCH',
+  'OUT_FOR_DELIVERY',
+  'DELIVERED',
+  'COMPLETED',
+];
+
+const ACTIVE_PRODUCTION_JOB_STATUSES = [
+  'ASSIGNED',
+  'PRINTING',
+  'PRINTING_COMPLETED',
+  'FINISHING',
+  'FINISHING_COMPLETED',
+  'QC_INSPECTION',
+  'PASSED',
+  'COMPLETED',
+];
+
+export function checkHasMovedToProduction(order: {
+  status?: string;
+  hasMovedToProduction?: boolean;
+  statusHistory?: Array<{ fromStatus?: string | null; toStatus?: string }>;
+  jobCards?: Array<{ status?: string }>;
+}): boolean {
+  if (!order) return false;
+  if (order.hasMovedToProduction === true) return true;
+  const st = (order.status || '').toUpperCase();
+  if (PRODUCTION_AND_BEYOND_STATUSES.includes(st)) return true;
+  if (
+    order.statusHistory?.some(
+      (h) =>
+        PRODUCTION_AND_BEYOND_STATUSES.includes((h.toStatus || '').toUpperCase()) ||
+        (h.fromStatus && PRODUCTION_AND_BEYOND_STATUSES.includes(h.fromStatus.toUpperCase()))
+    )
+  ) {
+    return true;
+  }
+  if (
+    order.jobCards?.some((jc) =>
+      ACTIVE_PRODUCTION_JOB_STATUSES.includes((jc.status || '').toUpperCase())
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function checkCanCancelOrder(order: {
+  status?: string;
+  canCancel?: boolean;
+  hasMovedToProduction?: boolean;
+  statusHistory?: Array<{ fromStatus?: string | null; toStatus?: string }>;
+  jobCards?: Array<{ status?: string }>;
+}): boolean {
+  if (!order) return false;
+  const st = (order.status || '').toUpperCase();
+  if (st === 'CANCELLED') return false;
+  if (checkHasMovedToProduction(order)) return false;
+  if (typeof order.canCancel === 'boolean') return order.canCancel;
+  return true;
 }

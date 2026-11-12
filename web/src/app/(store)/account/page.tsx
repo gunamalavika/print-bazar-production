@@ -32,7 +32,12 @@ import {
   RiCloseLine,
   RiFileList3Line,
 } from 'react-icons/ri';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import {
+  formatCurrency,
+  formatDate,
+  checkCanCancelOrder,
+  checkHasMovedToProduction,
+} from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 import { Button, Badge, StatusBadge, Modal } from '@/components/ui';
@@ -69,6 +74,10 @@ interface CustomerOrderItem {
     };
   }>;
   proofRequired?: boolean;
+  canCancel?: boolean;
+  hasMovedToProduction?: boolean;
+  statusHistory?: any[];
+  jobCards?: any[];
 }
 
 const STANDARD_PRESETS = [50, 100, 250, 500, 1000, 2500, 5000];
@@ -139,6 +148,10 @@ export default function CustomerAccountPage() {
             customerNotes: ord.customerNotes,
             items: ord.items || [],
             proofRequired: Boolean(hasPendingProof),
+            canCancel: ord.canCancel,
+            hasMovedToProduction: ord.hasMovedToProduction,
+            statusHistory: ord.statusHistory || [],
+            jobCards: ord.jobCards || [],
           };
         });
         setOrders(formatted);
@@ -794,6 +807,31 @@ export default function CustomerAccountPage() {
                                 <span>Track Live</span>
                               </Button>
                             </Link>
+
+                            {checkCanCancelOrder(ord as any) && (
+                              <Button
+                                type="button"
+                                variant="dangerOutline"
+                                size="sm"
+                                onClick={async () => {
+                                  const reason = window.prompt(
+                                    `Cancel Order #${ord.orderNumber}? Enter optional cancellation reason:`,
+                                    'Requested cancellation before production'
+                                  );
+                                  if (reason === null) return;
+                                  try {
+                                    await api.cancelOrder(ord.id, reason || undefined);
+                                    fetchOrders();
+                                  } catch (err: any) {
+                                    alert(err?.message || 'Could not cancel order');
+                                  }
+                                }}
+                                className="flex-1 sm:flex-initial justify-center flex items-center gap-1 font-bold border-red-200 text-red-700 hover:bg-red-50"
+                              >
+                                <RiCloseLine className="h-4 w-4 shrink-0" />
+                                <span>Cancel</span>
+                              </Button>
+                            )}
 
                             <Link href={`/invoices/${ord.orderNumber}`} className="flex-1 sm:flex-initial">
                               <Button

@@ -35,22 +35,65 @@ const DEFAULT_PRE_PROD_CHECKS = [
 ];
 
 const DEFAULT_FINAL_QC_CHECKS = [
-  { code: 'COLOR_ACCURACY', name: '01. Color Density & Registration vs Approved Proof', result: 'PASS' },
-  { code: 'SURFACE_INTEGRITY', name: '02. Zero Scratches, Ink Smudges, or Ghosting', result: 'PASS' },
-  { code: 'CUT_AND_CREASE', name: '03. Trim Squareness & Fold / Crease Alignment', result: 'PASS' },
-  { code: 'LAMINATION_ADHESION', name: '04. Lamination Adhesion & Bubble-Free Coating', result: 'PASS' },
-  { code: 'ACCURATE_COUNT', name: '05. Physical Piece Count & Packaging Bundles', result: 'PASS' },
+  {
+    code: 'CORRECT_PRODUCT',
+    name: '01. Correct product',
+    desc: 'Verify product type, substrate stock & SKU match customer order specifications.',
+    result: 'PASS',
+  },
+  {
+    code: 'CORRECT_SIZE',
+    name: '02. Correct size',
+    desc: 'Verify finished trim dimensions, safe margins, and cut squareness match exact size.',
+    result: 'PASS',
+  },
+  {
+    code: 'CORRECT_COLOR',
+    name: '03. Correct color',
+    desc: 'Verify CMYK / Pantone ink density, registration, and color calibration vs proof.',
+    result: 'PASS',
+  },
+  {
+    code: 'CORRECT_QUANTITY',
+    name: '04. Correct quantity',
+    desc: 'Verify physical piece count and bundled quantity match customer ordered count.',
+    result: 'PASS',
+  },
+  {
+    code: 'PRINTING_QUALITY',
+    name: '05. Printing Quality',
+    desc: 'Verify crisp resolution (>= 300 DPI), zero banding, ghosting, or ink smearing.',
+    result: 'PASS',
+  },
+  {
+    code: 'FINISHING_QUALITY',
+    name: '06. Finishing quality',
+    desc: 'Verify thermal lamination adhesion, foil/UV coating, fold alignment, and dieline.',
+    result: 'PASS',
+  },
+  {
+    code: 'NO_DAMAGES',
+    name: '07. No damages',
+    desc: 'Verify zero torn edges, substrate warping, crushed corners, or physical defects.',
+    result: 'PASS',
+  },
+  {
+    code: 'NO_SCRATCHES',
+    name: '08. No scratches',
+    desc: 'Verify clean surface integrity with zero scuffs, scratches, or roller marks.',
+    result: 'PASS',
+  },
 ];
 
 const DEFECT_OPTIONS = [
-  { code: 'CUSTOMER_FILE_ERROR', label: 'Low Resolution / Pixelated (< 300 DPI)' },
-  { code: 'COLOR_MISMATCH', label: 'Color Shift / Delta-E Variance against Proof' },
-  { code: 'BLEED_CUTTING_FAULT', label: 'Crooked Cut, Missing Bleed or Trim Mismatch' },
-  { code: 'PRINT_STREAKS', label: 'Physical Ink Smudge, Scratches or Roller Marks' },
-  { code: 'REGISTRATION_ERROR', label: 'Off-Registration or Folding Alignment Error' },
-  { code: 'LAMINATION_BUBBLE', label: 'Lamination Peeling, Creasing or Air Bubbles' },
-  { code: 'WRONG_PAPER_STOCK', label: 'Incorrect Paper GSM or Substrate Stock' },
-  { code: 'QUANTITY_SHORT', label: 'Physical Piece Count Shortage' },
+  { code: 'CUSTOMER_FILE_ERROR', label: 'Wrong Product / Specification Mismatch' },
+  { code: 'BLEED_CUTTING_FAULT', label: 'Incorrect Size, Trim or Bleed Error' },
+  { code: 'COLOR_MISMATCH', label: 'Color Variance / Delta-E Shift against Proof' },
+  { code: 'QUANTITY_SHORT', label: 'Quantity Shortage / Missing Physical Pieces' },
+  { code: 'PRINT_STREAKS', label: 'Printing Defects, Banding, Streaks or Ghosting' },
+  { code: 'LAMINATION_BUBBLE', label: 'Finishing Defect, Lamination Peeling or Bubbles' },
+  { code: 'DAMAGED_EDGES', label: 'Physical Damages, Tears, or Crushed Edges' },
+  { code: 'PRINT_STREAKS', label: 'Surface Scratches, Roller Scuffs or Smudges' },
 ];
 
 interface QCInspectionDrawerProps {
@@ -302,59 +345,98 @@ export function QCInspectionDrawer({
 
           {/* 3. Technical Checklist */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
               <div>
-                <h3 className="text-[14px] font-bold text-slate-900">
-                  Final Physical Quality Checklist
-                </h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-[14px] font-bold text-slate-900">
+                    QC Inspection Checklist (Physical Verification)
+                  </h3>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      hasFailure
+                        ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                        : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                    }`}
+                  >
+                    {finalChecks.filter((c) => c.result === 'PASS').length} / {finalChecks.length} Passed
+                  </span>
+                </div>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Confirm physical finished goods parameters before releasing order to packaging station.
+                  All 8 mandatory checks must pass physical test to release order to &quot;Passed to Packing&quot;.
                 </p>
               </div>
 
               <button
                 type="button"
                 onClick={handlePassAll}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] rounded-lg border border-emerald-200 transition"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] rounded-lg border border-emerald-200 transition cursor-pointer self-start sm:self-auto"
               >
                 <RiSparklingLine className="h-3.5 w-3.5 text-emerald-600" />
-                <span>1-Click Pass All</span>
+                <span>Verify All 8 Checks</span>
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {currentChecks.map((chk) => (
-                <div
-                  key={chk.code}
-                  className="flex items-center justify-between rounded-lg border border-slate-200 p-2.5 bg-slate-50 text-[11px]"
-                >
-                  <span className="font-medium text-slate-800 pr-2">{chk.name}</span>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleToggleCheck(chk.code, 'PASS')}
-                      className={`rounded px-2.5 py-1 font-bold text-[10px] transition ${
-                        chk.result === 'PASS'
-                          ? 'bg-slate-900 text-white shadow-2xs'
-                          : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      PASS
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleCheck(chk.code, 'FAIL')}
-                      className={`rounded px-2.5 py-1 font-bold text-[10px] transition ${
-                        chk.result === 'FAIL'
-                          ? 'bg-rose-600 text-white shadow-2xs'
-                          : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      FAIL
-                    </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {currentChecks.map((chk: any) => {
+                const isPass = chk.result === 'PASS';
+                const isFail = chk.result === 'FAIL';
+                return (
+                  <div
+                    key={chk.code}
+                    className={`rounded-xl border p-3 text-[11px] transition-all flex flex-col justify-between gap-2 ${
+                      isPass
+                        ? 'border-emerald-200 bg-emerald-50/40'
+                        : isFail
+                        ? 'border-rose-300 bg-rose-50/80 shadow-xs'
+                        : 'border-slate-200 bg-slate-50'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                        <span className="font-bold text-slate-900 text-xs">{chk.name}</span>
+                        {isPass && (
+                          <span className="inline-flex items-center text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded">
+                            VERIFIED
+                          </span>
+                        )}
+                        {isFail && (
+                          <span className="inline-flex items-center text-[10px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded">
+                            FAILED
+                          </span>
+                        )}
+                      </div>
+                      {chk.desc && (
+                        <p className="text-[10.5px] text-slate-500 leading-tight">{chk.desc}</p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-200/60">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleCheck(chk.code, 'PASS')}
+                        className={`rounded-lg px-3 py-1 font-bold text-[10.5px] transition-all cursor-pointer ${
+                          isPass
+                            ? 'bg-emerald-600 text-white shadow-2xs'
+                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        PASS
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleCheck(chk.code, 'FAIL')}
+                        className={`rounded-lg px-3 py-1 font-bold text-[10.5px] transition-all cursor-pointer ${
+                          isFail
+                            ? 'bg-rose-600 text-white shadow-2xs'
+                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        FAIL
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {hasFailure && (

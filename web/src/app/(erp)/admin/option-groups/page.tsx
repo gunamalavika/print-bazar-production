@@ -36,6 +36,7 @@ import {
   RiBookOpenLine,
   RiHashtag,
   RiListSettingsLine,
+  RiShieldCheckLine,
 } from 'react-icons/ri';
 import { formatCurrency } from '@/lib/utils';
 
@@ -278,6 +279,13 @@ export default function OptionGroupsLibraryPage() {
   // Delete Group
   const handleDeleteGroup = async () => {
     if (!deleteConfirmGroup) return;
+    if ((deleteConfirmGroup.mappedProductsCount || 0) > 0) {
+      setErrorMsg(
+        `Cannot delete Option Group '${deleteConfirmGroup.name}': it is mapped to ${deleteConfirmGroup.mappedProductsCount} product(s). Please unmap it from all products first.`,
+      );
+      setDeleteConfirmGroup(null);
+      return;
+    }
     setIsSaving(true);
     setErrorMsg(null);
     try {
@@ -536,14 +544,19 @@ export default function OptionGroupsLibraryPage() {
                     {group.name}
                   </div>
 
-                  {/* Bottom: Small Status Indicator Dot */}
-                  <div className="flex items-center">
+                  {/* Bottom: Small Status Indicator Dot & Mapped Count */}
+                  <div className="flex items-center justify-between gap-1 w-full">
                     <span
-                      className={`w-2 h-2 rounded-full inline-block ${
+                      className={`w-2 h-2 rounded-full inline-block shrink-0 ${
                         group.isActive ? 'bg-emerald-500' : 'bg-slate-300'
                       }`}
                       title={group.isActive ? 'Active' : 'Inactive'}
                     />
+                    {(group.mappedProductsCount || 0) > 0 && (
+                      <span className="text-[9.5px] font-mono font-bold px-1.5 py-0.2 rounded bg-sky-50 text-sky-700 border border-sky-200 truncate max-w-[70px]">
+                        {group.mappedProductsCount} {group.mappedProductsCount === 1 ? 'prod' : 'prods'}
+                      </span>
+                    )}
                   </div>
                 </button>
               );
@@ -605,9 +618,22 @@ export default function OptionGroupsLibraryPage() {
                   {formIsActive ? 'Active' : 'Inactive'}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 font-mono mt-0.5">
-                Code: {formCode || '—'}
-              </p>
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <p className="text-xs text-slate-500 font-mono">
+                  Code: {formCode || '—'}
+                </p>
+                {!isCreatingNew && currentGroup && (
+                  (currentGroup.mappedProductsCount || 0) > 0 ? (
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+                      Mapped to {currentGroup.mappedProductsCount} product{(currentGroup.mappedProductsCount || 0) > 1 ? 's' : ''}
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+                      Unmapped (0 products)
+                    </span>
+                  )
+                )}
+              </div>
             </div>
           </div>
 
@@ -617,11 +643,24 @@ export default function OptionGroupsLibraryPage() {
               <button
                 type="button"
                 onClick={() => setDeleteConfirmGroup(currentGroup)}
-                className="h-9 px-3.5 bg-rose-50/80 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg flex items-center gap-1.5 border border-rose-200 transition-colors cursor-pointer"
-                title="Delete this option group"
+                disabled={(currentGroup.mappedProductsCount || 0) > 0}
+                className={`h-9 px-3.5 text-xs font-bold rounded-lg flex items-center gap-1.5 border transition-colors ${
+                  (currentGroup.mappedProductsCount || 0) > 0
+                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-75'
+                    : 'bg-rose-50/80 hover:bg-rose-100 text-rose-600 border-rose-200 cursor-pointer'
+                }`}
+                title={
+                  (currentGroup.mappedProductsCount || 0) > 0
+                    ? `Cannot delete: This group is mapped to ${currentGroup.mappedProductsCount} product(s). Please unmap it from all products first.`
+                    : 'Delete this option group'
+                }
               >
                 <RiDeleteBin7Line className="w-4 h-4" />
-                <span>Delete Group</span>
+                <span>
+                  {(currentGroup.mappedProductsCount || 0) > 0
+                    ? `Cannot Delete (${currentGroup.mappedProductsCount} Mapped)`
+                    : 'Delete Group'}
+                </span>
               </button>
             )}
 
@@ -678,6 +717,34 @@ export default function OptionGroupsLibraryPage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pt-2">
             {/* Left Column: Basic Information (8 Cols) */}
             <div className="lg:col-span-8 space-y-5">
+              {/* Mapped Products Notice */}
+              {currentGroup?.mappedProducts && currentGroup.mappedProducts.length > 0 && (
+                <div className="p-4 bg-sky-50/80 border border-sky-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-sky-900 flex items-center gap-1.5">
+                      <RiShieldCheckLine className="w-4 h-4 text-sky-600" />
+                      <span>Mapped Products ({currentGroup.mappedProducts.length})</span>
+                    </span>
+                    <span className="text-[10px] font-bold text-sky-700 uppercase tracking-wide px-2 py-0.5 rounded bg-sky-100 border border-sky-300">
+                      Delete Protected
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-sky-800">
+                    This option group is actively linked to the product(s) below. To protect product catalog integrity, this group cannot be deleted while products depend on it.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {currentGroup.mappedProducts.map((p) => (
+                      <span
+                        key={p.id}
+                        className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-sky-900 border border-sky-200 shadow-2xs"
+                      >
+                        {p.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <h3 className="text-sm font-bold text-slate-900">Basic Information</h3>
 
               {/* Group Name & Unique Code Identifier */}
@@ -1147,16 +1214,39 @@ export default function OptionGroupsLibraryPage() {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Delete Option Group</h3>
-                <p className="text-xs text-slate-500">This action cannot be undone.</p>
+                <p className="text-xs text-slate-500">Master reusable library item</p>
               </div>
             </div>
 
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 space-y-1">
-              <span className="font-bold block">Notice:</span>
-              <span>
-                Deleting <strong className="font-bold">{deleteConfirmGroup.name}</strong> will remove it from the reusable library. Products with cloned copies will keep their current configuration.
-              </span>
-            </div>
+            {(deleteConfirmGroup.mappedProductsCount || 0) > 0 ? (
+              <div className="p-3.5 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-900 space-y-2">
+                <div className="flex items-center gap-1.5 font-bold text-rose-800">
+                  <RiErrorWarningLine className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                  <span>Cannot Delete: Group is Mapped to Products</span>
+                </div>
+                <p className="leading-relaxed">
+                  <strong className="font-bold">{deleteConfirmGroup.name}</strong> is actively mapped to{' '}
+                  <strong className="font-bold">{deleteConfirmGroup.mappedProductsCount} product(s)</strong>:
+                </p>
+                {deleteConfirmGroup.mappedProducts && deleteConfirmGroup.mappedProducts.length > 0 && (
+                  <ul className="list-disc list-inside space-y-1 text-[11px] font-semibold text-rose-800 max-h-36 overflow-y-auto bg-white/70 p-2 rounded-lg border border-rose-200">
+                    {deleteConfirmGroup.mappedProducts.map((p) => (
+                      <li key={p.id} className="truncate">{p.name}</li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-[11px] text-rose-700 leading-normal">
+                  To protect product configuration integrity, you must remove or unmap this option group from each mapped product before it can be deleted.
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1">
+                <span className="font-bold block">Notice:</span>
+                <span>
+                  Deleting <strong className="font-bold">{deleteConfirmGroup.name}</strong> will remove it from the master library. This group is currently not mapped to any products.
+                </span>
+              </div>
+            )}
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
               <button
@@ -1169,10 +1259,14 @@ export default function OptionGroupsLibraryPage() {
               <button
                 type="button"
                 onClick={handleDeleteGroup}
-                disabled={isSaving}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer shadow-2xs"
+                disabled={isSaving || (deleteConfirmGroup.mappedProductsCount || 0) > 0}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSaving ? 'Deleting...' : 'Confirm Delete'}
+                {isSaving
+                  ? 'Deleting...'
+                  : (deleteConfirmGroup.mappedProductsCount || 0) > 0
+                  ? 'Cannot Delete (Mapped)'
+                  : 'Confirm Delete'}
               </button>
             </div>
           </div>

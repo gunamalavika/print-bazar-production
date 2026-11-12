@@ -32,6 +32,8 @@ export interface CompletePackingDto {
     heightCm: number;
   }>;
   courierName?: string;
+  trackingNumber?: string;
+  awbNumber?: string;
   stationPrinter?: string;
 }
 
@@ -309,19 +311,33 @@ export class PackingService {
         pkgs.push(createdPkg);
       }
 
-      // If delivery method is COURIER, prepare shipment / AWB
+      // If delivery method is COURIER or tracking number is provided, prepare shipment / AWB
       let shipmentId: string | null = null;
-      if (order.deliveryMethod === 'COURIER') {
-        const courier = dto.courierName || 'Delhivery Surface Express';
-        const awbNumber = `AWB${Math.floor(1000000000 + Math.random() * 9000000000)}`;
+      const rawTracking = (dto.trackingNumber || dto.awbNumber || '').trim();
+      if (order.deliveryMethod === 'COURIER' || rawTracking) {
+        const courier =
+          dto.courierName ||
+          (order.deliveryMethod === 'STORE_PICKUP'
+            ? 'Store Pickup Counter'
+            : 'Delhivery Surface Express');
+        const awbNumber =
+          rawTracking ||
+          `AWB${Math.floor(1000000000 + Math.random() * 9000000000)}`;
         const shipmentNumber = `SHP-${datePrefix}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+        const existingShipment = await tx.shipment.findUnique({
+          where: { awbNumber },
+        });
+        const finalAwb = existingShipment
+          ? `${awbNumber}-${Math.floor(100 + Math.random() * 900)}`
+          : awbNumber;
 
         const shipment = await tx.shipment.create({
           data: {
             shipmentNumber,
             courierName: courier,
-            awbNumber,
-            trackingUrl: `https://track.printbazzar.com/${awbNumber}`,
+            awbNumber: finalAwb,
+            trackingUrl: `https://track.printbazzar.com/${finalAwb}`,
             status: ShipmentStatus.CREATED,
           },
         });

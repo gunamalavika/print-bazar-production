@@ -62,67 +62,107 @@ export function ShippingLabelPreview({
         </div>
       </div>
 
-      {/* 4x6 Realistic Industrial Shipping Label Mockup */}
-      <div className="border-2 border-slate-900 rounded-xl p-3.5 bg-white text-slate-950 font-mono text-[11px] space-y-3 shadow-xs">
-        {/* Carrier Header */}
-        <div className="flex justify-between items-start border-b-2 border-slate-900 pb-2">
+      {/* 4x6 Realistic Industrial Shipping Label Mockup (Clean Customer & Order Details Format - No Barcode) */}
+      <div className="border-2 border-slate-900 rounded-xl p-4 bg-white text-slate-950 font-mono text-[11px] space-y-3.5 shadow-xs">
+        {/* Carrier Header & Parcel Weight */}
+        <div className="flex justify-between items-start border-b-2 border-slate-900 pb-2.5">
           <div>
-            <span className="text-[14px] font-black tracking-tight block uppercase leading-none">
-              {courier}
-            </span>
-            <span className="text-[9px] text-slate-600 font-bold block mt-0.5">
-              PREPAID PRIORITY B2B PARCEL
+            <div className="flex items-center gap-1.5">
+              <RiTruckLine className="h-4 w-4 text-slate-900" />
+              <span className="text-[14px] font-black tracking-tight block uppercase leading-none">
+                {courier}
+              </span>
+            </div>
+            <span className="text-[9px] text-slate-600 font-bold block mt-1 tracking-wider uppercase">
+              Priority Parcel • Standard Delivery
             </span>
           </div>
           <div className="text-right">
             <span className="font-black text-[13px] block leading-none tabular-nums">
               WT: {currentWeight.toFixed(2)} KG
             </span>
-            <span className="text-[9px] text-slate-500 uppercase font-bold block mt-0.5">
-              PLANT HUB #01
+            <span className="text-[9px] text-slate-500 uppercase font-bold block mt-1">
+              BOX {currentSeq}/{totalCartons}
             </span>
           </div>
         </div>
 
-        {/* High-Contrast Code128 Barcode Simulation */}
-        <div className="py-2 text-center border-b-2 border-slate-900 bg-slate-50 rounded-lg p-2">
-          <div className="h-10 bg-slate-950 rounded flex items-center justify-center text-white text-[10px] tracking-[6px] font-mono select-none">
-            |||| || ||||| |||| |||||| || |||| ||||| ||||
+        {/* Order Reference & Identifier Header */}
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex items-center justify-between">
+          <div>
+            <span className="text-[9px] font-bold text-slate-500 uppercase block tracking-wider">
+              ORDER IDENTIFIER:
+            </span>
+            <span className="text-[13px] font-black tracking-wider text-slate-900">
+              #{job.orderNumber}
+            </span>
           </div>
-          <span className="text-[10px] font-black tracking-widest block mt-1 tabular-nums">
-            {awb}
-          </span>
+          <div className="text-right">
+            <span className="text-[9px] font-bold text-slate-500 uppercase block tracking-wider">
+              PARCEL SEQUENCE:
+            </span>
+            <span className="text-[12px] font-black text-slate-900">
+              {currentSeq} of {totalCartons} Cartons
+            </span>
+          </div>
         </div>
 
-        {/* Deliver To / Ship To Information */}
-        <div className="border-b-2 border-slate-900 pb-2 text-[11px] leading-snug space-y-0.5">
-          <span className="font-bold text-[9px] text-slate-500 uppercase block tracking-wider">
-            SHIP TO:
-          </span>
-          <strong className="text-slate-950 font-black block text-[12px]">
+        {/* Customer Details / Consignee (Deliver To) */}
+        <div className="border-b-2 border-slate-900 pb-3 text-[11px] leading-snug space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-[9px] text-slate-500 uppercase tracking-wider">
+              SHIP TO / CUSTOMER DETAILS:
+            </span>
+            <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-1.5 py-0.2 rounded">
+              PIN: {addr?.postalCode || '400001'}
+            </span>
+          </div>
+          <strong className="text-slate-950 font-black block text-[13px]">
             {job.customer?.fullName || 'Customer'}
           </strong>
           {addr ? (
-            <div className="text-slate-800 text-[10px]">
-              <span>{addr.addressLine1}</span>
-              {addr.addressLine2 && <span>, {addr.addressLine2}</span>}
-              <br />
-              <span className="font-bold">
+            <div className="text-slate-800 text-[10.5px] space-y-0.5">
+              <div>{addr.addressLine1}</div>
+              {addr.addressLine2 && <div>{addr.addressLine2}</div>}
+              <div className="font-bold text-slate-950">
                 {addr.city}, {addr.state} - {addr.postalCode}
-              </span>
-              {job.customer?.phone && <span className="block font-mono mt-0.5">PH: {job.customer.phone}</span>}
+              </div>
+              {job.customer?.phone && (
+                <div className="font-mono font-bold mt-1 text-slate-900">
+                  TEL: {job.customer.phone}
+                </div>
+              )}
+              {job.customer?.email && (
+                <div className="font-mono text-slate-600 text-[9.5px]">
+                  EMAIL: {job.customer.email}
+                </div>
+              )}
             </div>
           ) : (
-            <span className="text-slate-500 italic text-[10px]">
-              Customer Store Pickup (Main Plant Counter)
+            <span className="text-slate-500 italic text-[10.5px] block bg-slate-50 p-2 rounded">
+              Customer Store Pickup (Main Plant Counter Desk)
             </span>
           )}
         </div>
 
-        {/* Order Reference & Contents */}
-        <div className="flex justify-between items-center text-[10px] font-bold">
-          <span className="tabular-nums">ORDER: #{job.orderNumber}</span>
-          <span className="truncate max-w-[140px]">{item?.productName || 'Print Product'}</span>
+        {/* Order Details & Product Contents */}
+        <div className="space-y-1 text-[10.5px]">
+          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">
+            PACKAGE CONTENTS & ORDER DETAILS:
+          </span>
+          <div className="flex justify-between items-center font-bold text-slate-900">
+            <span className="truncate max-w-[200px]">
+              {item?.productName || 'Custom Print Job'}
+            </span>
+            <span className="text-slate-600 shrink-0">
+              QTY: {item?.quantity || 1}
+            </span>
+          </div>
+          {item?.sku && (
+            <div className="text-[9.5px] text-slate-500 font-mono">
+              SKU: {item.sku}
+            </div>
+          )}
         </div>
       </div>
     </div>

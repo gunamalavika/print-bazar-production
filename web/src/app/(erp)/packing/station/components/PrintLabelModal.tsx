@@ -152,47 +152,24 @@ export function PrintLabelModal({
               </div>
             </div>
 
-            {/* AWB Code128 Barcode Simulation & Tracking Number */}
-            <div className="py-2 text-center border-b-2 border-slate-950 bg-slate-50 rounded-lg p-2.5 print:bg-white">
-              {/* High Contrast Barcode */}
-              <div className="flex justify-center items-center h-12 gap-[2px] bg-white px-2 py-1 border border-slate-300 rounded">
-                <div className="w-[3px] h-10 bg-black"></div>
-                <div className="w-[1px] h-10 bg-black"></div>
-                <div className="w-[4px] h-10 bg-black"></div>
-                <div className="w-[2px] h-10 bg-black"></div>
-                <div className="w-[1px] h-10 bg-black"></div>
-                <div className="w-[3px] h-10 bg-black"></div>
-                <div className="w-[2px] h-10 bg-black"></div>
-                <div className="w-[5px] h-10 bg-black"></div>
-                <div className="w-[1px] h-10 bg-black"></div>
-                <div className="w-[3px] h-10 bg-black"></div>
-                <div className="w-[2px] h-10 bg-black"></div>
-                <div className="w-[4px] h-10 bg-black"></div>
-                <div className="w-[1px] h-10 bg-black"></div>
-                <div className="w-[3px] h-10 bg-black"></div>
-                <div className="w-[2px] h-10 bg-black"></div>
-                <div className="w-[1px] h-10 bg-black"></div>
-                <div className="w-[4px] h-10 bg-black"></div>
-                <div className="w-[2px] h-10 bg-black"></div>
-                <div className="w-[3px] h-10 bg-black"></div>
-                <div className="w-[1px] h-10 bg-black"></div>
-                <div className="w-[4px] h-10 bg-black"></div>
-                <div className="w-[2px] h-10 bg-black"></div>
-                <div className="w-[5px] h-10 bg-black"></div>
-                <div className="w-[1px] h-10 bg-black"></div>
-                <div className="w-[3px] h-10 bg-black"></div>
-                <div className="w-[2px] h-10 bg-black"></div>
-                <div className="w-[4px] h-10 bg-black"></div>
-                <div className="w-[1px] h-10 bg-black"></div>
-                <div className="w-[3px] h-10 bg-black"></div>
-                <div className="w-[2px] h-10 bg-black"></div>
-                <div className="w-[4px] h-10 bg-black"></div>
-                <div className="w-[1px] h-10 bg-black"></div>
-                <div className="w-[3px] h-10 bg-black"></div>
+            {/* Order Reference & Identifier Header (No Barcode) */}
+            <div className="py-2.5 px-3 border-b-2 border-slate-950 bg-slate-50 rounded-lg flex items-center justify-between print:bg-white">
+              <div>
+                <span className="text-[9px] font-bold text-slate-500 uppercase block tracking-wider">
+                  ORDER IDENTIFIER:
+                </span>
+                <span className="text-[13px] font-black tracking-wider text-slate-950">
+                  #{job.orderNumber}
+                </span>
               </div>
-              <span className="text-[12px] font-black tracking-widest block mt-1 tabular-nums">
-                {awb}
-              </span>
+              <div className="text-right">
+                <span className="text-[9px] font-bold text-slate-500 uppercase block tracking-wider">
+                  PARCEL SEQUENCE:
+                </span>
+                <span className="text-[12px] font-black text-slate-950">
+                  BOX {currentSeq} OF {totalCartons}
+                </span>
+              </div>
             </div>
 
             {/* Consignee (Ship To) Information */}

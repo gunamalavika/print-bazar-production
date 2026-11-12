@@ -186,6 +186,8 @@ export interface ReusableOptionGroup {
   sortOrder: number;
   enableAdditionalPricing?: boolean;
   isActive: boolean;
+  mappedProductsCount?: number;
+  mappedProducts?: Array<{ id: string; name: string; sku?: string }>;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -709,6 +711,11 @@ export const api = {
     );
   },
   getOrderById: (id: string) => fetchApi<any>(`/orders/${id}`),
+  cancelOrder: (id: string, reason?: string) =>
+    fetchApi<any>(`/orders/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
 
   // Storefront Public APIs
   getProducts: (categoryId?: string, search?: string, featured?: boolean) => {
@@ -1073,6 +1080,7 @@ export const api = {
       heightCm: number;
     }>;
     courierName?: string;
+    trackingNumber?: string;
     stationPrinter?: string;
   }) => fetchApi<any>('/packing/complete', { method: 'POST', body: JSON.stringify(data) }),
   recordLabelReprint: (id: string, reason?: string) =>
@@ -1084,6 +1092,72 @@ export const api = {
     fetchApi('/dispatch/courier-handover', { method: 'POST', body: JSON.stringify(data) }),
   confirmStorePickup: (data: unknown) =>
     fetchApi('/dispatch/store-pickup-handover', { method: 'POST', body: JSON.stringify(data) }),
+  getDispatchQueue: (query?: {
+    search?: string;
+    tab?: string;
+    status?: string;
+    deliveryMethod?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const params = new URLSearchParams();
+    if (query?.search) params.append('search', query.search);
+    if (query?.tab) params.append('tab', query.tab);
+    if (query?.status && query.status !== 'ALL') params.append('status', query.status);
+    if (query?.deliveryMethod && query.deliveryMethod !== 'ALL') params.append('deliveryMethod', query.deliveryMethod);
+    if (query?.page) params.append('page', String(query.page));
+    if (query?.limit) params.append('limit', String(query.limit));
+    return fetchApi<{
+      orders: any[];
+      kpis: {
+        readyForDispatch: number;
+        inTransit: number;
+        storePickupReady: number;
+        delivered: number;
+      };
+      pagination: {
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+      };
+    }>(`/dispatch/manifest-queue?${params.toString()}`);
+  },
+  manualCourierUpdate: (
+    orderId: string,
+    data: {
+      deliveryMethod?: 'COURIER' | 'STORE_PICKUP' | 'LOCAL_EXPRESS_BIKE';
+      courierName?: string;
+      awbNumber?: string;
+      trackingUrl?: string;
+      manifestReference?: string;
+      packageCount?: number;
+      grossWeightGrams?: number;
+      lengthCm?: number;
+      widthCm?: number;
+      heightCm?: number;
+      targetStatus: 'READY_FOR_DISPATCH' | 'OUT_FOR_DELIVERY' | 'DELIVERED';
+      receiverName?: string;
+      receiverPhone?: string;
+      dispatchNotes?: string;
+      manualChecks?: {
+        packageSealedAndLabeled?: boolean;
+        addressAndPincodeVerified?: boolean;
+        awbMatchedWithParcel?: boolean;
+        paymentClearanceVerified?: boolean;
+        podOrReceiverVerified?: boolean;
+      };
+    },
+  ) =>
+    fetchApi<any>(`/dispatch/${orderId}/manual-courier-update`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  confirmDelivery: (orderId: string, receiverName?: string) =>
+    fetchApi<any>(`/dispatch/${orderId}/confirm-delivery`, {
+      method: 'POST',
+      body: JSON.stringify({ receiverName }),
+    }),
   getOrderDispatchDetails: (orderId: string) =>
     fetchApi<any>(`/dispatch/${orderId}/weight-details`),
   adjustDispatchWeight: (orderId: string, data: { measuredWeightGrams: number; reason?: string }) =>

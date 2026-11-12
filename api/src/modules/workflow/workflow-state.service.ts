@@ -147,6 +147,27 @@ export class WorkflowStateService {
       allowedRoles: [UserRole.DISPATCH_LOGISTICS, UserRole.SALES_OFFICE, UserRole.ADMIN_MANAGER],
       allowedDepartments: [Department.LOGISTICS, Department.SALES, Department.MANAGEMENT],
     },
+    // Pre-Production Order Cancellation (Forbidden once moved to PRODUCTION_QUEUE or beyond)
+    {
+      from: [
+        OrderStatus.ORDER_CREATED,
+        OrderStatus.PAYMENT_PENDING,
+        OrderStatus.PAYMENT_CONFIRMED,
+        OrderStatus.ORDER_REVIEW,
+        OrderStatus.ARTWORK_REVIEW,
+        OrderStatus.DESIGN_REQUIRED,
+        OrderStatus.CUSTOMER_APPROVAL_REQUIRED,
+        OrderStatus.ARTWORK_APPROVED,
+        OrderStatus.PRE_PRODUCTION_QC,
+      ],
+      to: OrderStatus.CANCELLED,
+      allowedRoles: [
+        UserRole.CUSTOMER,
+        UserRole.SALES_OFFICE,
+        UserRole.OPERATIONAL_MANAGER,
+        UserRole.ADMIN_MANAGER,
+      ],
+    },
   ];
 
   constructor(

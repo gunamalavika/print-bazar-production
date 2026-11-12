@@ -46,4 +46,16 @@ export class OrdersController {
   async getOrderDetails(@Param('id') id: string) {
     return this.ordersService.getOrderDetails(id);
   }
+
+  @Post(':id/cancel')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Cancel an order before it moves to production' })
+  async cancelOrder(
+    @Param('id') id: string,
+    @Body() body: { reason?: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.ordersService.cancelOrder(id, body?.reason, user);
+  }
 }

@@ -91,9 +91,11 @@ export default function ShippingZonesPage() {
     try {
       const payload = {
         zoneCode: formZoneCode.toUpperCase().trim(),
+        zoneName: formName.trim(),
         name: formName.trim(),
         description: formDescription.trim(),
         estimatedDeliveryDays: formEstimatedDays.trim(),
+        zoneSurcharge: Number(formBaseSurcharge) || 0,
         baseSurcharge: Number(formBaseSurcharge) || 0,
         codAllowed: formCodAllowed,
         codFee: Number(formCodFee) || 0,

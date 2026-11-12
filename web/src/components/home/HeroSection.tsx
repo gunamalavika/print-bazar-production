@@ -4,10 +4,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { ArrowRight, ShieldCheck, Truck, Award, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui';
-import { useSiteSettings, resolveSiteAssetUrl } from '@/lib/site-settings';
+import { useSiteSettings, resolveSiteAssetUrl, SiteSettings } from '@/lib/site-settings';
 
-export function HeroSection() {
-  const { settings } = useSiteSettings();
+interface HeroSectionProps {
+  initialSettings?: SiteSettings;
+}
+
+export function HeroSection({ initialSettings }: HeroSectionProps = {}) {
+  const { settings } = useSiteSettings(initialSettings);
   const [activeSlideIdx, setActiveSlideIdx] = useState(0);
 
   const activeHeroSlides = useMemo(() => {
@@ -103,6 +107,7 @@ export function HeroSection() {
                     settings.heroAltText ||
                     'Print Bazzar Commercial Products'
                   }
+                  loading={idx === 0 ? 'eager' : 'lazy'}
                   className="w-full h-full object-cover object-center"
                   onError={(e) => {
                     (e.target as HTMLImageElement).src =

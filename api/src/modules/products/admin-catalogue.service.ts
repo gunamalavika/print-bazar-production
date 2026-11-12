@@ -1098,8 +1098,39 @@ export class AdminCatalogueService {
   // ==========================================
 
   async listReusableGroups() {
-    return this.prisma.reusableOptionGroup.findMany({
+    const groups = await this.prisma.reusableOptionGroup.findMany({
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    });
+
+    const productGroups = await this.prisma.productOptionGroup.findMany({
+      select: {
+        id: true,
+        productId: true,
+        reusableGroupId: true,
+        code: true,
+        product: {
+          select: { id: true, name: true, sku: true },
+        },
+      },
+    });
+
+    return groups.map((group) => {
+      const attached = productGroups.filter(
+        (pg) => pg.reusableGroupId === group.id || pg.code === group.code,
+      );
+      const uniqueProductMap = new Map<string, { id: string; name: string; sku: string }>();
+      attached.forEach((pg) => {
+        if (pg.product) {
+          uniqueProductMap.set(pg.productId, pg.product);
+        }
+      });
+      const mappedProducts = Array.from(uniqueProductMap.values());
+
+      return {
+        ...group,
+        mappedProductsCount: mappedProducts.length,
+        mappedProducts,
+      };
     });
   }
 
@@ -1110,7 +1141,33 @@ export class AdminCatalogueService {
     if (!group) {
       throw new NotFoundException(`Reusable option group '${id}' not found`);
     }
-    return group;
+
+    const productGroups = await this.prisma.productOptionGroup.findMany({
+      where: {
+        OR: [{ reusableGroupId: id }, { code: group.code }],
+      },
+      select: {
+        id: true,
+        productId: true,
+        product: {
+          select: { id: true, name: true, sku: true },
+        },
+      },
+    });
+
+    const uniqueProductMap = new Map<string, { id: string; name: string; sku: string }>();
+    productGroups.forEach((pg) => {
+      if (pg.product) {
+        uniqueProductMap.set(pg.productId, pg.product);
+      }
+    });
+    const mappedProducts = Array.from(uniqueProductMap.values());
+
+    return {
+      ...group,
+      mappedProductsCount: mappedProducts.length,
+      mappedProducts,
+    };
   }
 
   async createReusableGroup(dto: CreateReusableOptionGroupDto, actorId?: string) {
@@ -1286,44 +1343,38 @@ export class AdminCatalogueService {
       where: {
         OR: [{ reusableGroupId: id }, { code: group.code }],
       },
-      select: { id: true, productId: true },
+      include: {
+        product: {
+          select: { id: true, name: true, sku: true },
+        },
+      },
     });
 
-    const attachedGroupIds = attachedProductGroups.map((g) => g.id);
+    const uniqueProductMap = new Map<string, { id: string; name: string; sku: string }>();
+    attachedProductGroups.forEach((pg) => {
+      if (pg.product) {
+        uniqueProductMap.set(pg.productId, pg.product);
+      }
+    });
+    const mappedProducts = Array.from(uniqueProductMap.values());
+
+    // STRICT RULE: If group is mapped to any products, it CANNOT be deleted
+    if (mappedProducts.length > 0) {
+      const productNames = mappedProducts
+        .slice(0, 3)
+        .map((p) => `"${p.name}"`)
+        .join(', ');
+      const moreText =
+        mappedProducts.length > 3
+          ? ` and ${mappedProducts.length - 3} other product(s)`
+          : '';
+      throw new BadRequestException(
+        `Cannot delete Option Group '${group.name}': it is actively mapped to ${mappedProducts.length} product(s) (${productNames}${moreText}). Please remove or unmap this option group from the affected products before deleting.`,
+      );
+    }
 
     await this.prisma.$transaction(async (tx) => {
-      if (attachedGroupIds.length > 0) {
-        // 1. Delete all options belonging to these product groups
-        await tx.productOption.deleteMany({
-          where: { groupId: { in: attachedGroupIds } },
-        });
-
-        // 2. Delete all product option groups across all products
-        await tx.productOptionGroup.deleteMany({
-          where: { id: { in: attachedGroupIds } },
-        });
-
-        // 3. Deactivate configuration rules referencing this group code
-        await tx.productConfigurationRule.updateMany({
-          where: {
-            OR: [
-              { conditionGroupCode: group.code },
-              { targetGroupCode: group.code },
-            ],
-          },
-          data: { isActive: false },
-        });
-
-        // 4. Delete product additional pricing entries for this group
-        await tx.productAdditionalPricing.deleteMany({
-          where: {
-            productId: { in: attachedProductGroups.map((p) => p.productId) },
-            groupCode: group.code,
-          },
-        });
-      }
-
-      // 4. Delete the reusable group from master library
+      // Delete the reusable group from master library
       await tx.reusableOptionGroup.delete({
         where: { id },
       });
@@ -1335,13 +1386,13 @@ export class AdminCatalogueService {
       entity: 'ReusableOptionGroup',
       entityId: id,
       previousState: group,
-      reason: `Deleted reusable group and removed across ${attachedProductGroups.length} product(s)`,
+      reason: `Deleted unused master reusable group '${group.name}' from library`,
     });
 
     return {
       success: true,
-      affectedProductsCount: attachedProductGroups.length,
-      message: `Reusable group '${group.name}' removed from library and deleted across ${attachedProductGroups.length} product(s).`,
+      affectedProductsCount: 0,
+      message: `Option Group '${group.name}' removed from library successfully.`,
     };
   }
 

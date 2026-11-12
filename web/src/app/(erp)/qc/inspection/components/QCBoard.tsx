@@ -267,28 +267,9 @@ export function QCBoard() {
     }
 
     if (actionType === 'QC_PASS') {
-      try {
-        await api.submitQC({
-          orderId: card.orderId,
-          type: card.type,
-          items: [],
-          generalNotes: '1-Click Fast-Track Quality Pass verified.',
-        });
-
-        setLocalCardOverrides((prev) => ({
-          ...prev,
-          [card.id]: { status: 'APPROVED' },
-        }));
-
-        showNotification(
-          'success',
-          `Order #${card.orderNumber} Final QC Passed! Evaluated payment clearance gate.`,
-        );
-
-        loadQueues(true);
-      } catch (err: any) {
-        showNotification('error', `QC Error: ${err?.message || 'Failed to submit inspection'}`);
-      }
+      // Must follow the 8-point physical QC checklist before passing to packing
+      setInspectCard(card);
+      setIsInspectOpen(true);
       return;
     }
 

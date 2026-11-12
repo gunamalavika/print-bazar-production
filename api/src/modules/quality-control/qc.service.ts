@@ -337,15 +337,18 @@ export class QualityControlService {
   }
 
   /**
-   * Standard Final Physical QC Checklist Template
+   * Standard Final Physical QC Checklist Template (8 Mandatory Quality Gates)
    */
   getFinalQCTemplate(): QCCheckItem[] {
     return [
-      { code: 'COLOR_ACCURACY', name: 'Color Density & Registration against Approved Proof', result: 'NOT_APPLICABLE' },
-      { code: 'SURFACE_INTEGRITY', name: 'No Scratches, Ink Smudges or Ghosting', result: 'NOT_APPLICABLE' },
-      { code: 'CUT_AND_CREASE', name: 'Trim Squareness & Crease / Fold Alignment', result: 'NOT_APPLICABLE' },
-      { code: 'LAMINATION_ADHESION', name: 'Lamination Adhesion & Bubble Check', result: 'NOT_APPLICABLE' },
-      { code: 'ACCURATE_COUNT', name: 'Total Physical Count & Packing Bundles', result: 'NOT_APPLICABLE' },
+      { code: 'CORRECT_PRODUCT', name: 'Correct product', result: 'PASS' },
+      { code: 'CORRECT_SIZE', name: 'Correct size', result: 'PASS' },
+      { code: 'CORRECT_COLOR', name: 'Correct color', result: 'PASS' },
+      { code: 'CORRECT_QUANTITY', name: 'Correct quantity', result: 'PASS' },
+      { code: 'PRINTING_QUALITY', name: 'Printing Quality', result: 'PASS' },
+      { code: 'FINISHING_QUALITY', name: 'Finishing quality', result: 'PASS' },
+      { code: 'NO_DAMAGES', name: 'No damages', result: 'PASS' },
+      { code: 'NO_SCRATCHES', name: 'No scratches', result: 'PASS' },
     ];
   }
 }

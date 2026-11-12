@@ -59,6 +59,8 @@ export class ShippingZoneService {
 
     return zones.map((z) => ({
       ...z,
+      name: z.zoneName,
+      baseSurcharge: Number(z.zoneSurcharge),
       shippingCharge: Number(z.shippingCharge),
       zoneSurcharge: Number(z.zoneSurcharge),
       pincodeCount: z._count.pincodes,
@@ -90,6 +92,8 @@ export class ShippingZoneService {
 
     return {
       ...zone,
+      name: zone.zoneName,
+      baseSurcharge: Number(zone.zoneSurcharge),
       shippingCharge: Number(zone.shippingCharge),
       zoneSurcharge: Number(zone.zoneSurcharge),
     };
@@ -104,14 +108,21 @@ export class ShippingZoneService {
       throw new ConflictException(`Zone code '${cleanCode}' is already in use`);
     }
 
+    const zoneName = (dto.zoneName || dto.name || '').trim();
+    if (!zoneName) {
+      throw new BadRequestException('Zone name is required');
+    }
+
+    const surcharge = dto.zoneSurcharge !== undefined ? dto.zoneSurcharge : (dto.baseSurcharge !== undefined ? dto.baseSurcharge : 0);
+
     const zone = await this.prisma.shippingZone.create({
       data: {
         zoneCode: cleanCode,
-        zoneName: dto.zoneName.trim(),
+        zoneName,
         description: dto.description?.trim(),
         pincodePrefix: dto.pincodePrefix?.trim(),
         shippingCharge: dto.shippingCharge ?? 100,
-        zoneSurcharge: dto.zoneSurcharge ?? 0,
+        zoneSurcharge: surcharge,
         estimatedDeliveryDays: dto.estimatedDeliveryDays?.trim(),
         isActive: dto.isActive ?? true,
       },
@@ -125,7 +136,11 @@ export class ShippingZoneService {
       newState: zone,
     });
 
-    return zone;
+    return {
+      ...zone,
+      name: zone.zoneName,
+      baseSurcharge: Number(zone.zoneSurcharge),
+    };
   }
 
   async updateZone(id: string, dto: UpdateShippingZoneDto, actorId?: string) {
@@ -144,15 +159,18 @@ export class ShippingZoneService {
       }
     }
 
+    const zoneName = dto.zoneName || dto.name;
+    const surcharge = dto.zoneSurcharge !== undefined ? dto.zoneSurcharge : dto.baseSurcharge;
+
     const updated = await this.prisma.shippingZone.update({
       where: { id },
       data: {
         ...(dto.zoneCode ? { zoneCode: dto.zoneCode.trim().toUpperCase().replace(/[\s-]+/g, '_') } : {}),
-        ...(dto.zoneName ? { zoneName: dto.zoneName.trim() } : {}),
+        ...(zoneName ? { zoneName: zoneName.trim() } : {}),
         ...(dto.description !== undefined ? { description: dto.description?.trim() } : {}),
         ...(dto.pincodePrefix !== undefined ? { pincodePrefix: dto.pincodePrefix?.trim() } : {}),
         ...(dto.shippingCharge !== undefined ? { shippingCharge: dto.shippingCharge } : {}),
-        ...(dto.zoneSurcharge !== undefined ? { zoneSurcharge: dto.zoneSurcharge } : {}),
+        ...(surcharge !== undefined ? { zoneSurcharge: surcharge } : {}),
         ...(dto.estimatedDeliveryDays !== undefined ? { estimatedDeliveryDays: dto.estimatedDeliveryDays?.trim() } : {}),
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
       },
@@ -167,7 +185,11 @@ export class ShippingZoneService {
       newState: updated,
     });
 
-    return updated;
+    return {
+      ...updated,
+      name: updated.zoneName,
+      baseSurcharge: Number(updated.zoneSurcharge),
+    };
   }
 
   async deleteZone(id: string, actorId?: string) {

@@ -13,6 +13,7 @@ import { PackedCartonsTable } from './PackedCartonsTable';
 import { ShippingLabelPreview } from './ShippingLabelPreview';
 import { LabelActions } from './LabelActions';
 import { PrintLabelModal } from './PrintLabelModal';
+import { DispatchTrackingModal } from './DispatchTrackingModal';
 import {
   RiBox3Line,
   RiCheckboxCircleFill,
@@ -77,6 +78,7 @@ export function PackingStation() {
   const [isCompleting, setIsCompleting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
 
   // Notifications
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -179,8 +181,14 @@ export function PackingStation() {
     }
   };
 
-  // Complete Packing action
-  const handleCompletePacking = async () => {
+  // Complete Packing action - opens tracking number popup modal
+  const handleCompletePacking = () => {
+    if (!selectedJob || cartons.length === 0) return;
+    setIsTrackingModalOpen(true);
+  };
+
+  // Confirm Dispatch with tracking number from popup
+  const handleConfirmDispatch = async (trackingNumber: string, courierName: string) => {
     if (!selectedJob || cartons.length === 0) return;
     setIsCompleting(true);
     try {
@@ -194,14 +202,16 @@ export function PackingStation() {
           widthCm: c.widthCm,
           heightCm: c.heightCm,
         })),
-        courierName: selectedJob.deliveryMethod === 'STORE_PICKUP' ? 'Store Pickup Counter' : 'Delhivery Surface Express',
+        courierName: courierName || (selectedJob.deliveryMethod === 'STORE_PICKUP' ? 'Store Pickup Counter' : 'Delhivery Surface Express'),
+        trackingNumber: trackingNumber.trim(),
         stationPrinter: printerName,
       });
 
+      setIsTrackingModalOpen(false);
       setIsCompleted(true);
       setBanner({
         type: 'success',
-        message: `Order #${selectedJob.orderNumber} packing completed! Handed off to Dispatch Station.`,
+        message: `Order #${selectedJob.orderNumber} packing completed (Tracking: ${trackingNumber})! Handed off to Dispatch Station.`,
       });
 
       // Refresh queue to remove completed job
@@ -361,6 +371,19 @@ export function PackingStation() {
           setLabelPrinted(true);
         }}
       />
+
+      {/* 5. Complete Packing & Move to Dispatch Tracking Modal */}
+      {selectedJob && (
+        <DispatchTrackingModal
+          isOpen={isTrackingModalOpen}
+          onClose={() => setIsTrackingModalOpen(false)}
+          job={selectedJob}
+          cartons={cartons}
+          defaultCourier={selectedJob.deliveryMethod === 'STORE_PICKUP' ? 'Store Pickup Counter' : 'Delhivery Surface Express'}
+          isSubmitting={isCompleting}
+          onConfirm={handleConfirmDispatch}
+        />
+      )}
     </div>
   );
 }
