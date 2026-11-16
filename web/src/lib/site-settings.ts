@@ -248,19 +248,16 @@ export async function saveSiteSettings(
 export function useSiteSettings(initialSettings?: SiteSettings) {
   const [settings, setSettings] = useState<SiteSettings>(() => {
     if (initialSettings) return initialSettings;
-    if (typeof window !== 'undefined') {
-      return getCachedSiteSettings();
-    }
     return DEFAULT_SITE_SETTINGS;
   });
-  const [isLoaded, setIsLoaded] = useState(() => Boolean(initialSettings || typeof window !== 'undefined'));
+  const [isLoaded, setIsLoaded] = useState(false);
 
   const syncFromStorage = useCallback(() => {
     setSettings(getCachedSiteSettings());
   }, []);
 
   useEffect(() => {
-    // 1. Immediate load from localStorage
+    // 1. Immediate load from localStorage after client mount
     const local = getCachedSiteSettings();
     setSettings(local);
     setIsLoaded(true);

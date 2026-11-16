@@ -68,7 +68,7 @@ export function renderMarqueeIcon(iconType: MarqueeIconType) {
 }
 
 export function TopMarqueeBar() {
-  const { settings } = useSiteSettings();
+  const { settings, isLoaded } = useSiteSettings();
 
   const activeItems = useMemo(() => {
     const list = Array.isArray(settings.marqueeItems)
@@ -85,6 +85,7 @@ export function TopMarqueeBar() {
     <div
       role="region"
       aria-label="Promotional announcements"
+      suppressHydrationWarning
       className="w-full bg-[#111111] text-white border-b border-neutral-800/80 overflow-hidden select-none py-1.5 sm:py-2 relative z-50 group"
     >
       <div className="flex w-full overflow-hidden">

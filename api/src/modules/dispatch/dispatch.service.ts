@@ -19,7 +19,7 @@ import { ShippingCalculatorService } from '../shipping/shipping-calculator.servi
 
 export interface DispatchQueueFilters {
   search?: string;
-  tab?: 'ALL' | 'READY' | 'IN_TRANSIT' | 'STORE_PICKUP' | 'DELIVERED';
+  tab?: 'ALL' | 'READY' | 'READY_FOR_DISPATCH' | 'IN_TRANSIT' | 'STORE_PICKUP' | 'DELIVERED';
   status?: string;
   deliveryMethod?: string;
   page?: string;
@@ -132,7 +132,7 @@ export class DispatchService {
 
     // Tab filtering
     const tab = filters.tab || 'ALL';
-    if (tab === 'READY') {
+    if (tab === 'READY' || tab === 'READY_FOR_DISPATCH') {
       andConditions.push({
         status: { in: [OrderStatus.QUALITY_CHECK, OrderStatus.PACKING, OrderStatus.READY_FOR_DISPATCH] },
       });
@@ -281,13 +281,26 @@ export class DispatchService {
 
     return {
       data: enriched,
+      orders: enriched,
       metrics: {
         readyForDispatch: readyCount,
         inTransit: inTransitCount,
         storePickupReady: storePickupCount,
         delivered: deliveredCount,
       },
+      kpis: {
+        readyForDispatch: readyCount,
+        inTransit: inTransitCount,
+        storePickupReady: storePickupCount,
+        delivered: deliveredCount,
+      },
       meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+      pagination: {
         page,
         limit,
         total,

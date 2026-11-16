@@ -197,6 +197,10 @@ export function DesignJobCard({
       draggable
       onDragStart={(e) => onDragStart(e, card)}
       onDragEnd={onDragEnd}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+      }}
       className={`bg-white border rounded-xl p-3.5 shadow-xs transition-all select-none group relative flex flex-col justify-between gap-2.5 ${
         isDragging
           ? 'opacity-40 border-slate-400 scale-[0.98]'
@@ -209,6 +213,7 @@ export function DesignJobCard({
           <div className="flex items-center gap-1.5 flex-wrap">
             <Link
               href={`/operations/orders/${card.orderId}`}
+              draggable={false}
               className="font-mono text-[13px] font-bold text-slate-900 hover:text-amber-700 transition-colors truncate"
               title="Open Order Details"
             >
@@ -322,6 +327,8 @@ export function DesignJobCard({
 
         <button
           type="button"
+          draggable={false}
+          onMouseDown={(e) => e.stopPropagation()}
           disabled={isDownloading || !card.artworkUrl}
           onClick={handleDownloadArtwork}
           className="inline-flex items-center gap-1 bg-slate-950 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-[#FFED00] font-black text-[10px] px-2.5 py-1 rounded shadow-2xs transition active:scale-95 flex-shrink-0 cursor-pointer border border-[#E3A008]/40"
@@ -347,28 +354,71 @@ export function DesignJobCard({
 
         <button
           type="button"
+          draggable={false}
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={() => onInspect(card)}
-          className="text-slate-700 hover:text-slate-950 hover:underline font-bold text-[10.5px] shrink-0"
+          className="text-slate-700 hover:text-slate-950 hover:underline font-bold text-[10.5px] shrink-0 cursor-pointer"
         >
           Inspect Proofs
         </button>
       </div>
 
-      {/* Bottom Action Button: Quick Advance Stage */}
-      {nextInfo?.nextStage ? (
-        <button
-          type="button"
-          onClick={() => onAdvanceStage(card, nextInfo.nextStage!)}
-          className={`w-full h-8 text-xs rounded-lg transition-transform active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer ${nextInfo.buttonClass}`}
-        >
-          <span>{nextInfo.label}</span>
-        </button>
-      ) : (
-        <div className="w-full h-8 text-[11px] font-mono font-bold rounded-lg flex items-center justify-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200">
-          <RiCheckDoubleLine className="h-3.5 w-3.5 text-emerald-600" />
-          <span>Handed over to Press Queue</span>
-        </div>
-      )}
+      {/* Bottom Action Controls: Advance Stage & Return Stage */}
+      <div className="flex items-center gap-1.5 pt-0.5">
+        {card.stage === 'WAITING_FOR_APPROVAL' && (
+          <button
+            type="button"
+            draggable={false}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => onAdvanceStage(card, 'DESIGNING')}
+            className="h-8 px-2.5 text-[11px] font-bold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
+            title="Return back to Designing for corrections"
+          >
+            ← Revise
+          </button>
+        )}
+        {card.stage === 'READY_TO_PRINT' && (
+          <button
+            type="button"
+            draggable={false}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => onAdvanceStage(card, 'DESIGNING')}
+            className="h-8 px-2.5 text-[11px] font-bold rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors shrink-0 cursor-pointer"
+            title="Return to Designing"
+          >
+            ← Return to Design
+          </button>
+        )}
+        {card.stage === 'DESIGNING' && (
+          <button
+            type="button"
+            draggable={false}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => onAdvanceStage(card, 'ARTWORK_CHECK')}
+            className="h-8 px-2 text-[11px] font-bold rounded-lg border border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
+            title="Recheck preflight in Artwork Check"
+          >
+            ← Check
+          </button>
+        )}
+
+        {nextInfo?.nextStage ? (
+          <button
+            type="button"
+            draggable={false}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => onAdvanceStage(card, nextInfo.nextStage!)}
+            className={`flex-1 h-8 text-xs rounded-lg transition-transform active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer ${nextInfo.buttonClass}`}
+          >
+            <span>{nextInfo.label}</span>
+          </button>
+        ) : (
+          <div className="flex-1 h-8 text-[11px] font-mono font-bold rounded-lg flex items-center justify-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200">
+            <RiCheckDoubleLine className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Handed over to Press Queue</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

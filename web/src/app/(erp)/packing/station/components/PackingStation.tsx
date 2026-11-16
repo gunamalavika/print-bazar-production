@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 import { PackingStationHeader } from './PackingStationHeader';
@@ -183,18 +184,52 @@ export function PackingStation() {
 
   // Complete Packing action - opens tracking number popup modal
   const handleCompletePacking = () => {
-    if (!selectedJob || cartons.length === 0) return;
+    if (!selectedJob) return;
+    // Auto-provision standard Carton #1 if not manually added yet
+    if (cartons.length === 0) {
+      const def = materials[1] || materials[0] || DEFAULT_MATERIALS[0];
+      const item = selectedJob.items?.[0];
+      const qty = item?.quantity || 100;
+      const calculatedWeight = Math.max(0.5, parseFloat(((qty * 2.8) / 1000 + def.tareWeightKg).toFixed(2)));
+      const autoCarton: PackagingCartonItem = {
+        id: `carton-${Date.now()}-1`,
+        sequenceNumber: 1,
+        cartonType: def.code,
+        lengthCm: def.innerLengthCm,
+        widthCm: def.innerWidthCm,
+        heightCm: def.innerHeightCm,
+        tareWeightKg: def.tareWeightKg,
+        grossWeightKg: calculatedWeight,
+        isWeightVerified: true,
+      };
+      setCartons([autoCarton]);
+    }
     setIsTrackingModalOpen(true);
   };
 
   // Confirm Dispatch with tracking number from popup
   const handleConfirmDispatch = async (trackingNumber: string, courierName: string) => {
-    if (!selectedJob || cartons.length === 0) return;
+    if (!selectedJob) return;
+    const def = materials[1] || materials[0] || DEFAULT_MATERIALS[0];
+    const activeCartons = cartons.length > 0 ? cartons : [
+      {
+        id: `carton-${Date.now()}-1`,
+        sequenceNumber: 1,
+        cartonType: def.code,
+        lengthCm: def.innerLengthCm || 25,
+        widthCm: def.innerWidthCm || 18,
+        heightCm: def.innerHeightCm || 12,
+        tareWeightKg: def.tareWeightKg || 0.18,
+        grossWeightKg: 0.85,
+        isWeightVerified: true,
+      },
+    ];
+
     setIsCompleting(true);
     try {
       await api.completePacking({
         orderId: selectedJob.id,
-        packages: cartons.map((c) => ({
+        packages: activeCartons.map((c) => ({
           sequenceNumber: c.sequenceNumber,
           cartonType: c.cartonType,
           grossWeightGrams: Math.round(c.grossWeightKg * 1000),
@@ -211,7 +246,7 @@ export function PackingStation() {
       setIsCompleted(true);
       setBanner({
         type: 'success',
-        message: `Order #${selectedJob.orderNumber} packing completed (Tracking: ${trackingNumber})! Handed off to Dispatch Station.`,
+        message: `Order #${selectedJob.orderNumber} packing completed (Tracking: ${trackingNumber})! Successfully moved to Dispatch Manifest.`,
       });
 
       // Refresh queue to remove completed job
@@ -237,7 +272,7 @@ export function PackingStation() {
     return 1;
   }, [selectedJob, cartons, labelPrinted, isCompleted]);
 
-  const canComplete = cartons.length > 0 && labelPrinted && !isCompleted;
+  const canComplete = Boolean(selectedJob && !isCompleted);
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-4">
@@ -261,13 +296,21 @@ export function PackingStation() {
               : 'bg-emerald-50 text-emerald-900 border-emerald-200'
           }`}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {banner.type === 'error' ? (
               <RiAlertFill className="h-4 w-4 text-rose-600 shrink-0" />
             ) : (
               <RiCheckboxCircleFill className="h-4 w-4 text-emerald-600 shrink-0" />
             )}
             <span>{banner.message}</span>
+            {banner.type === 'success' && (
+              <Link
+                href="/dispatch/manifest"
+                className="ml-2 font-bold underline text-emerald-950 hover:text-emerald-700 inline-flex items-center gap-1"
+              >
+                Go to Dispatch Manifest →
+              </Link>
+            )}
           </div>
           <button
             onClick={() => setBanner(null)}

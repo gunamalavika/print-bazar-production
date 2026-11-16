@@ -25,6 +25,14 @@ export function AdminShell({ children }: AdminShellProps) {
   const { user, isAuthenticated, isLoading, logout, getRoleDestination, activeRole } = useAuth();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
+  // Extract all assigned multi-roles (ALWAYS called before any early return)
+  const effectiveRoles = useMemo(() => {
+    if (Array.isArray(user?.roles) && user.roles.length > 0) {
+      return user.roles;
+    }
+    return user?.role ? [user.role] : [];
+  }, [user?.roles, user?.role]);
+
   // Authentication validation
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -74,14 +82,6 @@ export function AdminShell({ children }: AdminShellProps) {
       </div>
     );
   }
-
-  // Extract all assigned multi-roles
-  const effectiveRoles = useMemo(() => {
-    if (Array.isArray(user?.roles) && user.roles.length > 0) {
-      return user.roles;
-    }
-    return user?.role ? [user.role] : [];
-  }, [user?.roles, user?.role]);
 
   const currentRole = activeRole || user?.role || effectiveRoles[0];
 

@@ -65,4 +65,15 @@ export class JobCardsController {
   ) {
     return this.jobCardEngine.completeStation(id, nextStation, user);
   }
+
+  @Post(':id/update-station')
+  @ApiOperation({ summary: 'Quick scan / mobile status updater for Job Card station progression' })
+  async updateStation(
+    @Param('id') id: string,
+    @Body('station') station: string,
+    @Body('notes') notes: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.jobCardEngine.completeStation(id, station, user);
+  }
 }

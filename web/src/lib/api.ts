@@ -683,18 +683,18 @@ export const api = {
     }),
 
   updateStaffUser: (id: string, data: any): Promise<any> =>
-    fetchApi<any>(`/auth/staff/${id}`, {
+    fetchApi<any>(`/auth/staff/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
 
   deleteStaffUser: (id: string): Promise<any> =>
-    fetchApi<any>(`/auth/staff/${id}`, {
+    fetchApi<any>(`/auth/staff/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     }),
 
   resetStaffPassword: (id: string, password?: string): Promise<any> =>
-    fetchApi<any>(`/auth/staff/${id}/reset-password`, {
+    fetchApi<any>(`/auth/staff/${encodeURIComponent(id)}/reset-password`, {
       method: 'POST',
       body: JSON.stringify({ password }),
     }),

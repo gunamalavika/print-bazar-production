@@ -280,7 +280,7 @@ export default function StaffAdminPage() {
         } catch {}
 
         const nonCustomerStaff = backendStaff.filter(
-          (u: any) => !isCustomerRole(u.role) && !isCustomerRole(u.roles)
+          (u: any) => !isCustomerRole(u.role) && !isCustomerRole(u.roles) && u.isActive !== false
         );
 
         const normalized: StaffMember[] = nonCustomerStaff.map((u: any, idx: number) => {
@@ -566,12 +566,19 @@ export default function StaffAdminPage() {
   // Handle Delete Confirmation
   const handleConfirmDelete = async () => {
     if (!staffToDelete) return;
+    const identifier = staffToDelete.id || staffToDelete.email;
     try {
-      await api.deleteStaffUser(staffToDelete.id);
+      await api.deleteStaffUser(identifier);
+      const updated = staffList.filter(
+        (s) => s.id !== staffToDelete.id && s.email.toLowerCase() !== staffToDelete.email.toLowerCase(),
+      );
+      saveRoster(updated);
       await loadStaff();
     } catch (err: any) {
       console.warn('Backend delete note:', err?.message || err);
-      const updated = staffList.filter((s) => s.id !== staffToDelete.id);
+      const updated = staffList.filter(
+        (s) => s.id !== staffToDelete.id && s.email.toLowerCase() !== staffToDelete.email.toLowerCase(),
+      );
       saveRoster(updated);
     }
     setStaffToDelete(null);

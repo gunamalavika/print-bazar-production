@@ -156,9 +156,16 @@ export default function DispatchStationPage() {
         limit: 100,
       });
       if (res) {
-        setOrders(res.orders || []);
-        if (res.kpis) {
-          setKpis(res.kpis);
+        const orderList = (res as any).orders || (res as any).data || [];
+        setOrders(orderList);
+        const kpiData = (res as any).kpis || (res as any).metrics;
+        if (kpiData) {
+          setKpis({
+            readyForDispatch: kpiData.readyForDispatch || 0,
+            inTransit: kpiData.inTransit || 0,
+            storePickupReady: kpiData.storePickupReady || 0,
+            delivered: kpiData.delivered || 0,
+          });
         }
       }
     } catch (err: any) {

@@ -292,12 +292,13 @@ export class AuthService {
     };
   }
 
-  async listStaff() {
+  async listStaff(includeInactive = false) {
     const users = await this.prisma.user.findMany({
       where: {
         role: {
           not: UserRole.CUSTOMER,
         },
+        ...(includeInactive ? {} : { isActive: true }),
       },
       orderBy: { createdAt: 'asc' },
       select: {
@@ -526,10 +527,22 @@ export class AuthService {
     };
   }
 
-  async deleteStaff(id: string) {
-    const existing = await this.prisma.user.findUnique({ where: { id } });
+  async deleteStaff(idOrEmail: string) {
+    const existing = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: idOrEmail },
+          { email: idOrEmail.toLowerCase() },
+        ],
+      },
+    });
+
     if (!existing) {
-      throw new NotFoundException(`Staff user with ID '${id}' not found`);
+      throw new NotFoundException(`Staff user '${idOrEmail}' not found`);
+    }
+
+    if (existing.email.toLowerCase() === 'admin@printbazzar.com') {
+      throw new BadRequestException('The primary system administrator account (admin@printbazzar.com) cannot be deleted.');
     }
 
     // Clean up metadata
@@ -538,15 +551,58 @@ export class AuthService {
     delete meta[existing.id];
     this.saveStaffMetadata(meta);
 
+    // 1. Unlink nullable references so foreign key blocks are removed
     try {
-      await this.prisma.user.delete({ where: { id } });
+      await this.prisma.jobCard.updateMany({
+        where: { operatorId: existing.id },
+        data: { operatorId: null },
+      });
+
+      await this.prisma.orderStatusHistory.updateMany({
+        where: { changedById: existing.id },
+        data: { changedById: null },
+      });
+
+      await this.prisma.auditLog.updateMany({
+        where: { actorId: existing.id },
+        data: { actorId: null },
+      });
+
+      await this.prisma.customer.updateMany({
+        where: { userId: existing.id },
+        data: { userId: null },
+      });
+
+      await this.prisma.orderAssignment.deleteMany({
+        where: {
+          OR: [
+            { assignedUserId: existing.id },
+            { assignedByUserId: existing.id },
+          ],
+        },
+      });
+
+      await (this.prisma as any).operationalNote?.deleteMany({
+        where: { authorId: existing.id },
+      });
+    } catch (unlinkErr) {
+      this.logger.warn(`Could not unlink all references for staff ${existing.email}: ${unlinkErr}`);
+    }
+
+    // 2. Try permanent deletion
+    try {
+      await this.prisma.user.delete({ where: { id: existing.id } });
       return { success: true, message: `Staff member '${existing.email}' deleted permanently.` };
     } catch {
+      // If still restricted (e.g. required foreign key in historical QC checklists), deactivate and remove from staff roles
       await this.prisma.user.update({
-        where: { id },
-        data: { isActive: false },
+        where: { id: existing.id },
+        data: {
+          isActive: false,
+          role: UserRole.CUSTOMER, // Demote from staff role so they are excluded from staff queries
+        },
       });
-      return { success: true, message: `Staff member '${existing.email}' deactivated (has history).` };
+      return { success: true, message: `Staff member '${existing.email}' removed from staff roster and deactivated.` };
     }
   }
 

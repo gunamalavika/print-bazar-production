@@ -63,23 +63,45 @@ const KANBAN_COLUMNS: ColumnConfig[] = [
 // Helper to determine initial kanban stage from order data
 function deduceKanbanStage(order: any): DesignKanbanStage {
   const status = String(order.status || '').toUpperCase();
+
+  // 1. Explicit Order Status mapping (highest fidelity)
+  if (status === 'CUSTOMER_APPROVAL_REQUIRED') {
+    return 'WAITING_FOR_APPROVAL';
+  }
+
+  if (status === 'DESIGN_REQUIRED') {
+    return 'DESIGNING';
+  }
+
+  if (status === 'ARTWORK_REVIEW' || status === 'ORDER_REVIEW') {
+    return 'ARTWORK_CHECK';
+  }
+
+  if (
+    status === 'ARTWORK_APPROVED' ||
+    status === 'PRE_PRODUCTION_QC' ||
+    status === 'PRODUCTION_QUEUE' ||
+    status === 'PRINTING' ||
+    status === 'FINISHING' ||
+    status === 'QUALITY_CHECK' ||
+    order.isPassedToProduction
+  ) {
+    return 'READY_TO_PRINT';
+  }
+
+  // 2. Secondary heuristics if status is generic or ambiguous
   const allItemVersions = (order.items || []).flatMap((it: any) => it.artworkVersions || []);
   const hasApprovedProof =
     order.approvedArtworkVersionId ||
     order.approvedArtworkVersion ||
     allItemVersions.some((v: any) => v.isApproved || v.status === 'PROOF_APPROVED');
 
-  if (hasApprovedProof || status === 'ARTWORK_APPROVED' || order.isPassedToProduction) {
+  if (hasApprovedProof) {
     return 'READY_TO_PRINT';
-  }
-
-  if (status === 'CUSTOMER_APPROVAL_REQUIRED') {
-    return 'WAITING_FOR_APPROVAL';
   }
 
   // If order was returned for revisions or is active in design
   if (
-    status === 'DESIGN_REQUIRED' ||
     order.assignedDesignerId ||
     (order.items || []).some((it: any) => (it.specifications as any)?.artworkSource === 'DESIGN_TEAM')
   ) {
@@ -110,6 +132,7 @@ export function DesignKanbanBoard() {
 
   // Drag-and-drop state
   const [draggedCard, setDraggedCard] = useState<DesignCardItem | null>(null);
+  const draggedCardRef = React.useRef<DesignCardItem | null>(null);
 
   // Inspect Modal State
   const [inspectModalCard, setInspectModalCard] = useState<DesignCardItem | null>(null);
@@ -305,16 +328,39 @@ export function DesignKanbanBoard() {
 
   // Drag Drop Handlers
   const handleCardDragStart = (e: React.DragEvent, card: DesignCardItem) => {
+    draggedCardRef.current = card;
     setDraggedCard(card);
+    e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', card.id);
+    e.dataTransfer.setData(
+      'application/json',
+      JSON.stringify({ id: card.id, orderId: card.orderId, stage: card.stage })
+    );
   };
 
   const handleCardDragEnd = () => {
-    setDraggedCard(null);
+    // Keep ref temporarily to avoid drop/dragend race conditions
+    setTimeout(() => {
+      draggedCardRef.current = null;
+      setDraggedCard(null);
+    }, 150);
   };
 
-  const handleDropJob = async (targetColumnKey: DesignKanbanStage, card: DesignCardItem) => {
-    if (card.stage === targetColumnKey) return;
+  const handleDropJob = async (
+    targetColumnKey: DesignKanbanStage,
+    cardOrId: DesignCardItem | string,
+  ) => {
+    let card: DesignCardItem | undefined;
+    if (typeof cardOrId === 'string') {
+      card = allCards.find((c) => c.id === cardOrId || c.orderId === cardOrId);
+    } else {
+      card = cardOrId;
+    }
+    if (!card && draggedCardRef.current) {
+      card = draggedCardRef.current;
+    }
+
+    if (!card || card.stage === targetColumnKey) return;
     await handleTransitionStage(card, targetColumnKey);
   };
 

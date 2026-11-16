@@ -583,7 +583,7 @@ export class ArtworkService {
       // tab === 'all'
       statusCondition = {
         OR: [
-          // 1. Active design jobs
+          // 1. Active design jobs (including Ready to Print gates)
           {
             status: {
               in: [
@@ -591,6 +591,8 @@ export class ArtworkService {
                 OrderStatus.ARTWORK_REVIEW,
                 OrderStatus.ORDER_REVIEW,
                 OrderStatus.CUSTOMER_APPROVAL_REQUIRED,
+                OrderStatus.ARTWORK_APPROVED,
+                OrderStatus.PRE_PRODUCTION_QC,
               ],
             },
             ...(filterByMine
@@ -1799,8 +1801,26 @@ export class ArtworkService {
 
     if (stage === 'ARTWORK_CHECK') {
       targetStatus = OrderStatus.ARTWORK_REVIEW;
+      // If returning to artwork check, unlock previously locked versions
+      for (const item of order.items) {
+        if (item.approvedArtworkVersionId) {
+          await this.prisma.orderItem.update({
+            where: { id: item.id },
+            data: { approvedArtworkVersionId: null },
+          });
+        }
+      }
     } else if (stage === 'DESIGNING') {
       targetStatus = OrderStatus.DESIGN_REQUIRED;
+      // If returning to designing, unlock previously locked versions
+      for (const item of order.items) {
+        if (item.approvedArtworkVersionId) {
+          await this.prisma.orderItem.update({
+            where: { id: item.id },
+            data: { approvedArtworkVersionId: null },
+          });
+        }
+      }
       // Auto-assign to current designer if not already assigned
       const activeDesignAssignment = order.assignments.find(
         (a) => a.taskType === AssignmentTaskType.DESIGN && a.status === AssignmentStatus.ACTIVE,
@@ -1835,6 +1855,18 @@ export class ArtworkService {
           });
         }
       }
+      // Mark active design assignment as completed
+      await this.prisma.orderAssignment.updateMany({
+        where: {
+          orderId: order.id,
+          taskType: AssignmentTaskType.DESIGN,
+          status: AssignmentStatus.ACTIVE,
+        },
+        data: {
+          status: AssignmentStatus.COMPLETED,
+          completedAt: new Date(),
+        },
+      });
     }
 
     const updated = await this.prisma.order.update({

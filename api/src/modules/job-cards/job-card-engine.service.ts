@@ -100,12 +100,14 @@ export class JobCardEngineService {
       // Find operator if active assignment exists or targetOperatorId
       let assignedOperatorId: string | null = targetOperatorId || null;
       if (!assignedOperatorId) {
-        const prodAssignment = await tx.orderAssignment.findFirst({
-          where: { orderId: order.id, taskType: AssignmentTaskType.PRODUCTION, status: AssignmentStatus.ACTIVE },
-        });
+        const prodAssignment = tx.orderAssignment
+          ? await tx.orderAssignment.findFirst({
+              where: { orderId: order.id, taskType: AssignmentTaskType.PRODUCTION, status: AssignmentStatus.ACTIVE },
+            })
+          : null;
         if (prodAssignment) {
           assignedOperatorId = prodAssignment.assignedUserId;
-        } else {
+        } else if (tx.user) {
           const defaultOp = await tx.user.findFirst({
             where: { role: UserRole.PRODUCTION_OPERATOR, isActive: true },
             orderBy: { createdAt: 'asc' },
@@ -326,12 +328,24 @@ export class JobCardEngineService {
         OR: [{ id }, { jobNumber: id }],
       },
       include: {
+        approvedArtworkVersion: true,
         order: {
           include: {
             customer: true,
             shippingAddress: true,
+            billingAddress: true,
             qcChecklists: true,
-            items: true,
+            items: {
+              include: {
+                artworkVersions: {
+                  orderBy: { versionNumber: 'desc' },
+                },
+              },
+            },
+            statusHistory: {
+              orderBy: { createdAt: 'desc' },
+              take: 20,
+            },
           },
         },
         orderItem: {
@@ -339,6 +353,9 @@ export class JobCardEngineService {
             product: {
               include: {
                 category: true,
+                images: {
+                  orderBy: { sortOrder: 'asc' },
+                },
               },
             },
             artworkVersions: {

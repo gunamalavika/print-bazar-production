@@ -21,7 +21,7 @@ interface DesignKanbanColumnProps {
   userRole?: string;
   onAdvanceStage: (card: DesignCardItem, nextStage: DesignKanbanStage) => void;
   onInspect: (card: DesignCardItem) => void;
-  onDropJob: (columnKey: DesignKanbanStage, card: DesignCardItem) => void;
+  onDropJob: (columnKey: DesignKanbanStage, cardOrId: DesignCardItem | string) => void;
   draggedCard: DesignCardItem | null;
   onCardDragStart: (e: React.DragEvent, card: DesignCardItem) => void;
   onCardDragEnd: (e: React.DragEvent) => void;
@@ -39,38 +39,66 @@ export function DesignKanbanColumn({
   onCardDragEnd,
 }: DesignKanbanColumnProps) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const dragCounterRef = React.useRef(0);
 
   // Dropping into this column is valid if dragging a card from a different column
   const isValidDropTarget = draggedCard !== null && draggedCard.stage !== column.key;
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = isValidDropTarget ? 'move' : 'none';
+    dragCounterRef.current += 1;
     if (!isDragOver) setIsDragOver(true);
   };
 
-  const handleDragLeave = () => {
-    setIsDragOver(false);
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (!isDragOver) setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragOver(false);
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
     setIsDragOver(false);
-    if (draggedCard && draggedCard.stage !== column.key) {
+
+    // 1. Try to read card identifier from dataTransfer payload
+    let cardId = e.dataTransfer.getData('text/plain');
+    if (!cardId) {
+      try {
+        const json = e.dataTransfer.getData('application/json');
+        if (json) {
+          const parsed = JSON.parse(json);
+          cardId = parsed.id || parsed.orderId;
+        }
+      } catch {}
+    }
+
+    if (cardId) {
+      onDropJob(column.key, cardId);
+    } else if (draggedCard && draggedCard.stage !== column.key) {
       onDropJob(column.key, draggedCard);
     }
   };
 
   return (
     <div
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={`w-[320px] flex-shrink-0 flex flex-col bg-slate-100/80 rounded-2xl border transition-all duration-200 ${
         isDragOver
-          ? isValidDropTarget
-            ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-400 shadow-md'
-            : 'border-rose-400 bg-rose-50/30 ring-1 ring-rose-300'
+          ? 'border-emerald-500 bg-emerald-50/50 ring-2 ring-emerald-400 shadow-lg scale-[1.01]'
           : isValidDropTarget && draggedCard
           ? 'border-amber-400/80 bg-amber-50/20'
           : 'border-slate-200/90'
@@ -102,9 +130,17 @@ export function DesignKanbanColumn({
       </div>
 
       {/* Scrollable Cards Container */}
-      <div className="p-3 space-y-3 min-h-[450px] max-h-[calc(100vh-320px)] overflow-y-auto custom-scrollbar flex-1">
+      <div
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        className="p-3 space-y-3 min-h-[450px] max-h-[calc(100vh-320px)] overflow-y-auto custom-scrollbar flex-1"
+      >
         {cards.length === 0 ? (
-          <div className="h-44 border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center p-4 text-center text-slate-400">
+          <div
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            className="h-44 border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center p-4 text-center text-slate-400"
+          >
             <RiInboxLine className="h-7 w-7 text-slate-300 mb-1.5" />
             <span className="text-xs font-semibold text-slate-600 block">No jobs in {column.name}</span>
             <span className="text-[10px] text-slate-400 font-medium mt-0.5">
