@@ -26,7 +26,7 @@ const ROLE_CONFIG: Record<string, { label: string; short: string; destination: s
   OPERATIONAL_MANAGER: {
     label: 'Operations Command',
     short: 'Operations',
-    destination: '/operations',
+    destination: '/operations/orders',
     badgeColor: 'bg-yellow-100 text-yellow-900 border-yellow-300',
   },
   DESIGNER_PREPRESS: {

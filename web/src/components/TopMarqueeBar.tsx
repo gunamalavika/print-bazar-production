@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Sparkles, Tag, Award } from 'lucide-react';
 import { useSiteSettings, MarqueeIconType, DEFAULT_SITE_SETTINGS } from '@/lib/site-settings';
 
@@ -68,14 +68,20 @@ export function renderMarqueeIcon(iconType: MarqueeIconType) {
 }
 
 export function TopMarqueeBar() {
-  const { settings, isLoaded } = useSiteSettings();
+  const [mounted, setMounted] = useState(false);
+  const { settings } = useSiteSettings();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const activeItems = useMemo(() => {
-    const list = Array.isArray(settings.marqueeItems)
-      ? settings.marqueeItems.filter((item) => item.isActive && item.text?.trim())
+    // Before mounting on the client, strictly use DEFAULT_SITE_SETTINGS so SSR and first client render match 100%
+    const sourceList = mounted && Array.isArray(settings.marqueeItems) && settings.marqueeItems.length > 0
+      ? settings.marqueeItems
       : DEFAULT_SITE_SETTINGS.marqueeItems;
-    return list;
-  }, [settings.marqueeItems]);
+    return sourceList.filter((item) => item.isActive && item.text?.trim());
+  }, [mounted, settings.marqueeItems]);
 
   if (activeItems.length === 0) {
     return null;

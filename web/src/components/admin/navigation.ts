@@ -64,19 +64,6 @@ export const CANONICAL_ADMIN_NAV: AdminNavItem[] = [
 
   // SECTION: OPERATIONS COORDINATION (OE)
   {
-    id: 'operations-dashboard',
-    label: 'Operations Command',
-    href: '/operations',
-    icon: RiPulseLine,
-    requiredPermissions: ['operations.read'],
-    matchMode: 'all',
-    section: 'OPERATIONS_COORDINATION',
-    order: 12,
-    badge: 'OE',
-    badgeVariant: 'yellow',
-    description: 'Central operational order intake & department coordination',
-  },
-  {
     id: 'operations-orders',
     label: 'Operational Orders',
     href: '/operations/orders',
@@ -443,13 +430,24 @@ export function getVisibleAdminNavigation(
     : (userRole ? [userRole] : []);
 
   const isOperatorOnly = effectiveRoles.length === 1 && effectiveRoles[0] === 'PRODUCTION_OPERATOR';
+  const isManager = effectiveRoles.some((r) => r === 'ADMIN_MANAGER' || r === 'OPERATIONAL_MANAGER');
+  const isPrepressRole =
+    (userRole === 'DESIGNER_PREPRESS' ||
+      userRole === 'PREPRESS' ||
+      effectiveRoles.includes('DESIGNER_PREPRESS') ||
+      effectiveRoles.includes('PREPRESS')) &&
+    !isManager;
 
-  // 1. Filter authorized items (and enforce role-level section exclusions ONLY if strictly PRODUCTION_OPERATOR only)
+  // 1. Filter authorized items (and enforce role-level exclusions)
   const authorizedItems = CANONICAL_ADMIN_NAV.filter((item) => {
     if (
       isOperatorOnly &&
       (item.section === 'OPERATIONS_COORDINATION' || item.section === 'CATALOGUE_INVENTORY')
     ) {
+      return false;
+    }
+    // Prepress role strictly manages artwork & design studio; exclude shop-floor production & job cards
+    if (isPrepressRole && (item.id === 'production' || item.href === '/production/queue')) {
       return false;
     }
     return isNavItemAuthorized(item, userPermissions);
@@ -519,13 +517,14 @@ export function checkRouteAuthorization(
     };
   }
 
-  // Prepress Designers have verified oversight to view released production queue jobs
+  // Prepress role is strictly dedicated to prepress/design gates and is not authorized for production queue
   if (
-    (effectiveRoles.includes('DESIGNER_PREPRESS') || userRole === 'DESIGNER_PREPRESS') &&
-    pathname.startsWith('/production/queue')
+    (effectiveRoles.includes('DESIGNER_PREPRESS') || userRole === 'DESIGNER_PREPRESS' || userRole === 'PREPRESS') &&
+    !effectiveRoles.some((r) => r === 'ADMIN_MANAGER' || r === 'OPERATIONAL_MANAGER') &&
+    (pathname === '/production/queue' || pathname.startsWith('/production/queue/'))
   ) {
     return {
-      isAuthorized: true,
+      isAuthorized: false,
       requiredPermissions: matchingItem.requiredPermissions,
     };
   }

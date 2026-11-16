@@ -1049,106 +1049,7 @@ export default function ShopFloorJobCardPage({
             </div>
           </div>
 
-          {/* SECTION 5: PRODUCTION ROUTE & WORKFLOW INSTRUCTIONS (9.2) */}
-          <div className="space-y-3 border-t border-slate-300 pt-5">
-            <div className="flex items-center justify-between border-b border-black pb-2">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-slate-700" />
-                <h2 className="text-xs font-mono font-black uppercase tracking-wider text-black">
-                  STEP-BY-STEP PRODUCTION ROUTE & STATION INSTRUCTIONS
-                </h2>
-              </div>
-              <span className="text-[10px] font-mono font-bold text-slate-500">
-                Current: <strong className="text-black">{jobData?.currentStation || 'PRINTING'}</strong>
-              </span>
-            </div>
-
-            <div className="overflow-x-auto bg-white border border-slate-300 rounded-lg">
-              <table className="w-full text-left text-xs font-mono border-collapse">
-                <thead className="bg-slate-100 border-b border-slate-300 text-slate-800 uppercase text-[10px] font-bold">
-                  <tr>
-                    <th className="py-2 px-3 w-12 text-center">Step</th>
-                    <th className="py-2 px-3 w-36">Station</th>
-                    <th className="py-2 px-3">Process Action & Operator Notes</th>
-                    <th className="py-2 px-3 w-44">Assigned Machine</th>
-                    <th className="py-2 px-3 w-28 text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {operationSequence.map((op: any, idx: number) => {
-                    const isCurrent = (jobData?.currentStation || 'PRINTING') === op.station;
-                    return (
-                      <tr key={idx} className={isCurrent ? 'bg-amber-50/70 font-bold' : 'hover:bg-slate-50'}>
-                        <td className="py-2 px-3 text-center text-slate-500">{op.step || idx + 1}</td>
-                        <td className="py-2 px-3 font-bold text-black flex items-center gap-1.5">
-                          {isCurrent && <ChevronRight className="h-3.5 w-3.5 text-amber-600 animate-pulse" />}
-                          <span>{op.station}</span>
-                        </td>
-                        <td className="py-2 px-3 text-slate-800">
-                          {op.action}
-                          {customStationNote && isCurrent ? ` • Note: ${customStationNote}` : ''}
-                        </td>
-                        <td className="py-2 px-3 text-slate-700 truncate">{op.machine || 'Work Center'}</td>
-                        <td className="py-2 px-3 text-center">
-                          <span
-                            className={`text-[9px] font-mono font-black px-2 py-0.5 rounded uppercase ${
-                              op.status === 'COMPLETED'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : isCurrent
-                                ? 'bg-amber-400 text-slate-950 ring-1 ring-amber-500'
-                                : 'bg-slate-100 text-slate-600'
-                            }`}
-                          >
-                            {isCurrent ? 'IN RUN' : op.status || 'PENDING'}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* SECTION 6: QUANTITY & WASTAGE CONTROL (9.2) */}
-          <div className="rounded-xl border border-slate-300 bg-slate-50/80 p-4 space-y-2 text-xs font-mono">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-              <span className="font-bold text-black uppercase tracking-wider text-[11px]">
-                QUANTITY, MAKEREADY & WASTAGE CONTROL SPECIFICATIONS
-              </span>
-              <span className="text-[10px] text-slate-500 font-bold">
-                Setup Overshoot: +{customizerWastagePercent}%
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-              <div className="p-3 bg-white border border-slate-200 rounded-lg">
-                <span className="text-[10px] text-slate-500 block uppercase">1. NET QUANTITY REQUIRED</span>
-                <strong className="text-black text-lg font-black block mt-0.5">
-                  {orderedQuantity.toLocaleString()} PCS
-                </strong>
-                <span className="text-[10px] text-slate-500 block">Deliverable customer units</span>
-              </div>
-
-              <div className="p-3 bg-white border border-slate-200 rounded-lg">
-                <span className="text-[10px] text-slate-500 block uppercase">2. MAKEREADY / OVERSHOOT SHEETS</span>
-                <strong className="text-amber-800 text-lg font-black block mt-0.5">
-                  +{overshootAllowance.toLocaleString()} SHEETS
-                </strong>
-                <span className="text-[10px] text-slate-500 block">Press alignment & die-cut buffer</span>
-              </div>
-
-              <div className="p-3 bg-white border border-slate-200 rounded-lg bg-emerald-50/50">
-                <span className="text-[10px] text-slate-700 block uppercase font-bold">3. FINAL PRINTABLE RUN COUNT</span>
-                <strong className="text-emerald-900 text-lg font-black block mt-0.5">
-                  {finalPrintableSheetCount.toLocaleString()} SHEETS
-                </strong>
-                <span className="text-[10px] text-emerald-800 block">Total raw sheet feed required</span>
-              </div>
-            </div>
-          </div>
-
-          {/* SECTION 7: QUALITY CONTROL (QC) CHECKLIST (9.2) */}
+          {/* SECTION 5: QUALITY CONTROL (QC) CHECKLIST (9.2) */}
           <div className="space-y-3 border-t border-slate-300 pt-5">
             <div className="flex items-center justify-between border-b border-black pb-2">
               <div className="flex items-center gap-2">
@@ -1287,7 +1188,7 @@ export default function ShopFloorJobCardPage({
             </div>
           </div>
 
-          {/* SECTION 8: OPERATOR SIGN-OFF & TIMESTAMPING BLOCK (9.2) */}
+          {/* SECTION 6: OPERATOR SIGN-OFF & TIMESTAMPING BLOCK (9.2) */}
           <div className="pt-4 border-t-2 border-black space-y-3 font-mono">
             <div className="flex items-center justify-between">
               <span className="text-xs font-black uppercase text-black">

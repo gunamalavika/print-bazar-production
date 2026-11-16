@@ -75,8 +75,6 @@ export const ROLE_PERMISSIONS: Partial<Record<UserRole, string[]>> = {
     'artwork.read',
     'artwork.review',
     'artwork.proof',
-    'production.read',
-    'jobcard.read',
   ],
   [UserRole.PRODUCTION_OPERATOR]: [
     'production.read',

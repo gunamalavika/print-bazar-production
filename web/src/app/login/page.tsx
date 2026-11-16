@@ -77,7 +77,7 @@ const SEED_ACCOUNTS: SeedAccount[] = [
     role: 'OPERATIONAL_MANAGER',
     title: 'Operational Coordinator (OE)',
     email: 'operations@printbazzar.com',
-    destination: '/operations',
+    destination: '/operations/orders',
     badge: 'Operations',
     badgeColor: 'bg-[#FEFCE8] text-[#854D0E] border-yellow-300',
     description: 'Central order coordination & assignments',

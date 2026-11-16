@@ -379,27 +379,52 @@ export default function ArtworkPrepressPage() {
   const [actionError, setActionError] = useState('');
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
 
-  const hasConfirmedWork = (o: DesignQueueItem) => {
-    return Boolean(
-      o.isPassedToProduction ||
-      o.approvedArtworkVersionId ||
-      o.items?.[0]?.approvedArtworkVersionId ||
-      (o.approvedArtworkVersion && o.approvedArtworkVersion.isApproved)
-    );
+  const isPassedOrder = (o?: DesignQueueItem | null) => {
+    if (!o) return false;
+    const status = String(o.currentStatus || (o as any).status || '').toUpperCase();
+    if (
+      status === 'ARTWORK_APPROVED' ||
+      status === 'PRE_PRODUCTION_QC' ||
+      status === 'PRODUCTION_QUEUE' ||
+      status === 'PRINTING' ||
+      status === 'FINISHING' ||
+      status === 'QUALITY_CHECK' ||
+      status === 'PACKING' ||
+      status === 'READY_FOR_DISPATCH' ||
+      status === 'OUT_FOR_DELIVERY' ||
+      status === 'DELIVERED'
+    ) {
+      return true;
+    }
+    return Boolean(o.isPassedToProduction);
   };
 
-  const hasCandidateWorks = (o: DesignQueueItem) => {
+  const isAwaitingOE = (o?: DesignQueueItem | null) => {
+    if (!o) return false;
+    if (isPassedOrder(o)) return false;
+    const status = String(o.currentStatus || (o as any).status || '').toUpperCase();
+    if (status === 'CUSTOMER_APPROVAL_REQUIRED' || status === 'ARTWORK_REVIEW') {
+      return true;
+    }
     const itemVersions = o.items?.[0]?.artworkVersions || [];
     const allVersions = o.allArtworkVersions || [];
-    return itemVersions.length > 0 || allVersions.length > 0 || Boolean(o.latestArtworkVersion);
+    const hasCandidateVersions = itemVersions.length > 0 || allVersions.length > 0 || Boolean(o.latestArtworkVersion);
+    return hasCandidateVersions && status !== 'DESIGN_REQUIRED';
   };
 
-  const passedOrders = designQueue.filter((o) => hasConfirmedWork(o));
-  const needsConfirmationOrders = designQueue.filter((o) => hasCandidateWorks(o) && !hasConfirmedWork(o));
-  const activeOrders = designQueue.filter((o) => !hasConfirmedWork(o));
+  const isNeedsDesign = (o?: DesignQueueItem | null) => {
+    if (!o) return false;
+    if (isPassedOrder(o)) return false;
+    if (isAwaitingOE(o)) return false;
+    return true;
+  };
+
+  const passedOrders = designQueue.filter((o) => isPassedOrder(o));
+  const needsConfirmationOrders = designQueue.filter((o) => isAwaitingOE(o));
+  const activeOrders = designQueue.filter((o) => isNeedsDesign(o));
 
   const displayedOrders = (() => {
-    if (activeTab === 'PASSED_TO_PRODUCTION' || designSubFilter === 'PASSED') {
+    if (designSubFilter === 'PASSED' || activeTab === 'PASSED_TO_PRODUCTION') {
       return passedOrders;
     }
     if (designSubFilter === 'ACTIVE') {
@@ -1010,7 +1035,7 @@ export default function ArtworkPrepressPage() {
                       onClick={() => setSelectedDesignOrder(order)}
                       className={`p-4 cursor-pointer transition-colors ${
                         isSelected
-                          ? order.isPassedToProduction
+                          ? isPassedOrder(order)
                             ? 'bg-emerald-50/70 border-l-4 border-l-emerald-500'
                             : 'bg-amber-50/60 border-l-4 border-l-amber-400'
                           : 'hover:bg-slate-50'
@@ -1030,10 +1055,15 @@ export default function ArtworkPrepressPage() {
                                 <AlertTriangle className="h-3 w-3 text-rose-600" />
                                 REVISION NEEDED
                               </span>
-                            ) : order.isPassedToProduction ? (
+                            ) : isPassedOrder(order) ? (
                               <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1 shadow-2xs">
                                 <CheckCircle className="h-3 w-3 text-emerald-600" />
                                 IN PRODUCTION
+                              </span>
+                            ) : isAwaitingOE(order) ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-300 flex items-center gap-1 shadow-2xs">
+                                <Clock className="h-3 w-3 text-blue-600" />
+                                AWAITING OE
                               </span>
                             ) : (
                               <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
@@ -1050,7 +1080,7 @@ export default function ArtworkPrepressPage() {
                               <RotateCcw className="h-3.5 w-3.5 text-rose-600 shrink-0" />
                               <span className="truncate">OE Directive: {order.revisionDirectives}</span>
                             </div>
-                          ) : order.isPassedToProduction && (
+                          ) : isPassedOrder(order) && (
                             <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-800 bg-slate-100/90 border border-slate-200/90 rounded-md px-2.5 py-1 mt-1">
                               <ArrowRight className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                               <span>Current Stage: <strong className="text-emerald-950 font-bold">{order.passedToStation}</strong></span>
@@ -1060,11 +1090,11 @@ export default function ArtworkPrepressPage() {
                           <div className="flex flex-wrap items-center gap-2.5 mt-1 text-[11px] text-slate-500">
                             <span className="flex items-center gap-1 font-mono">
                               <Clock className="h-3 w-3" />
-                              {order.isPassedToProduction && order.passedAt
+                              {isPassedOrder(order) && order.passedAt
                                 ? `Passed: ${new Date(order.passedAt).toLocaleDateString()}`
                                 : `Created: ${new Date(order.createdAt).toLocaleDateString()}`}
                             </span>
-                            {order.isPassedToProduction && order.passedByDesigner && (
+                            {isPassedOrder(order) && order.passedByDesigner && (
                               <span className="flex items-center gap-1 font-mono text-purple-800 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
                                 <UserCheck className="h-3 w-3 text-purple-600" />
                                 By: {order.passedByDesigner}
@@ -1203,7 +1233,7 @@ export default function ArtworkPrepressPage() {
                       <span>Return for Corrections</span>
                     </button>
                   )}
-                  {selectedDesignOrder.isPassedToProduction ? (
+                  {isPassedOrder(selectedDesignOrder) ? (
                     <span className="flex items-center gap-1.5 text-[11px] font-mono font-bold bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-lg border border-emerald-300 shadow-2xs shrink-0">
                       <CheckCircle className="h-4 w-4 text-emerald-600" />
                       <span>PASSED TO PRODUCTION</span>
@@ -1660,7 +1690,7 @@ export default function ArtworkPrepressPage() {
               </div>
 
               {/* Work Panel Action Area */}
-              {selectedDesignOrder.isPassedToProduction ? (
+              {isPassedOrder(selectedDesignOrder) ? (
                 /* RELEASED DIRECTLY TO PRODUCTION QUEUE PANEL */
                 <div className="border-t border-slate-200 pt-4 space-y-4">
                   <div className="p-4 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50/40 rounded-xl border border-emerald-200 shadow-2xs space-y-3">

@@ -17,6 +17,7 @@ import {
   RiArchiveDrawerLine,
   RiShieldUserLine,
   RiSettings4Line,
+  RiKanbanView2,
 } from 'react-icons/ri';
 
 interface StationTab {
@@ -40,7 +41,7 @@ const STATION_TABS: StationTab[] = [
   {
     id: 'operations',
     label: 'Operations',
-    href: '/operations',
+    href: '/operations/orders',
     icon: RiPulseLine,
     permission: 'operations.read',
     badge: 'OE',
@@ -57,7 +58,14 @@ const STATION_TABS: StationTab[] = [
     label: 'Prepress',
     href: '/prepress/artwork',
     icon: RiFileCheckLine,
-    permission: 'prepress.read',
+    permission: 'artwork.read',
+  },
+  {
+    id: 'prepress-kanban',
+    label: 'Design Kanban',
+    href: '/prepress/kanban',
+    icon: RiKanbanView2,
+    permission: 'artwork.read',
   },
   {
     id: 'production',
@@ -124,11 +132,17 @@ export function MobileStationBar() {
 
   // Filter tabs based on user permissions. Owner/ADMIN_MANAGER has full factory access.
   const isOwner = user?.role === 'ADMIN_MANAGER';
+  const roleStr = String(user?.role || '');
+  const isPrepress = roleStr === 'DESIGNER_PREPRESS' || roleStr === 'PREPRESS';
   const userPermissions = user?.permissions || [];
 
   const visibleTabs = STATION_TABS.filter((tab) => {
     if (isOwner) return true;
+    if (isPrepress && tab.id === 'production') return false;
     if (!tab.permission) return true;
+    if (tab.permission === 'prepress.read' || tab.permission === 'artwork.read') {
+      return userPermissions.includes('artwork.read') || userPermissions.includes('prepress.read');
+    }
     return userPermissions.includes(tab.permission);
   });
 

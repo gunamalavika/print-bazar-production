@@ -64,7 +64,7 @@ const AVAILABLE_ROLES = [
   { id: 'DESIGNER_PREPRESS', label: 'Pre-Press Designer', dept: 'PREPRESS', destination: '/prepress/artwork' },
   { id: 'PACKING_OPERATOR', label: 'Packing Operator', dept: 'PACKAGING', destination: '/packing/station' },
   { id: 'DISPATCH_LOGISTICS', label: 'Dispatch Logistics', dept: 'LOGISTICS', destination: '/dispatch/manifest' },
-  { id: 'OPERATIONAL_MANAGER', label: 'Operations Manager', dept: 'OPERATIONS', destination: '/operations' },
+  { id: 'OPERATIONAL_MANAGER', label: 'Operations Manager', dept: 'OPERATIONS', destination: '/operations/orders' },
   { id: 'ADMIN_MANAGER', label: 'Admin Manager', dept: 'MANAGEMENT', destination: '/admin/dashboard' },
   { id: 'SALES_OFFICE', label: 'Sales & Front Office', dept: 'SALES', destination: '/sales/orders' },
   { id: 'ACCOUNTS', label: 'Accounts & Billing', dept: 'FINANCE', destination: '/finance/payments' },
