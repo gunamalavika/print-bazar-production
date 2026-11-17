@@ -144,7 +144,7 @@ export class ProductionBoardService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly eventEmitter: EventEmitter2,
-  ) {}
+  ) { }
 
   /**
    * Fetch complete production board with columns, cards, live metrics and filter values
@@ -309,16 +309,16 @@ export class ProductionBoardService {
 
       const artwork = approvedArtwork
         ? {
-            id: approvedArtwork.id,
-            storageKey: approvedArtwork.storageKey,
-            fileUrl,
-            originalFileName: approvedArtwork.originalFileName || 'approved_artwork.pdf',
-            mimeType: approvedArtwork.mimeType || 'application/pdf',
-            fileSize: approvedArtwork.fileSize || 0,
-            status: approvedArtwork.status,
-            isApproved: approvedArtwork.isApproved || approvedArtwork.status === ArtworkStatus.PROOF_APPROVED,
-            proofUrl: approvedArtwork.proofUrl,
-          }
+          id: approvedArtwork.id,
+          storageKey: approvedArtwork.storageKey,
+          fileUrl,
+          originalFileName: approvedArtwork.originalFileName || 'approved_artwork.pdf',
+          mimeType: approvedArtwork.mimeType || 'application/pdf',
+          fileSize: approvedArtwork.fileSize || 0,
+          status: approvedArtwork.status,
+          isApproved: approvedArtwork.isApproved || approvedArtwork.status === ArtworkStatus.PROOF_APPROVED,
+          proofUrl: approvedArtwork.proofUrl,
+        }
         : null;
 
       // Extract clean customer-selected specifications
@@ -399,18 +399,18 @@ export class ProductionBoardService {
         },
         machine: job.machine
           ? {
-              id: job.machine.id,
-              name: job.machine.name,
-              code: job.machine.code,
-              type: job.machine.type,
-            }
+            id: job.machine.id,
+            name: job.machine.name,
+            code: job.machine.code,
+            type: job.machine.type,
+          }
           : null,
         operator: job.operator
           ? {
-              id: job.operator.id,
-              fullName: job.operator.fullName,
-              role: job.operator.role,
-            }
+            id: job.operator.id,
+            fullName: job.operator.fullName,
+            role: job.operator.role,
+          }
           : null,
         status: job.status,
         orderStatus: job.order.status,
@@ -1022,13 +1022,9 @@ export class ProductionBoardService {
   }
 
   /**
-   * Column Management: Create Custom Column
+   * Column Management: Create Custom Column (Available for all roles)
    */
   async createColumn(dto: CreateColumnDto, user: JwtPayload) {
-    if (user.role !== UserRole.ADMIN_MANAGER) {
-      throw new ForbiddenException('Only ADMIN_MANAGER is authorized to configure production columns.');
-    }
-
     const key = dto.key || dto.name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
     const existing = await this.prisma.productionColumn.findUnique({
@@ -1071,13 +1067,9 @@ export class ProductionBoardService {
   }
 
   /**
-   * Column Management: Update Column
+   * Column Management: Update Column (Available for all roles)
    */
   async updateColumn(id: string, dto: UpdateColumnDto, user: JwtPayload) {
-    if (user.role !== UserRole.ADMIN_MANAGER) {
-      throw new ForbiddenException('Only ADMIN_MANAGER is authorized to update production columns.');
-    }
-
     const existing = await this.prisma.productionColumn.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException(`Column '${id}' not found.`);
@@ -1112,13 +1104,9 @@ export class ProductionBoardService {
   }
 
   /**
-   * Column Management: Reorder Columns
+   * Column Management: Reorder Columns (Available for all roles)
    */
   async reorderColumns(columnOrders: Array<{ id: string; sortOrder: number }>, user: JwtPayload) {
-    if (user.role !== UserRole.ADMIN_MANAGER) {
-      throw new ForbiddenException('Only ADMIN_MANAGER is authorized to reorder production columns.');
-    }
-
     await this.prisma.$transaction(
       columnOrders.map((item) =>
         this.prisma.productionColumn.update({
@@ -1142,20 +1130,20 @@ export class ProductionBoardService {
   }
 
   /**
-   * Column Management: Safe Archive Column
+   * Column Management: Safe Archive / Delete Column (Available for all roles)
    */
   async archiveColumn(id: string, user: JwtPayload) {
-    if (user.role !== UserRole.ADMIN_MANAGER) {
-      throw new ForbiddenException('Only ADMIN_MANAGER is authorized to archive production columns.');
-    }
-
     const column = await this.prisma.productionColumn.findUnique({ where: { id } });
     if (!column) {
       throw new NotFoundException(`Column '${id}' not found.`);
     }
 
-    if (column.type === ProductionColumnType.SYSTEM) {
-      throw new BadRequestException('System default workflow columns cannot be archived.');
+    // Safety check: ensure at least one active column remains
+    const activeCount = await this.prisma.productionColumn.count({
+      where: { isActive: true, key: { not: 'READY_FOR_PRODUCTION' } },
+    });
+    if (activeCount <= 1) {
+      throw new BadRequestException('At least one production station column must remain active.');
     }
 
     // Safety check: verify no active jobs exist in this column
@@ -1163,7 +1151,7 @@ export class ProductionBoardService {
     const targetCol = board.columns.find((c) => c.id === id);
     if (targetCol && targetCol.cardCount > 0) {
       throw new BadRequestException(
-        `This column contains ${targetCol.cardCount} active jobs. Move these jobs before deactivating the column.`,
+        `This column contains ${targetCol.cardCount} active job(s). Move or reassign these jobs before deleting the column.`,
       );
     }
 
@@ -1181,7 +1169,7 @@ export class ProductionBoardService {
       action: 'PRODUCTION_COLUMN_ARCHIVED',
       entity: 'ProductionColumn',
       entityId: archived.id,
-      reason: `Archived custom column ${archived.name}`,
+      reason: `Archived column ${archived.name}`,
     });
 
     return archived;

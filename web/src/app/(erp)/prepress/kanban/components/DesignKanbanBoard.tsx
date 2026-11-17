@@ -10,32 +10,31 @@ import { DesignKanbanColumn } from './DesignKanbanColumn';
 import { DesignCardItem, DesignKanbanStage } from './DesignJobCard';
 import { DesignJobInspectModal } from './DesignJobInspectModal';
 import {
+  DesignColumnEditModal,
+  PrepressColumnConfig,
+} from './DesignColumnEditModal';
+import { DesignColumnManagerModal } from './DesignColumnManagerModal';
+import {
   RiRefreshLine,
   RiFileList3Line,
   RiAlertFill,
   RiCheckFill,
-  RiPaintBrushLine,
-  RiFileSearchLine,
-  RiTimeLine,
-  RiPrinterLine,
+  RiAddLine,
+  RiSettings4Line,
 } from 'react-icons/ri';
 import { Button } from '@/components/ui';
 
-interface ColumnConfig {
-  key: DesignKanbanStage;
-  name: string;
-  subtitle: string;
-  color: string;
-  description: string;
-}
+const STORAGE_KEY_COLUMNS = 'pb_kanban_columns_prepress';
+const STORAGE_KEY_OVERRIDES = 'pb_kanban_prepress_card_stages';
 
-const KANBAN_COLUMNS: ColumnConfig[] = [
+const DEFAULT_PREPRESS_COLUMNS: PrepressColumnConfig[] = [
   {
     key: 'ARTWORK_CHECK',
     name: 'Artwork Check',
     subtitle: 'File Verification & Preflight Audit',
     color: '#0284C7', // Sky-600
     description: 'Initial intake, bleed audit, resolution check, defect detection.',
+    isCustom: false,
   },
   {
     key: 'DESIGNING',
@@ -43,6 +42,7 @@ const KANBAN_COLUMNS: ColumnConfig[] = [
     subtitle: 'Active Design Studio & Layout',
     color: '#F59E0B', // Amber-500
     description: 'Assigned designer layout drafting & personalized artwork generation.',
+    isCustom: false,
   },
   {
     key: 'WAITING_FOR_APPROVAL',
@@ -50,6 +50,7 @@ const KANBAN_COLUMNS: ColumnConfig[] = [
     subtitle: 'Proof Sign-Off & Customer Review',
     color: '#8B5CF6', // Purple-500
     description: 'Proof sent to customer or waiting for OE confirmation.',
+    isCustom: false,
   },
   {
     key: 'READY_TO_PRINT',
@@ -57,6 +58,7 @@ const KANBAN_COLUMNS: ColumnConfig[] = [
     subtitle: 'Proof Approved & Press Ready',
     color: '#10B981', // Emerald-500
     description: 'Approved artwork locked & passed to machine production queue.',
+    isCustom: false,
   },
 ];
 
@@ -67,14 +69,6 @@ function deduceKanbanStage(order: any): DesignKanbanStage {
   // 1. Explicit Order Status mapping (highest fidelity)
   if (status === 'CUSTOMER_APPROVAL_REQUIRED') {
     return 'WAITING_FOR_APPROVAL';
-  }
-
-  if (status === 'DESIGN_REQUIRED') {
-    return 'DESIGNING';
-  }
-
-  if (status === 'ARTWORK_REVIEW' || status === 'ORDER_REVIEW') {
-    return 'ARTWORK_CHECK';
   }
 
   if (
@@ -100,14 +94,18 @@ function deduceKanbanStage(order: any): DesignKanbanStage {
     return 'READY_TO_PRINT';
   }
 
-  // If order was returned for revisions or is active in design
-  if (
-    order.assignedDesignerId ||
-    (order.items || []).some((it: any) => (it.specifications as any)?.artworkSource === 'DESIGN_TEAM')
-  ) {
+  // Candidate proofs/artworks submitted awaiting review
+  const allVersions = order.allArtworkVersions || [];
+  if (allItemVersions.length > 0 || allVersions.length > 0 || Boolean(order.latestArtworkVersion)) {
+    return 'WAITING_FOR_APPROVAL';
+  }
+
+  // If order was returned for revisions with directives
+  if (order.revisionDirectives) {
     return 'DESIGNING';
   }
 
+  // Default: When OE assigns the design task to designer, keep in 1st Kanban column (ARTWORK_CHECK)
   return 'ARTWORK_CHECK';
 }
 
@@ -116,6 +114,15 @@ export function DesignKanbanBoard() {
 
   // Raw queue items from backend
   const [rawOrders, setRawOrders] = useState<any[]>([]);
+
+  // Columns Configuration
+  const [columns, setColumns] = useState<PrepressColumnConfig[]>(DEFAULT_PREPRESS_COLUMNS);
+
+  // Modals for Column Management
+  const [isManagerModalOpen, setIsManagerModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingColumn, setEditingColumn] = useState<PrepressColumnConfig | null>(null);
+
   // Local stage override map (orderId -> stage)
   const [stageOverrides, setStageOverrides] = useState<Record<string, DesignKanbanStage>>({});
 
@@ -145,6 +152,108 @@ export function DesignKanbanBoard() {
       setErrorBanner(msg);
       setTimeout(() => setErrorBanner(null), 6000);
     }
+  };
+
+  // Load custom columns and stage overrides from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedCols = localStorage.getItem(STORAGE_KEY_COLUMNS);
+      if (savedCols) {
+        const parsed = JSON.parse(savedCols);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setColumns(parsed);
+        }
+      }
+
+      const savedOverrides = localStorage.getItem(STORAGE_KEY_OVERRIDES);
+      if (savedOverrides) {
+        const parsed = JSON.parse(savedOverrides);
+        if (parsed && typeof parsed === 'object') {
+          setStageOverrides(parsed);
+        }
+      }
+    } catch { }
+  }, []);
+
+  const saveColumnsState = (newCols: PrepressColumnConfig[]) => {
+    setColumns(newCols);
+    try {
+      localStorage.setItem(STORAGE_KEY_COLUMNS, JSON.stringify(newCols));
+    } catch { }
+  };
+
+  const updateStageOverride = (orderId: string, stage: DesignKanbanStage) => {
+    setStageOverrides((prev) => {
+      const updated = { ...prev, [orderId]: stage };
+      try {
+        localStorage.setItem(STORAGE_KEY_OVERRIDES, JSON.stringify(updated));
+      } catch { }
+      return updated;
+    });
+  };
+
+  // Column Management Handlers
+  const handleSaveColumn = (columnData: PrepressColumnConfig) => {
+    const existingIndex = columns.findIndex((c) => c.key === columnData.key);
+    let updated: PrepressColumnConfig[];
+    if (existingIndex >= 0) {
+      updated = [...columns];
+      updated[existingIndex] = columnData;
+      showNotification('success', `Column "${columnData.name}" updated successfully.`);
+    } else {
+      updated = [...columns, columnData];
+      showNotification('success', `Column "${columnData.name}" created successfully.`);
+    }
+    saveColumnsState(updated);
+  };
+
+  const handleDeleteColumn = (columnKey: string) => {
+    const targetCol = columns.find((c) => c.key === columnKey);
+    const updated = columns.filter((c) => c.key !== columnKey);
+    saveColumnsState(updated);
+
+    // Reassign any jobs currently in deleted column to first remaining column or ARTWORK_CHECK
+    const fallbackStage = updated[0]?.key || 'ARTWORK_CHECK';
+    setStageOverrides((prev) => {
+      let changed = false;
+      const nextOverrides = { ...prev };
+      Object.keys(nextOverrides).forEach((id) => {
+        if (nextOverrides[id] === columnKey) {
+          nextOverrides[id] = fallbackStage;
+          changed = true;
+        }
+      });
+      if (changed) {
+        try {
+          localStorage.setItem(STORAGE_KEY_OVERRIDES, JSON.stringify(nextOverrides));
+        } catch { }
+      }
+      return nextOverrides;
+    });
+
+    showNotification('success', `Column "${targetCol?.name || columnKey}" removed.`);
+  };
+
+  const handleReorderColumns = (newCols: PrepressColumnConfig[]) => {
+    saveColumnsState(newCols);
+    showNotification('success', 'Column order updated.');
+  };
+
+  const handleMoveColumn = (col: PrepressColumnConfig, direction: 'left' | 'right') => {
+    const index = columns.findIndex((c) => c.key === col.key);
+    if (index === -1) return;
+    const targetIdx = direction === 'left' ? index - 1 : index + 1;
+    if (targetIdx < 0 || targetIdx >= columns.length) return;
+
+    const copy = [...columns];
+    const [moved] = copy.splice(index, 1);
+    copy.splice(targetIdx, 0, moved);
+    saveColumnsState(copy);
+  };
+
+  const handleResetDefaults = () => {
+    saveColumnsState(DEFAULT_PREPRESS_COLUMNS);
+    showNotification('success', 'Reset to 4 default Prepress quality gates.');
   };
 
   // Fetch Design Queue from backend
@@ -192,8 +301,8 @@ export function DesignKanbanBoard() {
         specs.priority === 'URGENT' || specs.rushOrder || o.priority === 'URGENT'
           ? 'URGENT'
           : specs.priority === 'HIGH' || o.priority === 'HIGH'
-          ? 'HIGH'
-          : 'STANDARD';
+            ? 'HIGH'
+            : 'STANDARD';
 
       const artworkUrl =
         o.artworkUrl ||
@@ -288,6 +397,15 @@ export function DesignKanbanBoard() {
     });
   }, [allCards, stageFilter, designerFilter, priorityFilter, search]);
 
+  // Column card counts map
+  const cardCountsByColumn = useMemo(() => {
+    const map: Record<string, number> = {};
+    columns.forEach((c) => {
+      map[c.key] = allCards.filter((card) => card.stage === c.key).length;
+    });
+    return map;
+  }, [columns, allCards]);
+
   // Aggregate Metrics
   const metrics = useMemo(() => {
     return {
@@ -300,29 +418,37 @@ export function DesignKanbanBoard() {
     };
   }, [allCards]);
 
-  // Perform backend transition with rollback
+  // Perform transition stage (backend call for core stages, localStorage for custom)
   const handleTransitionStage = async (
     card: DesignCardItem,
     targetStage: DesignKanbanStage,
     notes?: string,
   ) => {
     const previousStage = card.stage;
-    // Optimistic Update
-    setStageOverrides((prev) => ({ ...prev, [card.orderId]: targetStage }));
+    updateStageOverride(card.orderId, targetStage);
 
-    try {
-      await api.updateDesignKanbanStage(card.orderId, {
-        stage: targetStage,
-        notes,
-      });
+    const isCoreStage = [
+      'ARTWORK_CHECK',
+      'DESIGNING',
+      'WAITING_FOR_APPROVAL',
+      'READY_TO_PRINT',
+    ].includes(targetStage);
 
-      showNotification('success', `Job ${card.orderNumber} advanced to ${targetStage.replace(/_/g, ' ')}.`);
-      await loadQueue(true);
-    } catch (err: any) {
-      // Rollback on error
-      setStageOverrides((prev) => ({ ...prev, [card.orderId]: previousStage }));
-      showNotification('error', err?.message || 'Failed to update stage transition.');
-      await loadQueue(true);
+    if (isCoreStage) {
+      try {
+        await api.updateDesignKanbanStage(card.orderId, {
+          stage: targetStage as any,
+          notes,
+        });
+        showNotification('success', `Job ${card.orderNumber} advanced to ${targetStage.replace(/_/g, ' ')}.`);
+        await loadQueue(true);
+      } catch (err: any) {
+        updateStageOverride(card.orderId, previousStage);
+        showNotification('error', err?.message || 'Failed to update stage transition.');
+        await loadQueue(true);
+      }
+    } else {
+      showNotification('success', `Job ${card.orderNumber} moved to ${targetStage.replace(/_/g, ' ')}.`);
     }
   };
 
@@ -339,7 +465,6 @@ export function DesignKanbanBoard() {
   };
 
   const handleCardDragEnd = () => {
-    // Keep ref temporarily to avoid drop/dragend race conditions
     setTimeout(() => {
       draggedCardRef.current = null;
       setDraggedCard(null);
@@ -379,7 +504,7 @@ export function DesignKanbanBoard() {
 
   return (
     <div className="mx-auto max-w-[1920px] space-y-5 select-none pb-12">
-      {/* 1. Header & Live Telemetry Bar (Exact Match with /production/queue) */}
+      {/* 1. Header & Live Telemetry Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/90 pb-4 bg-white p-5 rounded-2xl border shadow-xs">
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -392,7 +517,7 @@ export function DesignKanbanBoard() {
               <span>DESIGN PIPELINE ACTIVE</span>
             </div>
             <span className="text-[10px] font-mono text-slate-400 font-medium">
-              • 4 Quality Gates
+              • {columns.length} Quality Gates
             </span>
           </div>
 
@@ -416,6 +541,29 @@ export function DesignKanbanBoard() {
               <span>Prepress Table View</span>
             </Button>
           </Link>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsManagerModalOpen(true)}
+            className="text-xs text-slate-700 bg-white"
+          >
+            <RiSettings4Line className="h-3.5 w-3.5 mr-1 text-slate-500" />
+            <span>Manage Columns</span>
+          </Button>
+
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              setEditingColumn(null);
+              setIsEditModalOpen(true);
+            }}
+            className="shadow-brand text-xs"
+          >
+            <RiAddLine className="h-4 w-4 mr-1" />
+            <span>Add Column</span>
+          </Button>
 
           <Button
             variant="outline"
@@ -450,10 +598,10 @@ export function DesignKanbanBoard() {
         </div>
       )}
 
-      {/* 2. Top Design Department Metrics (Exact Match with /production/queue) */}
+      {/* 2. Top Design Department Metrics */}
       <DesignKanbanMetrics metrics={metrics} />
 
-      {/* 3. Search & Filter Bar (Exact Match with /production/queue) */}
+      {/* 3. Search & Filter Bar */}
       <DesignKanbanFilters
         search={search}
         onSearchChange={setSearch}
@@ -468,9 +616,10 @@ export function DesignKanbanBoard() {
         hasActiveFilters={hasActiveFilters}
         totalCount={allCards.length}
         filteredCount={filteredCards.length}
+        columns={columns}
       />
 
-      {/* 4. Horizontal Kanban Board Canvas (Exact Match with /production/queue) */}
+      {/* 4. Horizontal Kanban Board Canvas */}
       {isLoading ? (
         <div className="h-96 flex flex-col items-center justify-center bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs font-mono text-slate-500">
           <div className="h-8 w-8 border-2 border-[#FFED00] border-t-slate-900 rounded-full animate-spin mb-3" />
@@ -479,7 +628,7 @@ export function DesignKanbanBoard() {
       ) : (
         <div className="w-full overflow-x-auto pb-4 custom-scrollbar">
           <div className="flex items-start gap-4 min-w-max pr-6">
-            {KANBAN_COLUMNS.map((col) => {
+            {columns.map((col, index) => {
               const columnCards = filteredCards.filter((card) => card.stage === col.key);
               return (
                 <DesignKanbanColumn
@@ -493,6 +642,14 @@ export function DesignKanbanBoard() {
                   draggedCard={draggedCard}
                   onCardDragStart={handleCardDragStart}
                   onCardDragEnd={handleCardDragEnd}
+                  onEditColumn={(c) => {
+                    setEditingColumn(c);
+                    setIsEditModalOpen(true);
+                  }}
+                  onDeleteColumn={(c) => handleDeleteColumn(c.key)}
+                  onMoveColumn={handleMoveColumn}
+                  canMoveLeft={index > 0}
+                  canMoveRight={index < columns.length - 1}
                 />
               );
             })}
@@ -507,7 +664,37 @@ export function DesignKanbanBoard() {
         onClose={() => setInspectModalCard(null)}
         onUpdateStage={handleTransitionStage}
       />
+
+      {/* 6. Column Manager Modal (Reorder, Delete, Add, Reset) */}
+      <DesignColumnManagerModal
+        isOpen={isManagerModalOpen}
+        columns={columns}
+        cardCounts={cardCountsByColumn}
+        onClose={() => setIsManagerModalOpen(false)}
+        onReorder={handleReorderColumns}
+        onEditColumn={(col) => {
+          setEditingColumn(col);
+          setIsEditModalOpen(true);
+        }}
+        onDeleteColumn={handleDeleteColumn}
+        onAddNewColumn={() => {
+          setEditingColumn(null);
+          setIsEditModalOpen(true);
+        }}
+        onResetDefaults={handleResetDefaults}
+      />
+
+      {/* 7. Column Add / Edit Modal */}
+      <DesignColumnEditModal
+        isOpen={isEditModalOpen}
+        column={editingColumn}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingColumn(null);
+        }}
+        onSave={handleSaveColumn}
+        onDelete={handleDeleteColumn}
+      />
     </div>
   );
 }
-

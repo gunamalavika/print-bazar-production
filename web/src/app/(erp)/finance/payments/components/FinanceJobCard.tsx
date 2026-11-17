@@ -33,7 +33,12 @@ export interface FinanceCardDto {
   paidAmount: number;
   balanceAmount: number;
   paymentStatus: string;
-  financeStatus: 'PAYMENT_PENDING' | 'CORPORATE_CREDIT' | 'SETTLED' | 'OVERDUE';
+  financeStatus:
+  | 'PAYMENT_PENDING'
+  | 'CORPORATE_CREDIT'
+  | 'SETTLED'
+  | 'OVERDUE'
+  | (string & {});
   finalQcPassed?: boolean;
   packingBlocked?: boolean;
   paymentMethod: string;
@@ -69,8 +74,8 @@ export function FinanceJobCard({
     card.priority === 'URGENT'
       ? 'bg-rose-50 text-rose-700 border-rose-200'
       : card.priority === 'HIGH'
-      ? 'bg-amber-50 text-amber-800 border-amber-200'
-      : 'bg-slate-100 text-slate-700 border-slate-200';
+        ? 'bg-amber-50 text-amber-800 border-amber-200'
+        : 'bg-slate-100 text-slate-700 border-slate-200';
 
   const isPaid = card.financeStatus === 'SETTLED' || card.balanceAmount <= 0;
   const isCorporate = card.financeStatus === 'CORPORATE_CREDIT';
@@ -81,19 +86,17 @@ export function FinanceJobCard({
       draggable
       onDragStart={(e) => onDragStart(e, card)}
       onDragEnd={onDragEnd}
-      className={`bg-white border rounded-xl p-3.5 shadow-xs transition-all select-none group relative flex flex-col justify-between gap-2.5 ${
-        isDragging
+      className={`bg-white border rounded-xl p-3.5 shadow-xs transition-all select-none group relative flex flex-col justify-between gap-2.5 ${isDragging
           ? 'opacity-40 border-slate-400 scale-[0.98]'
           : 'border-slate-200 hover:border-slate-400 hover:shadow-md'
-      } ${
-        isOverdue
+        } ${isOverdue
           ? 'ring-1 ring-rose-400 bg-rose-50/20'
           : isCorporate
-          ? 'bg-purple-50/10 border-purple-200'
-          : isPaid
-          ? 'border-emerald-200 bg-emerald-50/10'
-          : ''
-      }`}
+            ? 'bg-purple-50/10 border-purple-200'
+            : isPaid
+              ? 'border-emerald-200 bg-emerald-50/10'
+              : ''
+        }`}
     >
       {/* Top Row: Order Number, Invoice #, Priority & Drag Handle */}
       <div className="flex items-start justify-between gap-2">

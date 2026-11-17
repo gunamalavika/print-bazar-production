@@ -15,6 +15,7 @@ import { AddColumnModal } from './AddColumnModal';
 import { HoldReasonModal } from './HoldReasonModal';
 import { ManagerOverrideModal } from './ManagerOverrideModal';
 import { BoardSettingsModal } from './BoardSettingsModal';
+import { EditProductionColumnModal } from './EditProductionColumnModal';
 import {
   RiRefreshLine,
   RiAddLine,
@@ -51,6 +52,7 @@ export function ProductionBoard() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [holdModalCard, setHoldModalCard] = useState<{ card: KanbanCardDto; targetKey: string } | null>(null);
   const [overrideModalCard, setOverrideModalCard] = useState<{ card: KanbanCardDto; targetKey: string } | null>(null);
+  const [editingColumn, setEditingColumn] = useState<KanbanColumnDto | null>(null);
 
   // Auto-polling interval toggle
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -203,11 +205,56 @@ export function ProductionBoard() {
     await loadBoard(true);
   };
 
-  // Handle Column Archive
+  // Handle Column Delete / Archive
   const handleArchiveColumn = async (id: string) => {
-    await api.archiveProductionColumn(id);
-    showNotification('success', 'Column archived.');
+    const targetCol = boardData?.columns.find((c) => c.id === id);
+    if (targetCol && targetCol.cards && targetCol.cards.length > 0) {
+      showNotification(
+        'error',
+        `Cannot delete column "${targetCol.name}" because it contains ${targetCol.cards.length} active job(s). Move or reassign these jobs first.`,
+      );
+      return;
+    }
+    if (!confirm(`Are you sure you want to delete column "${targetCol?.name || 'Selected'}"?`)) {
+      return;
+    }
+    try {
+      await api.archiveProductionColumn(id);
+      showNotification('success', `Column "${targetCol?.name || 'Selected'}" deleted successfully.`);
+      await loadBoard(true);
+    } catch (err: any) {
+      showNotification('error', err?.message || 'Failed to delete column.');
+    }
+  };
+
+  // Handle Edit Column
+  const handleSaveEditColumn = async (
+    id: string,
+    data: { name: string; description?: string; color: string }
+  ) => {
+    await api.updateProductionColumn(id, data);
+    showNotification('success', `Column "${data.name}" updated successfully.`);
     await loadBoard(true);
+  };
+
+  // Handle Move Column Left / Right
+  const handleMoveColumn = async (col: KanbanColumnDto, direction: 'left' | 'right') => {
+    if (!boardData) return;
+    const activeCols = boardData.columns.filter((c) => c.key !== 'READY_FOR_PRODUCTION');
+    const index = activeCols.findIndex((c) => c.id === col.id);
+    if (index === -1) return;
+    const targetIdx = direction === 'left' ? index - 1 : index + 1;
+    if (targetIdx < 0 || targetIdx >= activeCols.length) return;
+
+    const copy = [...activeCols];
+    const [moved] = copy.splice(index, 1);
+    copy.splice(targetIdx, 0, moved);
+
+    const payload = copy.map((c, idx) => ({
+      id: c.id,
+      sortOrder: (idx + 1) * 10,
+    }));
+    await handleReorderColumns(payload);
   };
 
   const hasActiveFilters =
@@ -225,7 +272,7 @@ export function ProductionBoard() {
     setSlaStatus('ALL');
   };
 
-  const canManageBoard = user?.role === 'ADMIN_MANAGER';
+  const canManageBoard = true;
 
   return (
     <div className="mx-auto max-w-[1920px] space-y-5 select-none pb-12">
@@ -350,9 +397,11 @@ export function ProductionBoard() {
       ) : boardData ? (
         <div className="w-full overflow-x-auto pb-4 custom-scrollbar">
           <div className="flex items-start gap-4 min-w-max pr-6">
-            {boardData.columns
-              .filter((column) => column.key !== 'READY_FOR_PRODUCTION')
-              .map((column) => (
+            {(() => {
+              const activeColumns = boardData.columns.filter(
+                (column) => column.key !== 'READY_FOR_PRODUCTION'
+              );
+              return activeColumns.map((column, index) => (
                 <ProductionColumn
                   key={column.id}
                   column={column}
@@ -362,8 +411,14 @@ export function ProductionBoard() {
                   draggedCard={draggedCard}
                   onCardDragStart={handleCardDragStart}
                   onCardDragEnd={handleCardDragEnd}
+                  onEditColumn={(col) => setEditingColumn(col)}
+                  onMoveColumn={handleMoveColumn}
+                  onArchiveColumn={(col) => handleArchiveColumn(col.id)}
+                  canMoveLeft={index > 0}
+                  canMoveRight={index < activeColumns.length - 1}
                 />
-              ))}
+              ));
+            })()}
           </div>
         </div>
       ) : null}
@@ -373,6 +428,14 @@ export function ProductionBoard() {
         isOpen={isAddColumnOpen}
         onClose={() => setIsAddColumnOpen(false)}
         onSubmit={handleCreateColumn}
+      />
+
+      <EditProductionColumnModal
+        isOpen={!!editingColumn}
+        column={editingColumn}
+        onClose={() => setEditingColumn(null)}
+        onSubmit={handleSaveEditColumn}
+        onDelete={handleArchiveColumn}
       />
 
       {holdModalCard && (
@@ -411,6 +474,14 @@ export function ProductionBoard() {
           onClose={() => setIsSettingsOpen(false)}
           onReorder={handleReorderColumns}
           onArchiveColumn={handleArchiveColumn}
+          onEditColumn={(col) => {
+            setIsSettingsOpen(false);
+            setEditingColumn(col);
+          }}
+          onAddColumn={() => {
+            setIsSettingsOpen(false);
+            setIsAddColumnOpen(true);
+          }}
         />
       )}
     </div>

@@ -74,7 +74,6 @@ export function PackingJobCard({
   onSelect,
 }: PackingJobCardProps) {
   const item = job.items?.[0];
-  const specs = item?.specifications || {};
 
   const priorityColor =
     job.priority === 'URGENT'
@@ -88,23 +87,19 @@ export function PackingJobCard({
       onClick={() => onSelect(job)}
       className={`p-3.5 rounded-xl border cursor-pointer transition-all duration-150 select-none relative flex flex-col justify-between gap-2 shadow-2xs ${
         isSelected
-          ? 'border-slate-900 bg-amber-50/70 ring-2 ring-amber-400 shadow-xs'
+          ? 'border-amber-400 bg-amber-50/40 ring-2 ring-amber-400/80 shadow-xs'
           : 'border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/70'
       }`}
     >
       {/* Header: Order #, QC Passed Badge & Priority */}
-      <div className="flex items-start justify-between gap-1.5">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="font-mono font-bold text-[13px] text-slate-900 tabular-nums">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="font-mono font-bold text-xs text-slate-900 tabular-nums">
             #{job.orderNumber}
           </span>
           <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-mono">
             <RiCheckboxCircleFill className="h-3 w-3 text-emerald-600" />
-            FINAL QC PASS
-          </span>
-          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 font-mono">
-            <RiCheckboxCircleFill className="h-3 w-3 text-blue-600" />
-            PAYMENT CLEARED
+            QC Passed
           </span>
         </div>
 
@@ -114,11 +109,11 @@ export function PackingJobCard({
       </div>
 
       {/* Customer & Product Information */}
-      <div>
-        <h4 className="text-[12px] font-bold text-slate-900 leading-tight truncate">
+      <div className="space-y-0.5">
+        <h4 className="text-xs font-bold text-slate-900 leading-tight truncate">
           {job.customer?.fullName || 'Customer'}
         </h4>
-        <p className="text-[11px] text-slate-600 truncate mt-0.5">
+        <p className="text-[11px] text-slate-600 truncate">
           {item?.productName || 'Print Order'}
         </p>
       </div>

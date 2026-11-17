@@ -4,14 +4,10 @@ import React, { useState, useEffect } from 'react';
 import {
   RiScales3Line,
   RiBox3Line,
-  RiRuler2Line,
   RiAddLine,
   RiCheckboxCircleLine,
-  RiAlertLine,
   RiErrorWarningLine,
-  RiSparklingLine,
 } from 'react-icons/ri';
-import { Button } from '@/components/ui';
 import { PackingJobDto } from './PackingJobCard';
 
 export interface PackagingCartonItem {
@@ -52,7 +48,7 @@ export function CartonPackingForm({
   const item = job.items?.[0];
   const qty = item?.quantity || 100;
 
-  // Calculate realistic expected weight (e.g. 350 GSM card = ~2.5g per card + tare)
+  // Realistic weight estimation: e.g. 350 GSM card = ~2.8g per card + tare
   const baseCalculatedWeightKg = Math.max(0.3, parseFloat(((qty * 2.8) / 1000).toFixed(2)));
 
   const defaultMaterial = packagingMaterials[1] || packagingMaterials[0] || {
@@ -73,14 +69,12 @@ export function CartonPackingForm({
     scaleWeightKg ? String(scaleWeightKg) : String((baseCalculatedWeightKg + defaultMaterial.tareWeightKg).toFixed(2)),
   );
 
-  // Sync scale reading if scale is updated
   useEffect(() => {
     if (scaleWeightKg !== null) {
       setGrossWeightKg(String(scaleWeightKg));
     }
   }, [scaleWeightKg]);
 
-  // When box type changes, auto-fill standard dimensions and tare weight
   const handleBoxTypeChange = (code: string) => {
     setSelectedBoxCode(code);
     const found = packagingMaterials.find((m) => m.code === code);
@@ -96,12 +90,11 @@ export function CartonPackingForm({
 
   const expectedTotalWeight = parseFloat((baseCalculatedWeightKg + parseFloat(tareWeightKg || '0.18')).toFixed(2));
   const currentGross = parseFloat(grossWeightKg || '0');
-  const tolerance = 0.25; // 250 grams tolerance
+  const tolerance = 0.25;
   const weightDiff = Math.abs(currentGross - expectedTotalWeight);
   const isWeightValid = weightDiff <= tolerance && currentGross > 0;
 
   const handleCaptureFromScale = () => {
-    // Read calibrated scale value (or realistic reading if manual)
     const reading = (expectedTotalWeight + (Math.random() * 0.04 - 0.02)).toFixed(3);
     setGrossWeightKg(reading);
   };
@@ -126,29 +119,29 @@ export function CartonPackingForm({
   };
 
   return (
-    <form onSubmit={handleRecord} className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs space-y-4">
-      <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+    <form onSubmit={handleRecord} className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
         <div className="flex items-center gap-2">
-          <RiBox3Line className="h-5 w-5 text-slate-800" />
-          <h3 className="text-[13px] font-bold text-slate-900 uppercase tracking-wide">
-            Carton Packing & Calibrated Weight Verification
+          <RiBox3Line className="h-4 w-4 text-slate-800" />
+          <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-mono">
+            Carton Packaging & Scale Verification
           </h3>
         </div>
-
-        <span className="bg-slate-900 text-amber-300 font-mono text-[11px] font-bold px-2 py-0.5 rounded">
-          CARTON #{currentSequenceNumber}
+        <span className="bg-amber-100 text-amber-950 font-mono text-xs font-bold px-2.5 py-0.5 rounded-full border border-amber-200">
+          Carton #{currentSequenceNumber}
         </span>
       </div>
 
       {/* 1. Carton Type Selection */}
       <div>
         <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-          Standard Shipping Carton / Packaging SKU
+          Standard Packaging SKU
         </label>
         <select
           value={selectedBoxCode}
           onChange={(e) => handleBoxTypeChange(e.target.value)}
-          className="w-full h-9.5 text-xs font-semibold text-slate-900 bg-slate-50 border border-slate-200 rounded-xl px-3 focus:outline-none focus:border-slate-900 focus:bg-white transition"
+          className="w-full h-9.5 text-xs font-semibold text-slate-900 bg-slate-50 border border-slate-200 rounded-xl px-3 focus:outline-none focus:border-slate-900 focus:bg-white transition cursor-pointer"
         >
           {packagingMaterials.map((mat) => (
             <option key={mat.code} value={mat.code}>
@@ -158,10 +151,10 @@ export function CartonPackingForm({
         </select>
       </div>
 
-      {/* 2. 3-Part Dimensions: Length, Width, Height */}
+      {/* 2. Carton Dimensions (L × W × H) in 1 clean row */}
       <div>
         <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-          Carton Dimensions (CM)
+          Dimensions (L × W × H in CM)
         </label>
         <div className="grid grid-cols-3 gap-2">
           <div>
@@ -175,7 +168,6 @@ export function CartonPackingForm({
               className="w-full h-9 text-xs font-mono font-bold text-slate-900 bg-slate-50 border border-slate-200 rounded-xl px-3 focus:outline-none focus:border-slate-900 focus:bg-white transition"
             />
           </div>
-
           <div>
             <span className="text-[10px] text-slate-400 font-bold block mb-0.5">Width (cm)</span>
             <input
@@ -187,7 +179,6 @@ export function CartonPackingForm({
               className="w-full h-9 text-xs font-mono font-bold text-slate-900 bg-slate-50 border border-slate-200 rounded-xl px-3 focus:outline-none focus:border-slate-900 focus:bg-white transition"
             />
           </div>
-
           <div>
             <span className="text-[10px] text-slate-400 font-bold block mb-0.5">Height (cm)</span>
             <input
@@ -203,20 +194,22 @@ export function CartonPackingForm({
       </div>
 
       {/* 3. Weight Capture & Tolerance Check */}
-      <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-3">
-        <div className="flex items-center justify-between text-[11px]">
+      <div className="bg-slate-50 p-3.5 sm:p-4 rounded-xl border border-slate-200/80 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-2">
           <div>
-            <span className="text-slate-400 text-[10px] font-bold uppercase block">Expected Target Weight</span>
-            <span className="font-mono font-bold text-slate-900 text-sm">
+            <span className="text-[10px] font-mono uppercase font-bold text-slate-400 block">
+              Expected Target Weight:
+            </span>
+            <span className="font-mono font-black text-slate-900 text-sm">
               {expectedTotalWeight.toFixed(2)} KG
             </span>
-            <span className="text-[10px] text-slate-400 ml-1 font-medium">(±0.25 kg tolerance)</span>
+            <span className="text-[11px] text-slate-500 font-mono ml-1.5">(±0.25 kg tolerance)</span>
           </div>
 
           <button
             type="button"
             onClick={handleCaptureFromScale}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-[11px] font-bold shadow-2xs transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-xs font-bold shadow-2xs transition self-start sm:self-auto cursor-pointer"
           >
             <RiScales3Line className="h-4 w-4 text-blue-600" />
             <span>Read Scale USB</span>
@@ -239,7 +232,7 @@ export function CartonPackingForm({
 
           <div>
             <label className="text-[10px] font-bold text-slate-900 uppercase block mb-1">
-              Gross Packed Weight (KG) *
+              Gross Packed Weight (KG) <span className="text-rose-600">*</span>
             </label>
             <div className="relative">
               <input
@@ -251,7 +244,7 @@ export function CartonPackingForm({
                 className={`w-full h-9 text-xs font-mono font-bold rounded-xl px-3 border transition ${
                   isWeightValid
                     ? 'border-emerald-400 bg-white text-emerald-950 focus:border-emerald-600'
-                    : 'border-rose-400 bg-white text-rose-950 focus:border-rose-600'
+                    : 'border-amber-400 bg-white text-amber-950 focus:border-amber-600'
                 }`}
               />
               <span className="absolute right-2.5 top-1/2 -translate-y-1/2 font-mono text-[10px] font-bold text-slate-400">
@@ -261,31 +254,31 @@ export function CartonPackingForm({
           </div>
         </div>
 
-        {/* Live Weight Tolerance Badge */}
+        {/* Live Weight Status */}
         {isWeightValid ? (
-          <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 text-[11px] font-medium flex items-center gap-1.5">
+          <div className="p-2.5 bg-emerald-50/80 border border-emerald-200 rounded-lg text-emerald-900 text-xs font-medium flex items-center gap-2">
             <RiCheckboxCircleLine className="h-4 w-4 text-emerald-600 shrink-0" />
             <span>
-              ✓ Weight is verified within tolerance ({currentGross.toFixed(2)} KG vs expected {expectedTotalWeight.toFixed(2)} KG).
+              Weight verified within tolerance ({currentGross.toFixed(2)} KG vs {expectedTotalWeight.toFixed(2)} KG target).
             </span>
           </div>
         ) : (
-          <div className="p-2 bg-rose-50 border border-rose-200 rounded-lg text-rose-900 text-[11px] font-medium flex items-center gap-1.5">
-            <RiErrorWarningLine className="h-4 w-4 text-rose-600 shrink-0" />
+          <div className="p-2.5 bg-amber-50/80 border border-amber-200 rounded-lg text-amber-900 text-xs font-medium flex items-center gap-2">
+            <RiErrorWarningLine className="h-4 w-4 text-amber-600 shrink-0" />
             <span>
-              Weight variance ({currentGross.toFixed(2)} KG vs expected {expectedTotalWeight.toFixed(2)} KG). Please verify parcel piece count.
+              Weight variance detected ({currentGross.toFixed(2)} KG vs {expectedTotalWeight.toFixed(2)} KG). Please check item piece count.
             </span>
           </div>
         )}
       </div>
 
-      {/* Action Button */}
+      {/* Action Button: Dark Crisp button, preserving Yellow for Complete Dispatch */}
       <button
         type="submit"
-        className="w-full flex items-center justify-center gap-2 bg-[#FFED00] hover:bg-[#FDD835] text-slate-950 font-bold text-[13px] py-3 rounded-xl shadow-xs border border-[#E3A008]/50 transition active:scale-[0.98]"
+        className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm py-3 rounded-xl shadow-xs transition active:scale-[0.99] cursor-pointer"
       >
         <RiAddLine className="h-4 w-4" />
-        <span>RECORD CARTON #{currentSequenceNumber} & ADVANCE</span>
+        <span>Record Carton #{currentSequenceNumber} & Add to Parcel</span>
       </button>
     </form>
   );

@@ -20,7 +20,10 @@ import {
   RiCheckboxCircleFill,
   RiAlertFill,
   RiRefreshLine,
+  RiArrowLeftLine,
+  RiFileList3Line,
 } from 'react-icons/ri';
+import { Button } from '@/components/ui';
 
 const DEFAULT_MATERIALS = [
   {
@@ -81,6 +84,9 @@ export function PackingStation() {
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
 
+  // Responsive mobile tab state ('QUEUE' or 'STATION')
+  const [mobileView, setMobileView] = useState<'QUEUE' | 'STATION'>('QUEUE');
+
   // Notifications
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -133,6 +139,7 @@ export function PackingStation() {
     setPrintCount(0);
     setIsCompleted(false);
     setScaleWeightKg(null);
+    setMobileView('STATION'); // Automatically switch to station workspace on mobile
   };
 
   // Add carton
@@ -211,19 +218,22 @@ export function PackingStation() {
   const handleConfirmDispatch = async (trackingNumber: string, courierName: string) => {
     if (!selectedJob) return;
     const def = materials[1] || materials[0] || DEFAULT_MATERIALS[0];
-    const activeCartons = cartons.length > 0 ? cartons : [
-      {
-        id: `carton-${Date.now()}-1`,
-        sequenceNumber: 1,
-        cartonType: def.code,
-        lengthCm: def.innerLengthCm || 25,
-        widthCm: def.innerWidthCm || 18,
-        heightCm: def.innerHeightCm || 12,
-        tareWeightKg: def.tareWeightKg || 0.18,
-        grossWeightKg: 0.85,
-        isWeightVerified: true,
-      },
-    ];
+    const activeCartons =
+      cartons.length > 0
+        ? cartons
+        : [
+            {
+              id: `carton-${Date.now()}-1`,
+              sequenceNumber: 1,
+              cartonType: def.code,
+              lengthCm: def.innerLengthCm || 25,
+              widthCm: def.innerWidthCm || 18,
+              heightCm: def.innerHeightCm || 12,
+              tareWeightKg: def.tareWeightKg || 0.18,
+              grossWeightKg: 0.85,
+              isWeightVerified: true,
+            },
+          ];
 
     setIsCompleting(true);
     try {
@@ -237,7 +247,11 @@ export function PackingStation() {
           widthCm: c.widthCm,
           heightCm: c.heightCm,
         })),
-        courierName: courierName || (selectedJob.deliveryMethod === 'STORE_PICKUP' ? 'Store Pickup Counter' : 'Delhivery Surface Express'),
+        courierName:
+          courierName ||
+          (selectedJob.deliveryMethod === 'STORE_PICKUP'
+            ? 'Store Pickup Counter'
+            : 'Delhivery Surface Express'),
         trackingNumber: trackingNumber.trim(),
         stationPrinter: printerName,
       });
@@ -246,7 +260,7 @@ export function PackingStation() {
       setIsCompleted(true);
       setBanner({
         type: 'success',
-        message: `Order #${selectedJob.orderNumber} packing completed (Tracking: ${trackingNumber})! Successfully moved to Dispatch Manifest.`,
+        message: `Order #${selectedJob.orderNumber} packing completed (Tracking: ${trackingNumber})! Successfully released to Dispatch Manifest.`,
       });
 
       // Refresh queue to remove completed job
@@ -275,7 +289,7 @@ export function PackingStation() {
   const canComplete = Boolean(selectedJob && !isCompleted);
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-4">
+    <div className="mx-auto max-w-[1600px] space-y-5 pb-12">
       {/* 1. Station Header */}
       <PackingStationHeader
         onRefresh={fetchQueue}
@@ -290,7 +304,7 @@ export function PackingStation() {
       {/* Notification Banner */}
       {banner && (
         <div
-          className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between shadow-xs transition animate-in fade-in ${
+          className={`p-4 rounded-xl border text-xs font-semibold flex items-center justify-between shadow-xs transition animate-in fade-in ${
             banner.type === 'error'
               ? 'bg-rose-50 text-rose-900 border-rose-200'
               : 'bg-emerald-50 text-emerald-900 border-emerald-200'
@@ -314,17 +328,58 @@ export function PackingStation() {
           </div>
           <button
             onClick={() => setBanner(null)}
-            className="text-slate-400 hover:text-slate-600 text-xs font-bold ml-2"
+            className="text-slate-400 hover:text-slate-600 text-xs font-bold ml-2 cursor-pointer"
           >
             Dismiss
           </button>
         </div>
       )}
 
-      {/* 3. Three-Zone Industrial Workstation Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        {/* LEFT ZONE (3.5 cols): Job Queue */}
-        <div className="lg:col-span-3">
+      {/* 3. Mobile Tab Switcher (Visible on Mobile / Tablet only) */}
+      <div className="flex lg:hidden items-center bg-slate-100 p-1 rounded-xl">
+        <button
+          type="button"
+          onClick={() => setMobileView('QUEUE')}
+          className={`flex-1 py-2 text-xs font-bold rounded-lg transition flex items-center justify-center gap-2 cursor-pointer ${
+            mobileView === 'QUEUE'
+              ? 'bg-white text-slate-900 shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <RiFileList3Line className="h-4 w-4" />
+          <span>Queue ({jobs.length})</span>
+        </button>
+
+        <button
+          type="button"
+          disabled={!selectedJob}
+          onClick={() => setMobileView('STATION')}
+          className={`flex-1 py-2 text-xs font-bold rounded-lg transition flex items-center justify-center gap-2 ${
+            mobileView === 'STATION'
+              ? 'bg-white text-slate-900 shadow-xs'
+              : selectedJob
+              ? 'text-slate-600 hover:text-slate-900 cursor-pointer'
+              : 'text-slate-400 cursor-not-allowed opacity-60'
+          }`}
+        >
+          <RiBox3Line className="h-4 w-4" />
+          <span>Active Station</span>
+          {selectedJob && (
+            <span className="font-mono text-[10px] bg-amber-200 text-amber-950 px-1.5 py-0.2 rounded-full font-bold">
+              #{selectedJob.orderNumber}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* 4. Responsive Master-Detail Workstation Layout */}
+      <div className="flex flex-col lg:flex-row gap-5 items-start">
+        {/* LEFT PANE: Packing Job Queue */}
+        <div
+          className={`w-full lg:w-84 xl:w-96 shrink-0 ${
+            mobileView === 'STATION' ? 'hidden lg:block' : 'block'
+          }`}
+        >
           <PackingJobQueue
             jobs={jobs}
             selectedJobId={selectedJob?.id || null}
@@ -338,72 +393,102 @@ export function PackingStation() {
           />
         </div>
 
-        {/* CENTER ZONE (5 cols): Selected Job + Packing Form */}
-        <div className="lg:col-span-5 space-y-4">
+        {/* RIGHT PANE: Active Workstation Area */}
+        <div
+          className={`w-full lg:flex-1 min-w-0 space-y-4 ${
+            mobileView === 'QUEUE' ? 'hidden lg:block' : 'block'
+          }`}
+        >
           {selectedJob ? (
-            <>
-              <JobDetailsPanel job={selectedJob} />
-              <CartonPackingForm
-                job={selectedJob}
-                packagingMaterials={materials}
-                onAddCarton={handleAddCarton}
-                currentSequenceNumber={cartons.length + 1}
-                scaleWeightKg={scaleWeightKg}
-              />
-            </>
-          ) : (
-            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400 shadow-xs">
-              <RiBox3Line className="h-10 w-10 mx-auto mb-2 text-slate-300" />
-              <h3 className="text-sm font-bold text-slate-700">Select a Job from the Left Queue</h3>
-              <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                Click any Final QC-approved job on the left to begin carton packing and calibrated weight verification.
-              </p>
-            </div>
-          )}
-        </div>
+            <div className="space-y-4">
+              {/* Mobile Back Button to Queue */}
+              <div className="flex lg:hidden items-center justify-between bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setMobileView('QUEUE')}
+                  className="flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-slate-950 cursor-pointer"
+                >
+                  <RiArrowLeftLine className="h-4 w-4" />
+                  <span>Back to Queue ({jobs.length} jobs)</span>
+                </button>
+                <span className="font-mono text-xs font-bold text-slate-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded">
+                  #{selectedJob.orderNumber}
+                </span>
+              </div>
 
-        {/* RIGHT ZONE (3.5 cols): Shipping Label Preview + Packed Cartons */}
-        <div className="lg:col-span-4 space-y-4">
-          {selectedJob ? (
-            <>
-              <ShippingLabelPreview
-                job={selectedJob}
-                cartons={cartons}
-                activeCartonIndex={Math.max(0, cartons.length - 1)}
-                onOpenPrintModal={() => setIsPrintModalOpen(true)}
-              />
-              <PackedCartonsTable
-                cartons={cartons}
-                onDeleteCarton={handleDeleteCarton}
-                isCompleted={isCompleted}
-                labelPrinted={labelPrinted}
-                onOpenPrintModal={() => setIsPrintModalOpen(true)}
-              />
-              <LabelActions
-                labelPrinted={labelPrinted}
-                printCount={printCount}
-                onPrintLabel={handlePrintLabel}
-                onReprintLabel={handleReprintLabel}
-                onCompletePacking={handleCompletePacking}
-                isCompleting={isCompleting}
-                canComplete={canComplete}
-                isCompleted={isCompleted}
-                printerName={printerName}
-              />
-            </>
+              {/* Order Overview Banner */}
+              <JobDetailsPanel job={selectedJob} />
+
+              {/* Workstation Actions Grid: 2 Clean Balanced Columns on XL */}
+              <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+                {/* Packaging & Weight (7 cols on XL) */}
+                <div className="xl:col-span-7 space-y-4">
+                  <CartonPackingForm
+                    job={selectedJob}
+                    packagingMaterials={materials}
+                    onAddCarton={handleAddCarton}
+                    currentSequenceNumber={cartons.length + 1}
+                    scaleWeightKg={scaleWeightKg}
+                  />
+
+                  <PackedCartonsTable
+                    cartons={cartons}
+                    onDeleteCarton={handleDeleteCarton}
+                    isCompleted={isCompleted}
+                    labelPrinted={labelPrinted}
+                    onOpenPrintModal={() => setIsPrintModalOpen(true)}
+                  />
+                </div>
+
+                {/* Thermal Shipping Label & Dispatch Actions (5 cols on XL) */}
+                <div className="xl:col-span-5 space-y-4 xl:sticky xl:top-4">
+                  <ShippingLabelPreview
+                    job={selectedJob}
+                    cartons={cartons}
+                    activeCartonIndex={Math.max(0, cartons.length - 1)}
+                    onOpenPrintModal={() => setIsPrintModalOpen(true)}
+                  />
+
+                  <LabelActions
+                    labelPrinted={labelPrinted}
+                    printCount={printCount}
+                    onPrintLabel={handlePrintLabel}
+                    onReprintLabel={handleReprintLabel}
+                    onCompletePacking={handleCompletePacking}
+                    isCompleting={isCompleting}
+                    canComplete={canComplete}
+                    isCompleted={isCompleted}
+                    printerName={printerName}
+                  />
+                </div>
+              </div>
+            </div>
           ) : (
-            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400 shadow-xs">
-              <RiBox3Line className="h-10 w-10 mx-auto mb-2 text-slate-300" />
-              <h3 className="text-sm font-bold text-slate-700">Shipping Label Preview Awaiting Job</h3>
-              <p className="text-xs text-slate-400 mt-1">
-                4×6 thermal shipping label mockup will generate once a job is selected.
+            /* Empty State when no job is selected */
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-12 text-center text-slate-400 shadow-card">
+              <div className="h-16 w-16 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <RiBox3Line className="h-8 w-8" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900">Select a Job from the Queue</h3>
+              <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto leading-relaxed">
+                Click any Final QC-approved order from the left queue to begin packaging, calibrate weight on the digital scale, and print thermal shipping labels.
               </p>
+              {jobs.length > 0 && (
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={() => handleSelectJob(jobs[0])}
+                  className="mt-4 font-bold"
+                >
+                  <span>Open First Job (#{jobs[0].orderNumber})</span>
+                </Button>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* 4. Print 4x6 Label Modal */}
+      {/* 5. Print 4x6 Thermal Label Modal */}
       <PrintLabelModal
         isOpen={isPrintModalOpen}
         onClose={() => setIsPrintModalOpen(false)}
@@ -415,14 +500,18 @@ export function PackingStation() {
         }}
       />
 
-      {/* 5. Complete Packing & Move to Dispatch Tracking Modal */}
+      {/* 6. Complete Packing & Move to Dispatch Tracking Modal */}
       {selectedJob && (
         <DispatchTrackingModal
           isOpen={isTrackingModalOpen}
           onClose={() => setIsTrackingModalOpen(false)}
           job={selectedJob}
           cartons={cartons}
-          defaultCourier={selectedJob.deliveryMethod === 'STORE_PICKUP' ? 'Store Pickup Counter' : 'Delhivery Surface Express'}
+          defaultCourier={
+            selectedJob.deliveryMethod === 'STORE_PICKUP'
+              ? 'Store Pickup Counter'
+              : 'Delhivery Surface Express'
+          }
           isSubmitting={isCompleting}
           onConfirm={handleConfirmDispatch}
         />

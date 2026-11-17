@@ -16,6 +16,7 @@ import {
   Prisma,
   QCOutcome,
   Priority,
+  CustomerVisibleStatus,
 } from '@prisma/client';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { JobCardEngineService } from '../job-cards/job-card-engine.service';
@@ -171,7 +172,7 @@ export class OperationsService {
     private readonly jobCardEngine: JobCardEngineService,
     private readonly workflowState: WorkflowStateService,
     private readonly eventEmitter: EventEmitter2,
-  ) {}
+  ) { }
 
   // ═══════════════════════════════════════════════════════════════════════
   // 1. DASHBOARD METRICS (Aggregation-only, server side)
@@ -784,21 +785,22 @@ export class OperationsService {
         },
       });
 
-      // Transition Order state to DESIGN_REQUIRED if currently in intake / review
+      // Transition Order state to ARTWORK_REVIEW (Artwork Check gate) when OE assigns designer
       const intakeStatuses: OrderStatus[] = [
         OrderStatus.ORDER_CREATED,
         OrderStatus.PAYMENT_PENDING,
         OrderStatus.PAYMENT_CONFIRMED,
         OrderStatus.ORDER_REVIEW,
         OrderStatus.ARTWORK_REVIEW,
+        OrderStatus.DESIGN_REQUIRED,
       ];
 
       if (intakeStatuses.includes(order.status)) {
         await tx.order.update({
           where: { id: order.id },
           data: {
-            status: OrderStatus.DESIGN_REQUIRED,
-            customerStatus: 'DESIGN_IN_PROGRESS',
+            status: OrderStatus.ARTWORK_REVIEW,
+            customerStatus: CustomerVisibleStatus.ARTWORK_BEING_CHECKED,
           },
         });
 
@@ -806,9 +808,9 @@ export class OperationsService {
           data: {
             orderId: order.id,
             fromStatus: order.status,
-            toStatus: OrderStatus.DESIGN_REQUIRED,
+            toStatus: OrderStatus.ARTWORK_REVIEW,
             changedById: user.sub,
-            reason: `Assigned to Designer ${designer.fullName} by OE`,
+            reason: `Assigned to Designer ${designer.fullName} by OE (Queued for Artwork Check)`,
             notes: dto.reason,
           },
         });
@@ -1668,8 +1670,8 @@ export class OperationsService {
     const approvalStatus: 'APPROVED' | 'PENDING' | 'NOT_REQUIRED' = isApproved
       ? 'APPROVED'
       : requiresCustomerApproval
-      ? 'PENDING'
-      : 'NOT_REQUIRED';
+        ? 'PENDING'
+        : 'NOT_REQUIRED';
 
     // 4. Blockers
     const blockers: string[] = [];
@@ -1699,13 +1701,13 @@ export class OperationsService {
       },
       artwork: latestArtwork
         ? {
-            id: latestArtwork.id,
-            versionNumber: latestArtwork.versionNumber,
-            originalFileName: latestArtwork.originalFileName,
-            proofUrl: latestArtwork.proofUrl || undefined,
-            storageKey: latestArtwork.storageKey,
-            isApproved: Boolean(latestArtwork.isApproved),
-          }
+          id: latestArtwork.id,
+          versionNumber: latestArtwork.versionNumber,
+          originalFileName: latestArtwork.originalFileName,
+          proofUrl: latestArtwork.proofUrl || undefined,
+          storageKey: latestArtwork.storageKey,
+          isApproved: Boolean(latestArtwork.isApproved),
+        }
         : null,
       sizeValidation,
       productionSpecs: {

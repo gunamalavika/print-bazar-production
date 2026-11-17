@@ -23,7 +23,12 @@ import {
 } from 'react-icons/ri';
 import { getApiHost } from '@/lib/api';
 
-export type DesignKanbanStage = 'ARTWORK_CHECK' | 'DESIGNING' | 'WAITING_FOR_APPROVAL' | 'READY_TO_PRINT';
+export type DesignKanbanStage =
+  | 'ARTWORK_CHECK'
+  | 'DESIGNING'
+  | 'WAITING_FOR_APPROVAL'
+  | 'READY_TO_PRINT'
+  | (string & {});
 
 export interface DesignCardItem {
   id: string;

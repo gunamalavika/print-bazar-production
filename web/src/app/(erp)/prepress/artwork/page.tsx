@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import {
   FileCheck2,
@@ -38,6 +38,90 @@ import { useSearchParams } from 'next/navigation';
 import { RiKanbanView2 } from 'react-icons/ri';
 import { api, resolveImageUrl, downloadFile } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { PrepressColumnConfig } from '../kanban/components/DesignColumnEditModal';
+
+const DEFAULT_PREPRESS_COLUMNS: PrepressColumnConfig[] = [
+  {
+    key: 'ARTWORK_CHECK',
+    name: 'Artwork Check',
+    subtitle: 'File Verification & Preflight Audit',
+    color: '#0284C7',
+    description: 'Initial intake, bleed audit, resolution check, defect detection.',
+    isCustom: false,
+  },
+  {
+    key: 'DESIGNING',
+    name: 'Designing',
+    subtitle: 'Active Design Studio & Layout',
+    color: '#F59E0B',
+    description: 'Assigned designer layout drafting & personalized artwork generation.',
+    isCustom: false,
+  },
+  {
+    key: 'WAITING_FOR_APPROVAL',
+    name: 'Waiting for Approval',
+    subtitle: 'Proof Sign-Off & Customer Review',
+    color: '#8B5CF6',
+    description: 'Proof sent to customer or waiting for OE confirmation.',
+    isCustom: false,
+  },
+  {
+    key: 'READY_TO_PRINT',
+    name: 'Ready to Print',
+    subtitle: 'Proof Approved & Press Ready',
+    color: '#10B981',
+    description: 'Approved artwork locked & passed to machine production queue.',
+    isCustom: false,
+  },
+];
+
+function deduceKanbanStage(order: any, overrides: Record<string, string> = {}): string {
+  if (!order) return 'ARTWORK_CHECK';
+  const orderId = order.id || order.orderId;
+  if (orderId && overrides[orderId]) return overrides[orderId];
+
+  const status = String(order.currentStatus || order.status || '').toUpperCase();
+
+  // 1. Explicit Status
+  if (status === 'CUSTOMER_APPROVAL_REQUIRED') {
+    return 'WAITING_FOR_APPROVAL';
+  }
+
+  if (
+    status === 'ARTWORK_APPROVED' ||
+    status === 'PRE_PRODUCTION_QC' ||
+    status === 'PRODUCTION_QUEUE' ||
+    status === 'PRINTING' ||
+    status === 'FINISHING' ||
+    status === 'QUALITY_CHECK' ||
+    order.isPassedToProduction
+  ) {
+    return 'READY_TO_PRINT';
+  }
+
+  // 2. Secondary heuristics
+  const allItemVersions = (order.items || []).flatMap((it: any) => it.artworkVersions || []);
+  const hasApprovedProof =
+    order.approvedArtworkVersionId ||
+    order.approvedArtworkVersion ||
+    allItemVersions.some((v: any) => v.isApproved || v.status === 'PROOF_APPROVED');
+
+  if (hasApprovedProof) {
+    return 'READY_TO_PRINT';
+  }
+
+  const allVersions = order.allArtworkVersions || [];
+  if (allItemVersions.length > 0 || allVersions.length > 0 || Boolean(order.latestArtworkVersion)) {
+    return 'WAITING_FOR_APPROVAL';
+  }
+
+  if (order.revisionDirectives) {
+    return 'DESIGNING';
+  }
+
+  // Default: When OE assigns the design task to designer, keep in 1st Kanban column (ARTWORK_CHECK)
+  return 'ARTWORK_CHECK';
+}
 
 interface DesignQueueItem {
   id: string;
@@ -347,7 +431,42 @@ export default function ArtworkPrepressPage() {
 
   const [activeTab, setActiveTab] = useState<'DESIGN_STUDIO' | 'PASSED_TO_PRODUCTION' | 'PREFLIGHT'>('DESIGN_STUDIO');
   const [designSubFilter, setDesignSubFilter] = useState<'ALL' | 'ACTIVE' | 'NEEDS_OE_CONFIRMATION' | 'PASSED'>('ALL');
-  const [scopeFilter, setScopeFilter] = useState<'ALL' | 'MINE'>('MINE');
+  const [kanbanStageTab, setKanbanStageTab] = useState<string>('ALL');
+  const [scopeFilter, setScopeFilter] = useState<'ALL' | 'MINE'>('ALL');
+
+  // Kanban Columns & Stage Overrides Synchronization
+  const [columns, setColumns] = useState<PrepressColumnConfig[]>(DEFAULT_PREPRESS_COLUMNS);
+  const [stageOverrides, setStageOverrides] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    try {
+      const savedCols = localStorage.getItem('pb_kanban_columns_prepress');
+      if (savedCols) {
+        const parsed = JSON.parse(savedCols);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setColumns(parsed);
+        }
+      }
+
+      const savedOverrides = localStorage.getItem('pb_kanban_prepress_card_stages');
+      if (savedOverrides) {
+        const parsed = JSON.parse(savedOverrides);
+        if (parsed && typeof parsed === 'object') {
+          setStageOverrides(parsed);
+        }
+      }
+    } catch {}
+  }, []);
+
+  const updateStageOverride = (orderId: string, stage: string) => {
+    setStageOverrides((prev) => {
+      const updated = { ...prev, [orderId]: stage };
+      try {
+        localStorage.setItem('pb_kanban_prepress_card_stages', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
   
   // Design Queue State
   const [designQueue, setDesignQueue] = useState<DesignQueueItem[]>([]);
@@ -379,67 +498,77 @@ export default function ArtworkPrepressPage() {
   const [actionError, setActionError] = useState('');
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
 
-  const isPassedOrder = (o?: DesignQueueItem | null) => {
+  const isPassedOrder = useCallback((o?: DesignQueueItem | null) => {
     if (!o) return false;
-    const status = String(o.currentStatus || (o as any).status || '').toUpperCase();
-    if (
-      status === 'ARTWORK_APPROVED' ||
-      status === 'PRE_PRODUCTION_QC' ||
-      status === 'PRODUCTION_QUEUE' ||
-      status === 'PRINTING' ||
-      status === 'FINISHING' ||
-      status === 'QUALITY_CHECK' ||
-      status === 'PACKING' ||
-      status === 'READY_FOR_DISPATCH' ||
-      status === 'OUT_FOR_DELIVERY' ||
-      status === 'DELIVERED'
-    ) {
-      return true;
-    }
-    return Boolean(o.isPassedToProduction);
-  };
+    if (Boolean(o.isPassedToProduction)) return true;
+    const stage = deduceKanbanStage(o, stageOverrides);
+    return stage === 'READY_TO_PRINT';
+  }, [stageOverrides]);
 
-  const isAwaitingOE = (o?: DesignQueueItem | null) => {
+  const isAwaitingOE = useCallback((o?: DesignQueueItem | null) => {
     if (!o) return false;
-    if (isPassedOrder(o)) return false;
-    const status = String(o.currentStatus || (o as any).status || '').toUpperCase();
-    if (status === 'CUSTOMER_APPROVAL_REQUIRED' || status === 'ARTWORK_REVIEW') {
-      return true;
-    }
-    const itemVersions = o.items?.[0]?.artworkVersions || [];
-    const allVersions = o.allArtworkVersions || [];
-    const hasCandidateVersions = itemVersions.length > 0 || allVersions.length > 0 || Boolean(o.latestArtworkVersion);
-    return hasCandidateVersions && status !== 'DESIGN_REQUIRED';
-  };
+    const stage = deduceKanbanStage(o, stageOverrides);
+    return stage === 'WAITING_FOR_APPROVAL';
+  }, [stageOverrides]);
 
-  const isNeedsDesign = (o?: DesignQueueItem | null) => {
+  const isNeedsDesign = useCallback((o?: DesignQueueItem | null) => {
     if (!o) return false;
-    if (isPassedOrder(o)) return false;
-    if (isAwaitingOE(o)) return false;
-    return true;
-  };
+    const stage = deduceKanbanStage(o, stageOverrides);
+    return stage === 'DESIGNING' || stage === 'ARTWORK_CHECK';
+  }, [stageOverrides]);
 
-  const passedOrders = designQueue.filter((o) => isPassedOrder(o));
-  const needsConfirmationOrders = designQueue.filter((o) => isAwaitingOE(o));
-  const activeOrders = designQueue.filter((o) => isNeedsDesign(o));
+  const passedOrders = useMemo(() => designQueue.filter((o) => isPassedOrder(o)), [designQueue, isPassedOrder]);
+  const needsConfirmationOrders = useMemo(() => designQueue.filter((o) => isAwaitingOE(o)), [designQueue, isAwaitingOE]);
+  const activeOrders = useMemo(() => designQueue.filter((o) => isNeedsDesign(o)), [designQueue, isNeedsDesign]);
 
-  const displayedOrders = (() => {
-    if (designSubFilter === 'PASSED' || activeTab === 'PASSED_TO_PRODUCTION') {
-      return passedOrders;
+  const displayedOrders = useMemo(() => {
+    let list = designQueue;
+
+    // Filter by Kanban Stage Tab
+    if (kanbanStageTab !== 'ALL') {
+      list = list.filter((o) => deduceKanbanStage(o, stageOverrides) === kanbanStageTab);
+    } else if (activeTab === 'PASSED_TO_PRODUCTION') {
+      list = list.filter((o) => deduceKanbanStage(o, stageOverrides) === 'READY_TO_PRINT');
     }
-    if (designSubFilter === 'ACTIVE') {
-      return activeOrders;
+
+    // Filter by Search Query
+    if (designSearch.trim()) {
+      const q = designSearch.toLowerCase();
+      list = list.filter((o) => {
+        const matchNum = o.orderNumber?.toLowerCase().includes(q) || false;
+        const matchCust = o.customer?.fullName?.toLowerCase().includes(q) || false;
+        const matchProd = o.items?.[0]?.productName?.toLowerCase().includes(q) || false;
+        return matchNum || matchCust || matchProd;
+      });
     }
-    if (designSubFilter === 'NEEDS_OE_CONFIRMATION') {
-      return needsConfirmationOrders;
+
+    return list;
+  }, [
+    designQueue,
+    kanbanStageTab,
+    stageOverrides,
+    activeTab,
+    designSearch,
+  ]);
+
+  // Keep selected order in sync with displayed list
+  useEffect(() => {
+    if (displayedOrders.length > 0) {
+      const exists = displayedOrders.some(
+        (o) => (o.id || o.orderId) === (selectedDesignOrder?.id || selectedDesignOrder?.orderId)
+      );
+      if (!exists) {
+        setSelectedDesignOrder(displayedOrders[0]);
+      }
+    } else {
+      setSelectedDesignOrder(null);
     }
-    return designQueue;
-  })();
+  }, [displayedOrders]);
 
   const fetchDesignQueue = async () => {
     setIsLoadingQueue(true);
     try {
-      const effectiveScope = isDesigner ? 'mine' : (scopeFilter === 'MINE' ? 'mine' : 'all');
+      const effectiveScope = scopeFilter === 'MINE' ? 'mine' : 'all';
       const data = await api.getDesignQueue(
         designSearch,
         'all',
@@ -515,9 +644,10 @@ export default function ArtworkPrepressPage() {
       const urlMatch = urlSearch
         ? displayedOrders.find((o) => o.orderNumber.toLowerCase() === urlSearch.toLowerCase())
         : null;
-      const freshMatch = displayedOrders.find(
-        (o) => (o.id || o.orderId) === currentSelectedId,
-      );
+      const freshMatch = currentSelectedId
+        ? displayedOrders.find((o) => (o.id || o.orderId) === currentSelectedId)
+        : null;
+
       if (urlMatch) {
         setSelectedDesignOrder(urlMatch);
       } else if (freshMatch) {
@@ -528,7 +658,7 @@ export default function ArtworkPrepressPage() {
     } else {
       setSelectedDesignOrder(null);
     }
-  }, [activeTab, designSubFilter, designQueue, urlSearch]);
+  }, [displayedOrders, urlSearch]);
 
   const handleClaimJob = async (orderId: string) => {
     try {
@@ -618,12 +748,12 @@ export default function ArtworkPrepressPage() {
       const orderIdToSubmit = selectedDesignOrder.id || (selectedDesignOrder as any).orderId;
       await api.submitMultipleDesignWorks(orderIdToSubmit, {
         files: uploadedFilesPayload,
-        prepressNotes: prepressNotes || 'Design works prepared and submitted by Prepress Designer. Released directly to Production.',
+        prepressNotes: prepressNotes || 'Design works prepared and submitted by Prepress Designer. Awaiting OE review & confirmation.',
         resolutionDpi: Number(resolutionDpi) || 300,
       });
 
       setActionSuccess(
-        `✓ Successfully uploaded ${filesToProcess.length} design work(s) for Order #${selectedDesignOrder.orderNumber}! Released directly to Production Queue.`
+        `✓ Successfully submitted ${filesToProcess.length} design work(s) for Order #${selectedDesignOrder.orderNumber} to Operations (OE) for review & confirmation!`
       );
 
       stagedFiles.forEach((f) => {
@@ -633,8 +763,11 @@ export default function ArtworkPrepressPage() {
       setUploadFile(null);
       setPrepressNotes('');
       setIsSpecsConfirmed(false);
+      updateStageOverride(orderIdToSubmit, 'WAITING_FOR_APPROVAL');
       await fetchDesignQueue();
-      setDesignSubFilter('PASSED');
+      setActiveTab('DESIGN_STUDIO');
+      setDesignSubFilter('NEEDS_OE_CONFIRMATION');
+      setKanbanStageTab('WAITING_FOR_APPROVAL');
       setTimeout(() => setActionSuccess(''), 6000);
     } catch (err: any) {
       setActionError(err.message || 'Failed to upload and submit design works');
@@ -659,8 +792,11 @@ export default function ArtworkPrepressPage() {
       );
       setOeConfirmNotes('');
       setConfirmingVersionId(null);
+      const targetOrderId = selectedDesignOrder?.id || (selectedDesignOrder as any)?.orderId;
+      if (targetOrderId) updateStageOverride(targetOrderId, 'READY_TO_PRINT');
       await fetchDesignQueue();
       setDesignSubFilter('PASSED');
+      setKanbanStageTab('READY_TO_PRINT');
       setTimeout(() => setActionSuccess(''), 6000);
     } catch (err: any) {
       setActionError(err.message || 'Failed to confirm artwork work');
@@ -687,8 +823,11 @@ export default function ArtworkPrepressPage() {
       );
       setShowReturnModal(false);
       setReturnFeedback('');
+      const targetOrderId = selectedDesignOrder?.id || (selectedDesignOrder as any)?.orderId;
+      if (targetOrderId) updateStageOverride(targetOrderId, 'DESIGNING');
       await fetchDesignQueue();
       setDesignSubFilter('ACTIVE');
+      setKanbanStageTab('DESIGNING');
       setTimeout(() => setActionSuccess(''), 6000);
     } catch (err: any) {
       setActionError(err.message || 'Failed to return artwork to designer');
@@ -724,9 +863,11 @@ export default function ArtworkPrepressPage() {
       setUploadFile(null);
       setPrepressNotes('');
       setIsSpecsConfirmed(false);
+      if (orderIdToComplete) updateStageOverride(orderIdToComplete, 'READY_TO_PRINT');
       await fetchDesignQueue();
       setActiveTab('PASSED_TO_PRODUCTION');
       setDesignSubFilter('PASSED');
+      setKanbanStageTab('READY_TO_PRINT');
       setTimeout(() => setActionSuccess(''), 6000);
     } catch (err: any) {
       setActionError(err.message || 'Failed to complete design job');
@@ -826,30 +967,30 @@ export default function ArtworkPrepressPage() {
           <button
             onClick={() => {
               setActiveTab('DESIGN_STUDIO');
-              setDesignSubFilter('ACTIVE');
+              setKanbanStageTab('ALL');
             }}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-md text-[13px] font-semibold transition shrink-0 whitespace-nowrap ${
-              activeTab === 'DESIGN_STUDIO' && designSubFilter !== 'PASSED'
+              activeTab === 'DESIGN_STUDIO' && kanbanStageTab !== 'READY_TO_PRINT'
                 ? 'bg-amber-300 text-slate-900 shadow-sm border border-slate-300'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Paintbrush className="h-4 w-4" />
-            <span>Design Studio Queue ({activeOrders.length})</span>
+            <span>Design Studio Queue ({designQueue.filter((o) => deduceKanbanStage(o, stageOverrides) !== 'READY_TO_PRINT').length})</span>
           </button>
           <button
             onClick={() => {
-              setActiveTab('PASSED_TO_PRODUCTION');
-              setDesignSubFilter('PASSED');
+              setActiveTab('DESIGN_STUDIO');
+              setKanbanStageTab('READY_TO_PRINT');
             }}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-md text-[13px] font-semibold transition shrink-0 whitespace-nowrap ${
-              activeTab === 'PASSED_TO_PRODUCTION' || (activeTab === 'DESIGN_STUDIO' && designSubFilter === 'PASSED')
+              activeTab === 'DESIGN_STUDIO' && kanbanStageTab === 'READY_TO_PRINT'
                 ? 'bg-emerald-600 text-white shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <CheckCircle className="h-4 w-4" />
-            <span>Passed to Production ({passedOrders.length})</span>
+            <span>Passed to Production ({designQueue.filter((o) => deduceKanbanStage(o, stageOverrides) === 'READY_TO_PRINT').length})</span>
           </button>
           <button
             onClick={() => setActiveTab('PREFLIGHT')}
@@ -887,103 +1028,26 @@ export default function ArtworkPrepressPage() {
             <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h2 className="text-[13px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                  {activeTab === 'PASSED_TO_PRODUCTION' || designSubFilter === 'PASSED' ? (
-                    <>
-                      <CheckCircle className="h-4 w-4 text-emerald-600" />
-                      <span>PASSED TO PRODUCTION & RELEASED DESIGNS</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-4 w-4 text-amber-500" />
-                      <span>ROUTE B: DESIGN SERVICE QUEUE</span>
-                    </>
-                  )}
+                  <Sparkles className="h-4 w-4 text-amber-500" />
+                  <span>ROUTE B: DESIGN SERVICE QUEUE</span>
                 </h2>
                 <p className="text-[12px] text-slate-500 mt-0.5">
-                  {activeTab === 'PASSED_TO_PRODUCTION' || designSubFilter === 'PASSED'
-                    ? (isDesigner
-                        ? 'Completed designs verified and released directly to Production Queue.'
-                        : 'Completed designs verified and released directly to Production Queue.')
-                    : (isDesigner
-                        ? 'Orders assigned to you for custom design preparation. Uploaded designs release directly to Production.'
-                        : 'Orders requiring custom design preparation. Uploaded designs release directly to Production.')}
+                  Orders requiring custom design preparation synchronized with Design Process Kanban stages.
                 </p>
               </div>
 
               <div className="flex items-center flex-wrap gap-2">
-                {/* Subfilter pills */}
-                <div className="flex items-center gap-1 bg-white p-1 rounded-md border border-slate-200 text-xs">
-                  <button
-                    onClick={() => {
-                      setActiveTab('DESIGN_STUDIO');
-                      setDesignSubFilter('ALL');
-                    }}
-                    className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
-                      activeTab === 'DESIGN_STUDIO' && designSubFilter === 'ALL'
-                        ? 'bg-slate-900 text-white'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    All ({designQueue.length})
-                  </button>
-                  <button
-                    onClick={() => {
-                      setActiveTab('DESIGN_STUDIO');
-                      setDesignSubFilter('ACTIVE');
-                    }}
-                    className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
-                      activeTab === 'DESIGN_STUDIO' && designSubFilter === 'ACTIVE'
-                        ? 'bg-amber-300 text-slate-900 border border-slate-300'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Needs Design ({activeOrders.length})
-                  </button>
-                  <button
-                    onClick={() => {
-                      setActiveTab('DESIGN_STUDIO');
-                      setDesignSubFilter('NEEDS_OE_CONFIRMATION');
-                    }}
-                    className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
-                      activeTab === 'DESIGN_STUDIO' && designSubFilter === 'NEEDS_OE_CONFIRMATION'
-                        ? 'bg-blue-600 text-white'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                    title="Orders where prepress uploaded candidate works awaiting OE confirmation"
-                  >
-                    Awaiting OE ({needsConfirmationOrders.length})
-                  </button>
-                  <button
-                    onClick={() => {
-                      setActiveTab('PASSED_TO_PRODUCTION');
-                      setDesignSubFilter('PASSED');
-                    }}
-                    className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
-                      activeTab === 'PASSED_TO_PRODUCTION' || designSubFilter === 'PASSED'
-                        ? 'bg-emerald-600 text-white'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Passed ({passedOrders.length})
-                  </button>
-                </div>
-
                 {/* Scope selector */}
-                {isDesigner ? (
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-bold">
-                    <UserCheck className="h-3.5 w-3.5 text-amber-600" />
-                    <span>My Assigned &amp; Passed Orders</span>
-                  </div>
-                ) : (
+                <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg p-1 shadow-2xs">
                   <select
                     value={scopeFilter}
                     onChange={(e) => setScopeFilter(e.target.value as any)}
-                    className="text-[11px] font-bold px-2 py-1 rounded bg-white border border-slate-200 text-slate-700"
+                    className="text-[11.5px] font-bold px-2 py-1 rounded bg-transparent border-0 text-slate-700 cursor-pointer focus:outline-none"
                   >
+                    <option value="ALL">All Studio Orders ({designQueue.length})</option>
                     <option value="MINE">My Assigned Orders</option>
-                    <option value="ALL">All Studio Orders</option>
                   </select>
-                )}
+                </div>
 
                 <button
                   onClick={fetchDesignQueue}
@@ -995,32 +1059,100 @@ export default function ArtworkPrepressPage() {
               </div>
             </div>
 
+            {/* Kanban Stage Gate Tabs */}
+            <div className="px-4 py-2.5 bg-slate-50/70 border-b border-slate-200 flex items-center gap-2 overflow-x-auto no-scrollbar">
+              {/* ALL TAB */}
+              <button
+                onClick={() => setKanbanStageTab('ALL')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11.5px] font-bold transition shrink-0 shadow-2xs ${
+                  kanbanStageTab === 'ALL'
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-white text-slate-700 hover:text-slate-950 border border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <span>All Orders</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                    kanbanStageTab === 'ALL' ? 'bg-slate-700 text-slate-100' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {designQueue.length}
+                </span>
+              </button>
+
+              {/* DYNAMIC KANBAN COLUMNS */}
+              {columns.map((col) => {
+                const count = designQueue.filter((o) => deduceKanbanStage(o, stageOverrides) === col.key).length;
+                const isActive = kanbanStageTab === col.key;
+                return (
+                  <button
+                    key={col.key}
+                    onClick={() => setKanbanStageTab(col.key)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-[11.5px] font-bold transition shrink-0 shadow-2xs ${
+                      isActive
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-white text-slate-700 hover:text-slate-950 border border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0 shadow-2xs"
+                      style={{ backgroundColor: col.color || '#F59E0B' }}
+                    />
+                    <span>{col.name}</span>
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                        isActive ? 'bg-slate-700 text-slate-100' : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Search filter input strip */}
+            <div className="px-4 py-2 bg-white border-b border-slate-100 flex items-center gap-2">
+              <div className="relative flex-1">
+                <Filter className="h-3.5 w-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Filter by Order #, Customer Name, or Product..."
+                  value={designSearch}
+                  onChange={(e) => setDesignSearch(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1 text-xs bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200 rounded-md text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500 transition"
+                />
+              </div>
+              {designSearch && (
+                <button
+                  onClick={() => setDesignSearch('')}
+                  className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 px-2 py-1"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
             {displayedOrders.length === 0 ? (
               <div className="p-10 text-center text-slate-500">
-                {activeTab === 'PASSED_TO_PRODUCTION' || designSubFilter === 'PASSED' ? (
-                  <>
-                    <CheckCircle className="h-10 w-10 text-slate-300 mx-auto mb-2" />
-                    <p className="text-[14px] font-medium text-slate-700">No Production Orders Found</p>
-                    <p className="text-[12px] text-slate-400 mt-1">Orders will appear here once designs are completed and released to Production.</p>
-                  </>
-                ) : (
-                  <>
-                    <Paintbrush className="h-10 w-10 text-slate-300 mx-auto mb-2" />
-                    <p className="text-[14px] font-medium text-slate-700">No Orders in Design Queue</p>
-                    <p className="text-[12px] text-slate-400 mt-1">All design service requests have been completed and released to Production.</p>
-                    {passedOrders.length > 0 && (
-                      <button
-                        onClick={() => {
-                          setActiveTab('PASSED_TO_PRODUCTION');
-                          setDesignSubFilter('PASSED');
-                        }}
-                        className="mt-4 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition"
-                      >
-                        <CheckCircle className="h-3.5 w-3.5" />
-                        <span>View Passed Designs ({passedOrders.length})</span>
-                      </button>
-                    )}
-                  </>
+                <Paintbrush className="h-10 w-10 text-slate-300 mx-auto mb-2" />
+                <p className="text-[14px] font-medium text-slate-700">
+                  {kanbanStageTab === 'ALL'
+                    ? 'No Orders in Design Studio Queue'
+                    : `No Orders in "${columns.find((c) => c.key === kanbanStageTab)?.name || kanbanStageTab}" Stage`}
+                </p>
+                <p className="text-[12px] text-slate-400 mt-1">
+                  {kanbanStageTab === 'ALL'
+                    ? 'All design service requests have been completed or no matching orders found.'
+                    : `Switch to "All Orders" or another stage to view active prepress orders.`}
+                </p>
+                {kanbanStageTab !== 'ALL' && (
+                  <button
+                    onClick={() => setKanbanStageTab('ALL')}
+                    className="mt-4 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm transition"
+                  >
+                    <span>View All Studio Orders ({designQueue.length})</span>
+                  </button>
                 )}
               </div>
             ) : (
@@ -1029,13 +1161,20 @@ export default function ArtworkPrepressPage() {
                   const orderKey = order.id || order.orderId || `design-queue-item-${order.orderNumber || idx}`;
                   const isSelected = (selectedDesignOrder?.id || selectedDesignOrder?.orderId) === (order.id || order.orderId);
                   const item = order.items?.[0];
+                  const stageKey = deduceKanbanStage(order, stageOverrides);
+                  const stageCol = columns.find((c) => c.key === stageKey) || DEFAULT_PREPRESS_COLUMNS.find((c) => c.key === stageKey) || {
+                    name: stageKey.replace(/_/g, ' '),
+                    color: '#64748B',
+                  };
+                  const isPassed = stageKey === 'READY_TO_PRINT' || Boolean(order.isPassedToProduction);
+
                   return (
                     <div
                       key={orderKey}
                       onClick={() => setSelectedDesignOrder(order)}
                       className={`p-4 cursor-pointer transition-colors ${
                         isSelected
-                          ? isPassedOrder(order)
+                          ? isPassed
                             ? 'bg-emerald-50/70 border-l-4 border-l-emerald-500'
                             : 'bg-amber-50/60 border-l-4 border-l-amber-400'
                           : 'hover:bg-slate-50'
@@ -1050,24 +1189,27 @@ export default function ArtworkPrepressPage() {
                             <span className="text-[13px] font-semibold text-slate-800">
                               {order.customer?.fullName || 'Customer'}
                             </span>
-                            {order.revisionDirectives ? (
+
+                            {/* Kanban Stage Badge */}
+                            <span
+                              className="text-[10.5px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1.5 shadow-2xs"
+                              style={{
+                                backgroundColor: `${stageCol.color}15`,
+                                color: stageCol.color,
+                                borderColor: `${stageCol.color}40`,
+                              }}
+                            >
+                              <span
+                                className="w-2 h-2 rounded-full shrink-0"
+                                style={{ backgroundColor: stageCol.color }}
+                              />
+                              <span>{stageCol.name}</span>
+                            </span>
+
+                            {order.revisionDirectives && (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1 shadow-2xs">
                                 <AlertTriangle className="h-3 w-3 text-rose-600" />
                                 REVISION NEEDED
-                              </span>
-                            ) : isPassedOrder(order) ? (
-                              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1 shadow-2xs">
-                                <CheckCircle className="h-3 w-3 text-emerald-600" />
-                                IN PRODUCTION
-                              </span>
-                            ) : isAwaitingOE(order) ? (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-300 flex items-center gap-1 shadow-2xs">
-                                <Clock className="h-3 w-3 text-blue-600" />
-                                AWAITING OE
-                              </span>
-                            ) : (
-                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
-                                DESIGN SERVICE
                               </span>
                             )}
                           </div>
@@ -1080,21 +1222,21 @@ export default function ArtworkPrepressPage() {
                               <RotateCcw className="h-3.5 w-3.5 text-rose-600 shrink-0" />
                               <span className="truncate">OE Directive: {order.revisionDirectives}</span>
                             </div>
-                          ) : isPassedOrder(order) && (
+                          ) : isPassed && (
                             <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-800 bg-slate-100/90 border border-slate-200/90 rounded-md px-2.5 py-1 mt-1">
                               <ArrowRight className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                              <span>Current Stage: <strong className="text-emerald-950 font-bold">{order.passedToStation}</strong></span>
+                              <span>Current Stage: <strong className="text-emerald-950 font-bold">{order.passedToStation || 'Ready to Print'}</strong></span>
                             </div>
                           )}
 
                           <div className="flex flex-wrap items-center gap-2.5 mt-1 text-[11px] text-slate-500">
                             <span className="flex items-center gap-1 font-mono">
                               <Clock className="h-3 w-3" />
-                              {isPassedOrder(order) && order.passedAt
+                              {isPassed && order.passedAt
                                 ? `Passed: ${new Date(order.passedAt).toLocaleDateString()}`
                                 : `Created: ${new Date(order.createdAt).toLocaleDateString()}`}
                             </span>
-                            {isPassedOrder(order) && order.passedByDesigner && (
+                            {isPassed && order.passedByDesigner && (
                               <span className="flex items-center gap-1 font-mono text-purple-800 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
                                 <UserCheck className="h-3 w-3 text-purple-600" />
                                 By: {order.passedByDesigner}
@@ -1116,38 +1258,31 @@ export default function ArtworkPrepressPage() {
                         </div>
 
                         <div className="text-right shrink-0">
-                          {order.isPassedToProduction ? (
-                            <>
-                              <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded bg-slate-900 text-white shadow-2xs block">
-                                {order.passedToStageBadge || 'PASSED'}
-                              </span>
-                              {order.latestArtworkVersion?.storageKey && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    downloadFile(
-                                      order.latestArtworkVersion.storageKey,
-                                      `${order.orderNumber}_Proof.png`,
-                                    );
-                                  }}
-                                  className="mt-2 text-[10.5px] text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded inline-flex items-center gap-1 font-semibold cursor-pointer"
-                                  title="Download Proof Image"
-                                >
-                                  <Download className="h-3 w-3" />
-                                  Proof
-                                </button>
-                              )}
-                            </>
-                          ) : (
-                            <>
-                              <span className="text-[11px] font-bold px-2.5 py-1 rounded bg-amber-100 text-amber-900 border border-amber-200 block">
-                                {order.currentStatus}
-                              </span>
-                              <span className="text-[11px] font-mono text-slate-500 block mt-2">
-                                {order.assignedDesignerId ? 'Assigned' : 'Unassigned'}
-                              </span>
-                            </>
+                          <span
+                            className="text-[10px] font-mono font-bold px-2.5 py-1 rounded block shadow-2xs text-white"
+                            style={{ backgroundColor: stageCol.color }}
+                          >
+                            {stageCol.name.toUpperCase()}
+                          </span>
+                          <span className="text-[11px] font-mono text-slate-500 block mt-1.5">
+                            {order.assignedDesignerId ? 'Assigned' : 'Unassigned'}
+                          </span>
+                          {order.latestArtworkVersion?.storageKey && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                downloadFile(
+                                  order.latestArtworkVersion.storageKey,
+                                  `${order.orderNumber}_Proof.png`,
+                                );
+                              }}
+                              className="mt-1.5 text-[10.5px] text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded inline-flex items-center gap-1 font-semibold cursor-pointer"
+                              title="Download Proof Image"
+                            >
+                              <Download className="h-3 w-3" />
+                              Proof
+                            </button>
                           )}
                         </div>
                       </div>
@@ -1166,9 +1301,26 @@ export default function ArtworkPrepressPage() {
                   <span className="text-[11px] font-mono font-bold uppercase text-amber-600">
                     DESIGN STUDIO WORKBENCH
                   </span>
-                  <h3 className="text-[17px] font-bold text-slate-900 mt-0.5">
-                    Order #{selectedDesignOrder.orderNumber}
-                  </h3>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <h3 className="text-[17px] font-bold text-slate-900">
+                      Order #{selectedDesignOrder.orderNumber}
+                    </h3>
+                    {(() => {
+                      const selStageKey = deduceKanbanStage(selectedDesignOrder, stageOverrides);
+                      const selStageCol = columns.find((c) => c.key === selStageKey) || DEFAULT_PREPRESS_COLUMNS.find((c) => c.key === selStageKey) || {
+                        name: selStageKey.replace(/_/g, ' '),
+                        color: '#64748B',
+                      };
+                      return (
+                        <span
+                          className="text-[10px] font-mono font-bold px-2 py-0.5 rounded text-white shadow-2xs"
+                          style={{ backgroundColor: selStageCol.color }}
+                        >
+                          {selStageCol.name.toUpperCase()}
+                        </span>
+                      );
+                    })()}
+                  </div>
                   
                   {/* Customer Information & Contact Details */}
                   <div className="mt-2 space-y-1.5">
@@ -2157,10 +2309,10 @@ export default function ArtworkPrepressPage() {
                   <div>
                     <h4 className="text-[12px] font-bold text-slate-800 uppercase tracking-wider mb-1 flex items-center gap-1.5">
                       <UploadCloud className="h-4 w-4 text-slate-700" />
-                      <span>Upload Artwork Candidate Works (Direct Production Release)</span>
+                      <span>Upload Candidate Design Works (Submit for OE Confirmation)</span>
                     </h4>
                     <p className="text-[12px] text-slate-500 mb-2.5">
-                      Prepress designers can select and upload candidate designs, variations, or production proofs (PDF / AI / TIFF / PNG / JPG). Uploaded work automatically approves and releases directly to the Production Queue with Job Cards generated.
+                      Prepress designers can select and upload candidate designs, variations, or production proofs (PDF / AI / TIFF / PNG / JPG). Uploaded work routes directly to Operations (OE) for inspection, final confirmation, and operator assignment.
                     </p>
 
                     {/* Multi-File Upload Input & Drag Area */}
@@ -2298,7 +2450,7 @@ export default function ArtworkPrepressPage() {
                         I have reviewed and verified customer specifications for these candidate designs
                       </span>
                       <span className="text-[11px] text-amber-800 block mt-0.5">
-                        Confirming that candidate artworks strictly adhere to customer specifications and are ready for direct release to the shop-floor Production Queue.
+                        Confirming that candidate artworks strictly adhere to customer specifications and are ready for OE review and production sign-off.
                       </span>
                     </div>
                   </label>
@@ -2311,10 +2463,10 @@ export default function ArtworkPrepressPage() {
                     <UploadCloud className="h-4 w-4" />
                     <span>
                       {isSubmittingDesign
-                        ? 'Uploading & Releasing Directly to Production...'
+                        ? 'Uploading & Routing to Operations (OE)...'
                         : stagedFiles.length > 1
-                          ? `UPLOAD ${stagedFiles.length} CANDIDATE WORKS & MOVE DIRECT TO PRODUCTION`
-                          : 'UPLOAD CANDIDATE WORK & MOVE DIRECT TO PRODUCTION'}
+                          ? `SUBMIT ${stagedFiles.length} CANDIDATE WORKS FOR OE CONFIRMATION`
+                          : 'SUBMIT CANDIDATE WORK FOR OE CONFIRMATION'}
                     </span>
                   </button>
                 </div>
