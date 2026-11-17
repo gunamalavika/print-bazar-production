@@ -27,12 +27,13 @@ export class PackingController {
     UserRole.ADMIN_MANAGER,
     UserRole.DISPATCH_LOGISTICS,
   )
-  @ApiOperation({ summary: 'Get live orders waiting in PACKING stage' })
+  @ApiOperation({ summary: 'Get live orders waiting in PACKING stage or DISPATCHED' })
   async getPackingQueue(
     @Query('search') search?: string,
     @Query('priority') priority?: string,
+    @Query('status') status?: string,
   ) {
-    return this.packingService.getPackingQueue(search, priority);
+    return this.packingService.getPackingQueue(search, priority, status);
   }
 
   @Get('materials')

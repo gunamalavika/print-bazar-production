@@ -1061,10 +1061,11 @@ export const api = {
     }),
 
   // Packing & Dispatch
-  getPackingQueue: (query?: { search?: string; priority?: string }) => {
+  getPackingQueue: (query?: { search?: string; priority?: string; status?: string }) => {
     const params = new URLSearchParams();
     if (query?.search) params.append('search', query.search);
     if (query?.priority && query.priority !== 'ALL') params.append('priority', query.priority);
+    if (query?.status) params.append('status', query.status);
     return fetchApi<any[]>(`/packing/queue?${params.toString()}`);
   },
   getPackagingMaterials: () => fetchApi<any[]>('/packing/materials'),
@@ -1136,7 +1137,8 @@ export const api = {
       lengthCm?: number;
       widthCm?: number;
       heightCm?: number;
-      targetStatus: 'READY_FOR_DISPATCH' | 'OUT_FOR_DELIVERY' | 'DELIVERED';
+      targetOrderStatus?: 'READY_FOR_DISPATCH' | 'OUT_FOR_DELIVERY' | 'DELIVERED';
+      targetStatus?: 'READY_FOR_DISPATCH' | 'OUT_FOR_DELIVERY' | 'DELIVERED';
       receiverName?: string;
       receiverPhone?: string;
       dispatchNotes?: string;

@@ -37,7 +37,8 @@ export interface ManualCourierUpdateDto {
   lengthCm?: number;
   widthCm?: number;
   heightCm?: number;
-  targetOrderStatus: 'READY_FOR_DISPATCH' | 'OUT_FOR_DELIVERY' | 'DELIVERED';
+  targetOrderStatus?: 'READY_FOR_DISPATCH' | 'OUT_FOR_DELIVERY' | 'DELIVERED';
+  targetStatus?: 'READY_FOR_DISPATCH' | 'OUT_FOR_DELIVERY' | 'DELIVERED';
   targetShipmentStatus?:
     | 'CREATED'
     | 'MANIFESTED'
@@ -143,7 +144,7 @@ export class DispatchService {
     } else if (tab === 'STORE_PICKUP') {
       andConditions.push({
         deliveryMethod: DeliveryMethod.STORE_PICKUP,
-        status: { notIn: [OrderStatus.CANCELLED] },
+        status: { in: [OrderStatus.PACKING, OrderStatus.READY_FOR_DISPATCH] },
       });
     } else if (tab === 'DELIVERED') {
       andConditions.push({
@@ -356,8 +357,15 @@ export class DispatchService {
       order.packages?.[0]?.shipment?.trackingUrl ||
       (isStorePickup ? '' : this.buildDefaultTrackingUrl(courierName, rawAwb));
 
-    const targetOrderStatus: OrderStatus =
-      (dto.targetOrderStatus as OrderStatus) || OrderStatus.OUT_FOR_DELIVERY;
+    const rawTarget = (dto.targetOrderStatus || dto.targetStatus || '').trim().toUpperCase();
+    let targetOrderStatus: OrderStatus = OrderStatus.OUT_FOR_DELIVERY;
+    if (rawTarget === 'DELIVERED') {
+      targetOrderStatus = OrderStatus.DELIVERED;
+    } else if (rawTarget === 'READY_FOR_DISPATCH') {
+      targetOrderStatus = OrderStatus.READY_FOR_DISPATCH;
+    } else if (rawTarget === 'OUT_FOR_DELIVERY') {
+      targetOrderStatus = OrderStatus.OUT_FOR_DELIVERY;
+    }
 
     // Determine CustomerVisibleStatus
     let targetCustomerStatus: CustomerVisibleStatus = CustomerVisibleStatus.OUT_FOR_DELIVERY;

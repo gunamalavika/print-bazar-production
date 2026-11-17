@@ -6,6 +6,7 @@ import {
   RiBox3Line,
   RiAddLine,
   RiCheckboxCircleLine,
+  RiCheckboxCircleFill,
   RiErrorWarningLine,
 } from 'react-icons/ri';
 import { PackingJobDto } from './PackingJobCard';
@@ -36,6 +37,7 @@ interface CartonPackingFormProps {
   onAddCarton: (carton: PackagingCartonItem) => void;
   currentSequenceNumber: number;
   scaleWeightKg: number | null;
+  isCompleted?: boolean;
 }
 
 export function CartonPackingForm({
@@ -44,6 +46,7 @@ export function CartonPackingForm({
   onAddCarton,
   currentSequenceNumber,
   scaleWeightKg,
+  isCompleted = false,
 }: CartonPackingFormProps) {
   const item = job.items?.[0];
   const qty = item?.quantity || 100;
@@ -272,14 +275,21 @@ export function CartonPackingForm({
         )}
       </div>
 
-      {/* Action Button: Dark Crisp button, preserving Yellow for Complete Dispatch */}
-      <button
-        type="submit"
-        className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm py-3 rounded-xl shadow-xs transition active:scale-[0.99] cursor-pointer"
-      >
-        <RiAddLine className="h-4 w-4" />
-        <span>Record Carton #{currentSequenceNumber} & Add to Parcel</span>
-      </button>
+      {/* Action Button */}
+      {isCompleted ? (
+        <div className="w-full flex items-center justify-center gap-2 bg-slate-100 text-slate-600 font-bold text-xs sm:text-sm py-3 rounded-xl border border-slate-200">
+          <RiCheckboxCircleFill className="h-4 w-4 text-emerald-600" />
+          <span>Cartons Recorded & Sealed (Order Dispatched)</span>
+        </div>
+      ) : (
+        <button
+          type="submit"
+          className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm py-3 rounded-xl shadow-xs transition active:scale-[0.99] cursor-pointer"
+        >
+          <RiAddLine className="h-4 w-4" />
+          <span>Record Carton #{currentSequenceNumber} & Add to Parcel</span>
+        </button>
+      )}
     </form>
   );
 }

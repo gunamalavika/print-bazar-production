@@ -107,23 +107,30 @@ export class PackingService {
     private readonly auditService: AuditService,
     private readonly eventEmitter: EventEmitter2,
     private readonly workflowState: WorkflowStateService,
-  ) {}
+  ) { }
 
   /**
-   * Get all orders waiting in PACKING state (passed Final QC)
+   * Get all orders waiting in PACKING state (passed Final QC) or DISPATCHED
    */
-  async getPackingQueue(search?: string, priority?: string) {
+  async getPackingQueue(search?: string, priority?: string, status?: string) {
+    let statusFilter: Prisma.OrderWhereInput['status'] = OrderStatus.PACKING;
+    if (status === 'DISPATCHED' || status === 'READY_FOR_DISPATCH') {
+      statusFilter = { in: [OrderStatus.READY_FOR_DISPATCH, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED] };
+    } else if (status === 'ALL') {
+      statusFilter = { in: [OrderStatus.PACKING, OrderStatus.READY_FOR_DISPATCH, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED] };
+    }
+
     const where: Prisma.OrderWhereInput = {
-      status: OrderStatus.PACKING,
+      status: statusFilter,
       ...(priority && priority !== 'ALL' ? { priority: priority as any } : {}),
       ...(search
         ? {
-            OR: [
-              { orderNumber: { contains: search, mode: 'insensitive' } },
-              { customer: { fullName: { contains: search, mode: 'insensitive' } } },
-              { items: { some: { productName: { contains: search, mode: 'insensitive' } } } },
-            ],
-          }
+          OR: [
+            { orderNumber: { contains: search, mode: 'insensitive' } },
+            { customer: { fullName: { contains: search, mode: 'insensitive' } } },
+            { items: { some: { productName: { contains: search, mode: 'insensitive' } } } },
+          ],
+        }
         : {}),
     };
 

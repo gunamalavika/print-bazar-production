@@ -10,6 +10,7 @@ import {
   RiSparklingLine,
   RiTruckLine,
   RiStore2Line,
+  RiSendPlaneLine,
 } from 'react-icons/ri';
 import { PackingJobDto } from './PackingJobCard';
 
@@ -21,12 +22,32 @@ export function JobDetailsPanel({ job }: JobDetailsPanelProps) {
   const item = job.items?.[0];
   const specs = (item?.specifications as any) || {};
 
+  const isDispatched =
+    job.status === 'READY_FOR_DISPATCH' ||
+    job.status === 'OUT_FOR_DELIVERY' ||
+    job.status === 'DELIVERED';
+
+  const trackingAwb =
+    job.packages?.[0]?.shipment?.awbNumber ||
+    job.packages?.[0]?.barcode ||
+    null;
+
+  const courierName =
+    job.packages?.[0]?.shipment?.courierName ||
+    (job.deliveryMethod === 'STORE_PICKUP' ? 'Store Pickup Counter' : 'Courier Surface');
+
   return (
     <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs space-y-3.5">
       {/* Top Header: Order Number + Product Title + Run Qty */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
         <div className="flex items-center gap-2.5">
-          <span className="font-mono font-black text-amber-950 bg-amber-100 border border-amber-300 text-sm px-2.5 py-1 rounded-lg">
+          <span
+            className={`font-mono font-black text-sm px-2.5 py-1 rounded-lg border ${
+              isDispatched
+                ? 'text-emerald-950 bg-emerald-100 border-emerald-300'
+                : 'text-amber-950 bg-amber-100 border-amber-300'
+            }`}
+          >
             #{job.orderNumber}
           </span>
           <div>
@@ -41,12 +62,39 @@ export function JobDetailsPanel({ job }: JobDetailsPanelProps) {
           <span className="font-mono font-bold text-slate-900 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg text-xs">
             RUN: {item?.quantity?.toLocaleString() || 100} PCS
           </span>
-          <span className="inline-flex items-center gap-1 font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg text-xs">
-            <RiCheckboxCircleFill className="h-3.5 w-3.5 text-emerald-600" />
-            FINAL QC PASSED
-          </span>
+          {isDispatched ? (
+            <span className="inline-flex items-center gap-1 font-mono font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-lg text-xs">
+              <RiCheckboxCircleFill className="h-3.5 w-3.5 text-emerald-600" />
+              RELEASED TO DISPATCH
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg text-xs">
+              <RiCheckboxCircleFill className="h-3.5 w-3.5 text-emerald-600" />
+              FINAL QC PASSED
+            </span>
+          )}
         </div>
       </div>
+
+      {/* Dispatched Confirmation Bar */}
+      {isDispatched && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-2">
+          <div className="flex items-center gap-2 font-mono">
+            <RiSendPlaneLine className="h-4 w-4 text-emerald-600 shrink-0" />
+            <span className="font-bold text-emerald-950">
+              Dispatched via {courierName}
+            </span>
+            {trackingAwb && (
+              <span className="bg-white px-2 py-0.5 rounded border border-emerald-300 text-emerald-900 font-bold">
+                Tracking: {trackingAwb}
+              </span>
+            )}
+          </div>
+          <span className="text-[11px] font-bold text-emerald-700 font-mono">
+            Ready for Courier Manifest / Handover
+          </span>
+        </div>
+      )}
 
       {/* Specifications Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
@@ -60,7 +108,7 @@ export function JobDetailsPanel({ job }: JobDetailsPanelProps) {
         <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
           <span className="text-slate-400 text-[10px] font-bold uppercase block">Finishing & Coating</span>
           <span className="font-bold text-slate-900 truncate block">
-            {specs.finish || specs.options?.find((o: any) => o.optionName?.includes('Finish') || o.optionName?.includes('Lamination'))?.valueName || 'Thermal Matte'}
+            {specs.coating || specs.lamination || 'Thermal Matte'}
           </span>
         </div>
 

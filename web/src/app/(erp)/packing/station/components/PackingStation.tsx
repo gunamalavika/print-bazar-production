@@ -22,6 +22,7 @@ import {
   RiRefreshLine,
   RiArrowLeftLine,
   RiFileList3Line,
+  RiTruckLine,
 } from 'react-icons/ri';
 import { Button } from '@/components/ui';
 
@@ -67,13 +68,14 @@ const DEFAULT_MATERIALS = [
 export function PackingStation() {
   const { user } = useAuth();
 
-  // Data state
+  // Data state: Pending packing jobs + Dispatched jobs
   const [jobs, setJobs] = useState<PackingJobDto[]>([]);
+  const [dispatchedJobs, setDispatchedJobs] = useState<PackingJobDto[]>([]);
   const [materials, setMaterials] = useState(DEFAULT_MATERIALS);
   const [selectedJob, setSelectedJob] = useState<PackingJobDto | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [search, setSearch] = useState('');
-  const [filterTab, setFilterTab] = useState('ALL');
+  const [filterTab, setFilterTab] = useState('ALL'); // 'ALL' | 'URGENT' | 'COURIER' | 'PICKUP' | 'DISPATCHED'
 
   // Workstation state
   const [cartons, setCartons] = useState<PackagingCartonItem[]>([]);
@@ -94,32 +96,35 @@ export function PackingStation() {
   const [scaleWeightKg, setScaleWeightKg] = useState<number | null>(null);
   const printerName = 'Zebra ZT411 (4×6 Thermal)';
 
-  const fetchQueue = useCallback(async () => {
+  const fetchQueue = useCallback(async (preferredJobId?: string) => {
     setIsLoading(true);
     try {
-      const [queueData, matsData] = await Promise.all([
-        api.getPackingQueue({ search: search || undefined }),
+      const [queueData, dispatchedData, matsData] = await Promise.all([
+        api.getPackingQueue({ status: 'PACKING', search: search || undefined }),
+        api.getPackingQueue({ status: 'DISPATCHED', search: search || undefined }),
         api.getPackagingMaterials().catch(() => DEFAULT_MATERIALS),
       ]);
 
-      const queueList = queueData || [];
+      const queueList: PackingJobDto[] = queueData || [];
+      const dispatchedList: PackingJobDto[] = dispatchedData || [];
+
       setJobs(queueList);
+      setDispatchedJobs(dispatchedList);
       if (matsData && matsData.length > 0) {
         setMaterials(matsData);
       }
 
-      // If selected job is not in queue anymore, select first
-      if (queueList.length > 0) {
-        setSelectedJob((prev) => {
-          if (prev) {
-            const found = queueList.find((j: any) => j.id === prev.id);
-            return found || queueList[0];
-          }
-          return queueList[0];
-        });
-      } else {
-        setSelectedJob(null);
-      }
+      // Maintain or select target job
+      setSelectedJob((prev) => {
+        const targetId = preferredJobId || prev?.id;
+        if (targetId) {
+          const inPending = queueList.find((j) => j.id === targetId);
+          if (inPending) return inPending;
+          const inDispatched = dispatchedList.find((j) => j.id === targetId);
+          if (inDispatched) return inDispatched;
+        }
+        return queueList[0] || dispatchedList[0] || null;
+      });
     } catch (err: any) {
       console.error('Error fetching packing queue:', err);
     } finally {
@@ -131,14 +136,38 @@ export function PackingStation() {
     fetchQueue();
   }, [fetchQueue]);
 
-  // Reset workstation state when selecting a new job
+  // Select a job (either from Pending or Dispatched tab)
   const handleSelectJob = (job: PackingJobDto) => {
     setSelectedJob(job);
-    setCartons([]);
-    setLabelPrinted(false);
-    setPrintCount(0);
-    setIsCompleted(false);
+    const isJobDispatched =
+      job.status === 'READY_FOR_DISPATCH' ||
+      job.status === 'OUT_FOR_DELIVERY' ||
+      job.status === 'DELIVERED';
+
+    setIsCompleted(isJobDispatched);
+    setLabelPrinted(isJobDispatched);
+    setPrintCount(isJobDispatched ? 1 : 0);
     setScaleWeightKg(null);
+
+    // If job was already packed & dispatched, populate cartons from its saved packages
+    if (job.packages && job.packages.length > 0) {
+      setCartons(
+        job.packages.map((p) => ({
+          id: p.id,
+          sequenceNumber: p.sequenceNumber,
+          cartonType: p.cartonType || 'PB-BOX-02',
+          lengthCm: p.lengthCm,
+          widthCm: p.widthCm,
+          heightCm: p.heightCm,
+          tareWeightKg: 0.18,
+          grossWeightKg: (p.grossWeightGrams || 850) / 1000,
+          isWeightVerified: true,
+        }))
+      );
+    } else {
+      setCartons([]);
+    }
+
     setMobileView('STATION'); // Automatically switch to station workspace on mobile
   };
 
@@ -256,17 +285,52 @@ export function PackingStation() {
         stationPrinter: printerName,
       });
 
+      // Construct immediate dispatched job representation
+      const dispatchedJob: PackingJobDto = {
+        ...selectedJob,
+        status: 'READY_FOR_DISPATCH',
+        packages: activeCartons.map((c) => ({
+          id: c.id,
+          packageNumber: `${selectedJob.orderNumber}-PKG-${c.sequenceNumber.toString().padStart(2, '0')}`,
+          sequenceNumber: c.sequenceNumber,
+          totalPackages: activeCartons.length,
+          grossWeightGrams: Math.round(c.grossWeightKg * 1000),
+          lengthCm: c.lengthCm,
+          widthCm: c.widthCm,
+          heightCm: c.heightCm,
+          barcode: `BAR-${selectedJob.orderNumber}-${c.sequenceNumber}`,
+          status: 'SEALED',
+          cartonType: c.cartonType,
+          shipment: {
+            awbNumber: trackingNumber.trim(),
+            courierName:
+              courierName ||
+              (selectedJob.deliveryMethod === 'STORE_PICKUP'
+                ? 'Store Pickup Counter'
+                : 'Delhivery Surface Express'),
+          },
+        })),
+      };
+
+      // Instantly update lists
+      setDispatchedJobs((prev) => [dispatchedJob, ...prev.filter((j) => j.id !== selectedJob.id)]);
+      setJobs((prev) => prev.filter((j) => j.id !== selectedJob.id));
+
+      setSelectedJob(dispatchedJob);
       setIsTrackingModalOpen(false);
       setIsCompleted(true);
+      setLabelPrinted(true);
+      setFilterTab('DISPATCHED'); // Switch to Dispatched tab!
+
       setBanner({
         type: 'success',
-        message: `Order #${selectedJob.orderNumber} packing completed (Tracking: ${trackingNumber})! Successfully released to Dispatch Manifest.`,
+        message: `Order #${selectedJob.orderNumber} packing completed (Tracking: ${trackingNumber})! Successfully released to Dispatch Manifest. View under Dispatched tab.`,
       });
 
-      // Refresh queue to remove completed job
+      // Sync from backend
       setTimeout(() => {
-        fetchQueue();
-      }, 1500);
+        fetchQueue(dispatchedJob.id);
+      }, 1200);
     } catch (err: any) {
       setBanner({
         type: 'error',
@@ -292,7 +356,7 @@ export function PackingStation() {
     <div className="mx-auto max-w-[1600px] space-y-5 pb-12">
       {/* 1. Station Header */}
       <PackingStationHeader
-        onRefresh={fetchQueue}
+        onRefresh={() => fetchQueue()}
         isLoading={isLoading}
         scaleWeightKg={scaleWeightKg}
         printerName={printerName}
@@ -365,7 +429,13 @@ export function PackingStation() {
           <RiBox3Line className="h-4 w-4" />
           <span>Active Station</span>
           {selectedJob && (
-            <span className="font-mono text-[10px] bg-amber-200 text-amber-950 px-1.5 py-0.2 rounded-full font-bold">
+            <span
+              className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                isCompleted
+                  ? 'bg-emerald-200 text-emerald-950'
+                  : 'bg-amber-200 text-amber-950'
+              }`}
+            >
               #{selectedJob.orderNumber}
             </span>
           )}
@@ -381,14 +451,15 @@ export function PackingStation() {
           }`}
         >
           <PackingJobQueue
-            jobs={jobs}
+            pendingJobs={jobs}
+            dispatchedJobs={dispatchedJobs}
             selectedJobId={selectedJob?.id || null}
             onSelectJob={handleSelectJob}
             search={search}
             onSearchChange={setSearch}
             filterTab={filterTab}
             onFilterTabChange={setFilterTab}
-            onRefresh={fetchQueue}
+            onRefresh={() => fetchQueue()}
             isLoading={isLoading}
           />
         </div>
@@ -409,10 +480,16 @@ export function PackingStation() {
                   className="flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-slate-950 cursor-pointer"
                 >
                   <RiArrowLeftLine className="h-4 w-4" />
-                  <span>Back to Queue ({jobs.length} jobs)</span>
+                  <span>Back to Queue</span>
                 </button>
-                <span className="font-mono text-xs font-bold text-slate-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded">
-                  #{selectedJob.orderNumber}
+                <span
+                  className={`font-mono text-xs font-bold px-2 py-0.5 rounded border ${
+                    isCompleted
+                      ? 'text-emerald-900 bg-emerald-100 border-emerald-300'
+                      : 'text-slate-900 bg-amber-100 border-amber-300'
+                  }`}
+                >
+                  #{selectedJob.orderNumber} {isCompleted ? '✓ DISPATCHED' : ''}
                 </span>
               </div>
 
@@ -429,6 +506,7 @@ export function PackingStation() {
                     onAddCarton={handleAddCarton}
                     currentSequenceNumber={cartons.length + 1}
                     scaleWeightKg={scaleWeightKg}
+                    isCompleted={isCompleted}
                   />
 
                   <PackedCartonsTable
@@ -478,7 +556,7 @@ export function PackingStation() {
                   variant="primary"
                   size="md"
                   onClick={() => handleSelectJob(jobs[0])}
-                  className="mt-4 font-bold"
+                  className="mt-4 font-bold cursor-pointer"
                 >
                   <span>Open First Job (#{jobs[0].orderNumber})</span>
                 </Button>

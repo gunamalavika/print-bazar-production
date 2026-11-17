@@ -30,8 +30,13 @@ export function ShippingLabelPreview({
   const currentWeight = activeCarton ? activeCarton.grossWeightKg : 1.48;
 
   const addr = job.shippingAddress;
-  const courier = job.deliveryMethod === 'STORE_PICKUP' ? 'PRINT BAZZAR COUNTER PICKUP' : 'DELHIVERY SURFACE EXPEDITE';
-  const awb = `AWB-${job.orderNumber.replace(/[^a-zA-Z0-9]/g, '')}-${currentSeq}`;
+  const actualAwb =
+    job.packages?.[0]?.shipment?.awbNumber ||
+    job.packages?.[0]?.barcode ||
+    `AWB-${job.orderNumber.replace(/[^a-zA-Z0-9]/g, '')}-${currentSeq}`;
+  const courier =
+    job.packages?.[0]?.shipment?.courierName ||
+    (job.deliveryMethod === 'STORE_PICKUP' ? 'PRINT BAZZAR COUNTER PICKUP' : 'DELHIVERY SURFACE EXPEDITE');
 
   return (
     <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs space-y-3">

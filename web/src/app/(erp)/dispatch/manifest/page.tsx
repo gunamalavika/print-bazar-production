@@ -335,6 +335,7 @@ export default function DispatchStationPage() {
         lengthCm,
         widthCm,
         heightCm,
+        targetOrderStatus: targetStatus,
         targetStatus,
         receiverName: receiverName.trim() || undefined,
         receiverPhone: receiverPhone.trim() || undefined,
@@ -593,7 +594,6 @@ export default function DispatchStationPage() {
               { id: 'ALL', label: 'All Dispatch Queue' },
               { id: 'READY_FOR_DISPATCH', label: `Ready to Dispatch (${kpis.readyForDispatch})` },
               { id: 'IN_TRANSIT', label: `Dispatched / In Transit (${kpis.inTransit})` },
-              { id: 'STORE_PICKUP', label: `Store Pickup (${kpis.storePickupReady})` },
               { id: 'DELIVERED', label: `Delivered (${kpis.delivered})` },
             ].map((tab) => (
               <button
@@ -860,525 +860,559 @@ export default function DispatchStationPage() {
           MODAL 1: MANUAL COURIER, VERIFICATION CHECKLIST & STATUS UPDATE MODAL
          ============================================================================ */}
       {isUpdateModalOpen && selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-3xl w-full my-8 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-3xl w-full my-auto overflow-hidden flex flex-col max-h-[92vh]">
             {/* Modal Header */}
-            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
+            <div className="bg-slate-900 text-white px-5 sm:px-6 py-4 flex items-center justify-between shrink-0 border-b border-slate-800">
+              <div className="min-w-0 pr-3">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
                   <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-[#FFED00] text-slate-950 font-black">
                     MANUAL DISPATCH & COURIER CONTROL
                   </span>
-                  <span className="font-mono text-xs text-slate-300">#{selectedOrder.orderNumber}</span>
+                  <span className="font-mono text-xs font-bold text-slate-200 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                    #{selectedOrder.orderNumber}
+                  </span>
                 </div>
-                <h2 className="text-lg font-bold mt-1">
+                <h2 className="text-base sm:text-lg font-bold text-white tracking-tight leading-snug">
                   Manual Verification Check & Courier Tracking Update
                 </h2>
+                <p className="text-[11px] sm:text-xs text-slate-300 mt-0.5">
+                  Verify physical package details, assign courier AWB, and publish live delivery milestone to customer
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsUpdateModalOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0"
+                aria-label="Close modal"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveManualCourierUpdate} className="p-6 space-y-6 max-h-[82vh] overflow-y-auto">
-              {/* Customer & Order Snapshot Bar */}
-              <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div>
-                  <span className="text-[10px] font-mono uppercase text-slate-400 block">Recipient</span>
-                  <strong className="text-slate-900 block">
-                    {selectedOrder.shippingAddress?.recipientName || selectedOrder.customer?.fullName || 'Customer'}
-                  </strong>
-                  <span className="text-slate-500 font-mono text-[11px]">
-                    {selectedOrder.shippingAddress?.phone || selectedOrder.customer?.phone || ''}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] font-mono uppercase text-slate-400 block">Destination Address</span>
-                  {selectedOrder.shippingAddress ? (
-                    <span className="text-slate-700 text-[11px] block">
-                      {selectedOrder.shippingAddress.line1}, {selectedOrder.shippingAddress.city} —{' '}
-                      <strong className="font-mono">{selectedOrder.shippingAddress.postalCode}</strong>
+            <form onSubmit={handleSaveManualCourierUpdate} className="flex flex-col flex-1 overflow-hidden min-h-0">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+                {/* Customer & Order Snapshot Bar */}
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3.5 sm:p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <span className="text-[10px] font-mono uppercase text-slate-400 block">Recipient</span>
+                    <strong className="text-slate-900 block truncate">
+                      {selectedOrder.shippingAddress?.recipientName || selectedOrder.customer?.fullName || 'Customer'}
+                    </strong>
+                    <span className="text-slate-500 font-mono text-[11px]">
+                      {selectedOrder.shippingAddress?.phone || selectedOrder.customer?.phone || ''}
                     </span>
-                  ) : (
-                    <span className="text-slate-600 text-[11px] block">Store Counter Pickup</span>
-                  )}
-                </div>
-                <div>
-                  <span className="text-[10px] font-mono uppercase text-slate-400 block">Financial Clearance</span>
-                  {Number(selectedOrder.balanceAmount || 0) <= 0 ? (
-                    <span className="text-emerald-700 font-bold text-xs block">
-                      ✓ Paid ({formatCurrency(Number(selectedOrder.totalAmount || 0))})
-                    </span>
-                  ) : (
-                    <span className="text-rose-600 font-bold text-xs block">
-                      ⚠ Balance Due: {formatCurrency(Number(selectedOrder.balanceAmount || 0))}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* STEP 1: Manual Pre-Dispatch Verification Checklist */}
-              <div className="rounded-xl border border-amber-300 bg-amber-50/50 p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="h-4 w-4 text-amber-800" />
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                      1. Manual Pre-Dispatch Verification Checklist ({checkedCount}/5 Verified)
-                    </h3>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => toggleAllManualChecks(checkedCount < 5)}
-                    className="text-[11px] font-semibold text-amber-900 hover:underline"
-                  >
-                    {checkedCount < 5 ? 'Check All Verified' : 'Uncheck All'}
-                  </button>
+                  <div>
+                    <span className="text-[10px] font-mono uppercase text-slate-400 block">Destination Address</span>
+                    {selectedOrder.shippingAddress ? (
+                      <span className="text-slate-700 text-[11px] block line-clamp-2">
+                        {selectedOrder.shippingAddress.line1}, {selectedOrder.shippingAddress.city} —{' '}
+                        <strong className="font-mono">{selectedOrder.shippingAddress.postalCode}</strong>
+                      </span>
+                    ) : (
+                      <span className="text-slate-600 text-[11px] block">Store Counter Pickup</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-mono uppercase text-slate-400 block">Financial Clearance</span>
+                    {Number(selectedOrder.balanceAmount || 0) <= 0 ? (
+                      <span className="text-emerald-700 font-bold text-xs block">
+                        ✓ Paid ({formatCurrency(Number(selectedOrder.totalAmount || 0))})
+                      </span>
+                    ) : (
+                      <span className="text-rose-600 font-bold text-xs block">
+                        ⚠ Balance Due: {formatCurrency(Number(selectedOrder.balanceAmount || 0))}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-                  <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white border border-slate-200 cursor-pointer hover:border-slate-300">
-                    <input
-                      type="checkbox"
-                      checked={manualChecks.packageSealedAndLabeled}
-                      onChange={(e) =>
-                        setManualChecks((prev) => ({ ...prev, packageSealedAndLabeled: e.target.checked }))
-                      }
-                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
-                    />
-                    <div>
-                      <span className="font-semibold text-slate-900 block">
-                        Package Sealed & Weighed (Required)
-                      </span>
-                      <span className="text-[11px] text-slate-500">
-                        Carton sealed, moisture-wrapped, and weight verified on scale.
-                      </span>
+                {/* STEP 1: Manual Pre-Dispatch Verification Checklist */}
+                <div className="rounded-xl border border-amber-300 bg-amber-50/50 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-amber-800" />
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                        1. Manual Pre-Dispatch Verification Checklist ({checkedCount}/5 Verified)
+                      </h3>
                     </div>
-                  </label>
+                    <button
+                      type="button"
+                      onClick={() => toggleAllManualChecks(checkedCount < 5)}
+                      className="text-[11px] font-semibold text-amber-900 hover:underline"
+                    >
+                      {checkedCount < 5 ? 'Check All Verified' : 'Uncheck All'}
+                    </button>
+                  </div>
 
-                  <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white border border-slate-200 cursor-pointer hover:border-slate-300">
-                    <input
-                      type="checkbox"
-                      checked={manualChecks.addressAndPincodeVerified}
-                      onChange={(e) =>
-                        setManualChecks((prev) => ({ ...prev, addressAndPincodeVerified: e.target.checked }))
-                      }
-                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
-                    />
-                    <div>
-                      <span className="font-semibold text-slate-900 block">
-                        Address & PIN Code Verified (Required)
-                      </span>
-                      <span className="text-[11px] text-slate-500">
-                        Shipping label matches master order address & phone.
-                      </span>
-                    </div>
-                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                    <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white border border-slate-200 cursor-pointer hover:border-slate-300 transition">
+                      <input
+                        type="checkbox"
+                        checked={manualChecks.packageSealedAndLabeled}
+                        onChange={(e) =>
+                          setManualChecks((prev) => ({ ...prev, packageSealedAndLabeled: e.target.checked }))
+                        }
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                      />
+                      <div>
+                        <span className="font-semibold text-slate-900 block">
+                          Package Sealed & Weighed (Required)
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Carton sealed, moisture-wrapped, and weight verified on scale.
+                        </span>
+                      </div>
+                    </label>
 
-                  <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white border border-slate-200 cursor-pointer hover:border-slate-300">
-                    <input
-                      type="checkbox"
-                      checked={manualChecks.awbMatchedWithParcel}
-                      onChange={(e) =>
-                        setManualChecks((prev) => ({ ...prev, awbMatchedWithParcel: e.target.checked }))
-                      }
-                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
-                    />
-                    <div>
-                      <span className="font-semibold text-slate-900 block">
-                        Courier AWB Matched with Parcel
-                      </span>
-                      <span className="text-[11px] text-slate-500">
-                        Consignment AWB number verified against physical box barcode.
-                      </span>
-                    </div>
-                  </label>
+                    <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white border border-slate-200 cursor-pointer hover:border-slate-300 transition">
+                      <input
+                        type="checkbox"
+                        checked={manualChecks.addressAndPincodeVerified}
+                        onChange={(e) =>
+                          setManualChecks((prev) => ({ ...prev, addressAndPincodeVerified: e.target.checked }))
+                        }
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                      />
+                      <div>
+                        <span className="font-semibold text-slate-900 block">
+                          Address & PIN Code Verified (Required)
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Shipping label matches master order address & phone.
+                        </span>
+                      </div>
+                    </label>
 
-                  <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white border border-slate-200 cursor-pointer hover:border-slate-300">
-                    <input
-                      type="checkbox"
-                      checked={manualChecks.paymentClearanceVerified}
-                      onChange={(e) =>
-                        setManualChecks((prev) => ({ ...prev, paymentClearanceVerified: e.target.checked }))
-                      }
-                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
-                    />
-                    <div>
-                      <span className="font-semibold text-slate-900 block">
-                        Payment / Invoice Clearance Checked
-                      </span>
-                      <span className="text-[11px] text-slate-500">
-                        Zero balance or approved corporate credit verified.
-                      </span>
-                    </div>
-                  </label>
+                    <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white border border-slate-200 cursor-pointer hover:border-slate-300 transition">
+                      <input
+                        type="checkbox"
+                        checked={manualChecks.awbMatchedWithParcel}
+                        onChange={(e) =>
+                          setManualChecks((prev) => ({ ...prev, awbMatchedWithParcel: e.target.checked }))
+                        }
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                      />
+                      <div>
+                        <span className="font-semibold text-slate-900 block">
+                          Courier AWB Matched with Parcel
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Consignment AWB number verified against physical box barcode.
+                        </span>
+                      </div>
+                    </label>
 
-                  <label className="sm:col-span-2 flex items-start gap-2.5 p-2.5 rounded-lg bg-white border border-slate-200 cursor-pointer hover:border-slate-300">
-                    <input
-                      type="checkbox"
-                      checked={manualChecks.podOrReceiverVerified}
-                      onChange={(e) =>
-                        setManualChecks((prev) => ({ ...prev, podOrReceiverVerified: e.target.checked }))
-                      }
-                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
-                    />
-                    <div>
-                      <span className="font-semibold text-slate-900 block">
-                        Proof of Delivery (POD) / Handover Signature Verified
-                      </span>
-                      <span className="text-[11px] text-slate-500">
-                        Check this when courier pickup manifest is signed or customer delivery POD is confirmed.
-                      </span>
-                    </div>
-                  </label>
-                </div>
-              </div>
+                    <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white border border-slate-200 cursor-pointer hover:border-slate-300 transition">
+                      <input
+                        type="checkbox"
+                        checked={manualChecks.paymentClearanceVerified}
+                        onChange={(e) =>
+                          setManualChecks((prev) => ({ ...prev, paymentClearanceVerified: e.target.checked }))
+                        }
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                      />
+                      <div>
+                        <span className="font-semibold text-slate-900 block">
+                          Payment / Invoice Clearance Checked
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Zero balance or approved corporate credit verified.
+                        </span>
+                      </div>
+                    </label>
 
-              {/* STEP 2: Delivery Method & Courier Partner Details */}
-              <div className="space-y-4">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                  <Truck className="h-4 w-4 text-slate-700" />
-                  <span>2. Courier Partner & AWB Tracking Details</span>
-                </h3>
-
-                {/* Delivery Mode Selector */}
-                <div className="grid grid-cols-3 gap-2.5">
-                  {[
-                    { id: 'COURIER', label: 'Courier Partner', icon: Truck },
-                    { id: 'LOCAL_EXPRESS_BIKE', label: 'Local Bike / Porter', icon: Bike },
-                    { id: 'STORE_PICKUP', label: 'Store Counter Pickup', icon: Store },
-                  ].map((mode) => {
-                    const Icon = mode.icon;
-                    const active = deliveryMethod === mode.id;
-                    return (
-                      <button
-                        key={mode.id}
-                        type="button"
-                        onClick={() => setDeliveryMethod(mode.id as any)}
-                        className={`p-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition ${
-                          active
-                            ? 'bg-slate-900 text-[#FFED00] border-slate-900 shadow-xs'
-                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" />
-                        <span>{mode.label}</span>
-                      </button>
-                    );
-                  })}
+                    <label className="sm:col-span-2 flex items-start gap-2.5 p-2.5 rounded-lg bg-white border border-slate-200 cursor-pointer hover:border-slate-300 transition">
+                      <input
+                        type="checkbox"
+                        checked={manualChecks.podOrReceiverVerified}
+                        onChange={(e) =>
+                          setManualChecks((prev) => ({ ...prev, podOrReceiverVerified: e.target.checked }))
+                        }
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                      />
+                      <div>
+                        <span className="font-semibold text-slate-900 block">
+                          Proof of Delivery (POD) / Handover Signature Verified
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Check this when courier pickup manifest is signed or customer delivery POD is confirmed.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
                 </div>
 
-                {deliveryMethod !== 'STORE_PICKUP' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-semibold text-slate-700 block mb-1">
-                        Courier Partner
-                      </label>
-                      <select
-                        value={courierPreset}
-                        onChange={(e) => {
-                          setCourierPreset(e.target.value);
-                          const preset = COURIER_PRESETS.find((c) => c.name === e.target.value);
-                          if (preset && awbNumber.trim()) {
-                            setTrackingUrl(preset.urlTemplate(awbNumber.trim()));
-                          }
-                        }}
-                        className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-900 bg-white focus:border-slate-900 focus:outline-none"
-                      >
-                        {COURIER_PRESETS.map((c) => (
-                          <option key={c.name} value={c.name}>
-                            {c.name}
-                          </option>
-                        ))}
-                        <option value="CUSTOM">Other / Custom Courier Partner...</option>
-                      </select>
-                    </div>
+                {/* STEP 2: Delivery Method & Courier Partner Details */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                    <Truck className="h-4 w-4 text-slate-700" />
+                    <span>2. Courier Partner & AWB Tracking Details</span>
+                  </h3>
 
-                    {courierPreset === 'CUSTOM' ? (
+                  {/* Delivery Mode Selector */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {[
+                      { id: 'COURIER', label: 'Courier Partner', icon: Truck },
+                      { id: 'LOCAL_EXPRESS_BIKE', label: 'Local Bike / Porter', icon: Bike },
+                      { id: 'STORE_PICKUP', label: 'Store Counter Pickup', icon: Store },
+                    ].map((mode) => {
+                      const Icon = mode.icon;
+                      const active = deliveryMethod === mode.id;
+                      return (
+                        <button
+                          key={mode.id}
+                          type="button"
+                          onClick={() => setDeliveryMethod(mode.id as any)}
+                          className={`p-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition ${
+                            active
+                              ? 'bg-slate-900 text-[#FFED00] border-slate-900 shadow-xs'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          <span>{mode.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {deliveryMethod !== 'STORE_PICKUP' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                       <div>
                         <label className="text-xs font-semibold text-slate-700 block mb-1">
-                          Custom Courier Name
+                          Courier Partner
                         </label>
+                        <select
+                          value={courierPreset}
+                          onChange={(e) => {
+                            setCourierPreset(e.target.value);
+                            const preset = COURIER_PRESETS.find((c) => c.name === e.target.value);
+                            if (preset && awbNumber.trim()) {
+                              setTrackingUrl(preset.urlTemplate(awbNumber.trim()));
+                            }
+                          }}
+                          className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-900 bg-white focus:border-slate-900 focus:outline-none"
+                        >
+                          {COURIER_PRESETS.map((c) => (
+                            <option key={c.name} value={c.name}>
+                              {c.name}
+                            </option>
+                          ))}
+                          <option value="CUSTOM">Other / Custom Courier Partner...</option>
+                        </select>
+                      </div>
+
+                      {courierPreset === 'CUSTOM' ? (
+                        <div>
+                          <label className="text-xs font-semibold text-slate-700 block mb-1">
+                            Custom Courier Name
+                          </label>
+                          <input
+                            type="text"
+                            value={customCourierName}
+                            onChange={(e) => setCustomCourierName(e.target.value)}
+                            placeholder="e.g. Trackon, Ecom Express, Bus Parcel..."
+                            className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-900 focus:border-slate-900 focus:outline-none"
+                          />
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="text-xs font-semibold text-slate-700 block mb-1">
+                            Manifest Sheet Reference
+                          </label>
+                          <input
+                            type="text"
+                            value={manifestReference}
+                            onChange={(e) => setManifestReference(e.target.value)}
+                            placeholder="MNF-2026..."
+                            className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs font-mono text-slate-900 focus:border-slate-900 focus:outline-none"
+                          />
+                        </div>
+                      )}
+
+                      {/* AWB Number */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-semibold text-slate-700">
+                            AWB / Consignment Tracking Number
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleGenerateAwb}
+                            className="text-[11px] font-bold text-sky-700 hover:text-sky-900"
+                          >
+                            + Generate AWB
+                          </button>
+                        </div>
                         <input
                           type="text"
-                          value={customCourierName}
-                          onChange={(e) => setCustomCourierName(e.target.value)}
-                          placeholder="e.g. Trackon, Ecom Express, Bus Parcel..."
-                          className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-900 focus:border-slate-900 focus:outline-none"
+                          value={awbNumber}
+                          onChange={(e) => setAwbNumber(e.target.value)}
+                          placeholder="Enter or scan courier AWB number"
+                          className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs font-mono font-bold text-slate-900 focus:border-slate-900 focus:outline-none"
                         />
                       </div>
-                    ) : (
+
+                      {/* Tracking URL */}
                       <div>
-                        <label className="text-xs font-semibold text-slate-700 block mb-1">
-                          Manifest Sheet Reference
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-semibold text-slate-700">
+                            Customer Tracking URL (Shown on Customer Page)
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleAutoFillTrackingUrl}
+                            className="text-[11px] font-bold text-sky-700 hover:text-sky-900"
+                          >
+                            Auto-Fill URL
+                          </button>
+                        </div>
                         <input
-                          type="text"
-                          value={manifestReference}
-                          onChange={(e) => setManifestReference(e.target.value)}
-                          placeholder="MNF-2026..."
+                          type="url"
+                          value={trackingUrl}
+                          onChange={(e) => setTrackingUrl(e.target.value)}
+                          placeholder="https://..."
                           className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs font-mono text-slate-900 focus:border-slate-900 focus:outline-none"
                         />
                       </div>
-                    )}
+                    </div>
+                  )}
 
-                    {/* AWB Number */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-xs font-semibold text-slate-700">
-                          AWB / Consignment Tracking Number
-                        </label>
-                        <button
-                          type="button"
-                          onClick={handleGenerateAwb}
-                          className="text-[11px] font-bold text-sky-700 hover:text-sky-900"
-                        >
-                          + Generate AWB
-                        </button>
+                  {/* Physical Parcel Dimensions & Weight */}
+                  <div>
+                    <label className="text-[11px] font-mono uppercase text-slate-400 font-bold block mb-1.5">
+                      Physical Parcel Specifications & Scale Verification
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 p-3.5 rounded-xl bg-slate-50 border border-slate-200 font-mono">
+                      <div>
+                        <label className="text-[10px] text-slate-500 block mb-1 font-semibold">PARCELS</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={packageCount}
+                          onChange={(e) => setPackageCount(Math.max(1, Number(e.target.value)))}
+                          className="w-full h-9 rounded-lg border border-slate-300 px-2.5 text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
+                        />
                       </div>
-                      <input
-                        type="text"
-                        value={awbNumber}
-                        onChange={(e) => setAwbNumber(e.target.value)}
-                        placeholder="Enter or scan courier AWB number"
-                        className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs font-mono font-bold text-slate-900 focus:border-slate-900 focus:outline-none"
-                      />
-                    </div>
-
-                    {/* Tracking URL */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-xs font-semibold text-slate-700">
-                          Customer Tracking URL (Shown on Customer Page)
-                        </label>
-                        <button
-                          type="button"
-                          onClick={handleAutoFillTrackingUrl}
-                          className="text-[11px] font-bold text-sky-700 hover:text-sky-900"
-                        >
-                          Auto-Fill URL
-                        </button>
+                      <div>
+                        <label className="text-[10px] text-slate-500 block mb-1 font-semibold">WEIGHT (G)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={grossWeightGrams}
+                          onChange={(e) => setGrossWeightGrams(Math.max(1, Number(e.target.value)))}
+                          className="w-full h-9 rounded-lg border border-slate-300 px-2.5 text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
+                        />
                       </div>
-                      <input
-                        type="url"
-                        value={trackingUrl}
-                        onChange={(e) => setTrackingUrl(e.target.value)}
-                        placeholder="https://..."
-                        className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs font-mono text-slate-900 focus:border-slate-900 focus:outline-none"
-                      />
+                      <div>
+                        <label className="text-[10px] text-slate-500 block mb-1 font-semibold">LENGTH (CM)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={lengthCm}
+                          onChange={(e) => setLengthCm(Math.max(1, Number(e.target.value)))}
+                          className="w-full h-9 rounded-lg border border-slate-300 px-2.5 text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-500 block mb-1 font-semibold">WIDTH (CM)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={widthCm}
+                          onChange={(e) => setWidthCm(Math.max(1, Number(e.target.value)))}
+                          className="w-full h-9 rounded-lg border border-slate-300 px-2.5 text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
+                        />
+                      </div>
+                      <div className="col-span-2 sm:col-span-1">
+                        <label className="text-[10px] text-slate-500 block mb-1 font-semibold">HEIGHT (CM)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={heightCm}
+                          onChange={(e) => setHeightCm(Math.max(1, Number(e.target.value)))}
+                          className="w-full h-9 rounded-lg border border-slate-300 px-2.5 text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
+                        />
+                      </div>
                     </div>
                   </div>
-                )}
-
-                {/* Physical Parcel Dimensions & Weight */}
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200 font-mono">
-                  <div>
-                    <label className="text-[10px] text-slate-500 block mb-1">PARCELS</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={packageCount}
-                      onChange={(e) => setPackageCount(Math.max(1, Number(e.target.value)))}
-                      className="w-full h-9 rounded-lg border border-slate-300 px-2.5 text-xs font-bold text-slate-900 bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block mb-1">WEIGHT (G)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={grossWeightGrams}
-                      onChange={(e) => setGrossWeightGrams(Math.max(1, Number(e.target.value)))}
-                      className="w-full h-9 rounded-lg border border-slate-300 px-2.5 text-xs font-bold text-slate-900 bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block mb-1">LENGTH (CM)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={lengthCm}
-                      onChange={(e) => setLengthCm(Math.max(1, Number(e.target.value)))}
-                      className="w-full h-9 rounded-lg border border-slate-300 px-2.5 text-xs font-bold text-slate-900 bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block mb-1">WIDTH (CM)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={widthCm}
-                      onChange={(e) => setWidthCm(Math.max(1, Number(e.target.value)))}
-                      className="w-full h-9 rounded-lg border border-slate-300 px-2.5 text-xs font-bold text-slate-900 bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block mb-1">HEIGHT (CM)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={heightCm}
-                      onChange={(e) => setHeightCm(Math.max(1, Number(e.target.value)))}
-                      className="w-full h-9 rounded-lg border border-slate-300 px-2.5 text-xs font-bold text-slate-900 bg-white"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* STEP 3: Target Dispatch Status & Customer Tracking Update */}
-              <div className="space-y-4">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                  <Send className="h-4 w-4 text-slate-700" />
-                  <span>3. Select Order Status to Publish to Customer Tracking</span>
-                </h3>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {[
-                    {
-                      status: 'READY_FOR_DISPATCH',
-                      title: 'Ready for Dispatch',
-                      subtitle: 'Packed, AWB generated & manifested',
-                      badge: 'MANIFESTED',
-                    },
-                    {
-                      status: 'OUT_FOR_DELIVERY',
-                      title: 'Dispatched / In Transit',
-                      subtitle: 'Handed to courier • Shows live AWB to customer',
-                      badge: 'IN TRANSIT',
-                    },
-                    {
-                      status: 'DELIVERED',
-                      title: 'Delivered to Customer',
-                      subtitle: 'Final delivery completed & verified',
-                      badge: 'DELIVERED',
-                    },
-                  ].map((opt) => {
-                    const active = targetStatus === opt.status;
-                    return (
-                      <button
-                        key={opt.status}
-                        type="button"
-                        onClick={() => setTargetStatus(opt.status as any)}
-                        className={`text-left p-3.5 rounded-xl border transition ${
-                          active
-                            ? 'bg-slate-900 text-white border-slate-900 ring-2 ring-amber-300'
-                            : 'bg-white text-slate-800 border-slate-200 hover:border-slate-300'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span
-                            className={`text-[10px] font-mono font-black px-2 py-0.5 rounded ${
-                              active ? 'bg-[#FFED00] text-slate-950' : 'bg-slate-100 text-slate-700'
-                            }`}
-                          >
-                            {opt.badge}
-                          </span>
-                          {active && <CheckCircle2 className="h-4 w-4 text-[#FFED00]" />}
-                        </div>
-                        <div className="font-bold text-xs mt-1">{opt.title}</div>
-                        <p className={`text-[11px] mt-0.5 ${active ? 'text-slate-300' : 'text-slate-500'}`}>
-                          {opt.subtitle}
-                        </p>
-                      </button>
-                    );
-                  })}
                 </div>
 
-                {/* Receiver Details when marking DELIVERED */}
-                {targetStatus === 'DELIVERED' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-emerald-50/70 border border-emerald-200">
-                    <div>
-                      <label className="text-xs font-semibold text-emerald-950 block mb-1">
-                        Received By (Customer / Receiver Name)
-                      </label>
-                      <input
-                        type="text"
-                        value={receiverName}
-                        onChange={(e) => setReceiverName(e.target.value)}
-                        placeholder="Name of person who received the package"
-                        className="w-full h-9 rounded-lg border border-emerald-300 bg-white px-3 text-xs text-slate-900"
-                      />
+                {/* STEP 3: Target Dispatch Status & Customer Tracking Update */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                    <Send className="h-4 w-4 text-slate-700" />
+                    <span>3. Select Order Status to Publish to Customer Tracking</span>
+                  </h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {[
+                      {
+                        status: 'READY_FOR_DISPATCH',
+                        title: 'Ready for Dispatch',
+                        subtitle: 'Packed, AWB generated & manifested',
+                        badge: 'MANIFESTED',
+                      },
+                      {
+                        status: 'OUT_FOR_DELIVERY',
+                        title: 'Dispatched / In Transit',
+                        subtitle: 'Handed to courier • Shows live AWB to customer',
+                        badge: 'IN TRANSIT',
+                      },
+                      {
+                        status: 'DELIVERED',
+                        title: 'Delivered to Customer',
+                        subtitle: 'Final delivery completed & verified',
+                        badge: 'DELIVERED',
+                      },
+                    ].map((opt) => {
+                      const active = targetStatus === opt.status;
+                      return (
+                        <button
+                          key={opt.status}
+                          type="button"
+                          onClick={() => {
+                            setTargetStatus(opt.status as any);
+                            if (opt.status === 'DELIVERED') {
+                              setManualChecks((prev) => ({ ...prev, podOrReceiverVerified: true }));
+                            }
+                          }}
+                          className={`text-left p-3.5 rounded-xl border transition ${
+                            active
+                              ? 'bg-slate-900 text-white border-slate-900 ring-2 ring-[#FFED00]'
+                              : 'bg-white text-slate-800 border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span
+                              className={`text-[10px] font-mono font-black px-2 py-0.5 rounded ${
+                                active ? 'bg-[#FFED00] text-slate-950' : 'bg-slate-100 text-slate-700'
+                              }`}
+                            >
+                              {opt.badge}
+                            </span>
+                            {active && <CheckCircle2 className="h-4 w-4 text-[#FFED00]" />}
+                          </div>
+                          <div className={`font-bold text-xs mt-1 ${active ? 'text-white' : 'text-slate-900'}`}>
+                            {opt.title}
+                          </div>
+                          <p className={`text-[11px] mt-0.5 leading-snug ${active ? 'text-slate-300' : 'text-slate-500'}`}>
+                            {opt.subtitle}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Receiver Details when marking DELIVERED */}
+                  {targetStatus === 'DELIVERED' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 p-4 rounded-xl bg-emerald-50/90 border border-emerald-300 shadow-2xs">
+                      <div>
+                        <label className="text-xs font-bold text-emerald-950 block mb-1">
+                          Received By (Customer / Receiver Name) <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={receiverName}
+                          onChange={(e) => setReceiverName(e.target.value)}
+                          placeholder="Name of person who received the package"
+                          className="w-full h-10 rounded-lg border border-emerald-300 bg-white px-3 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-emerald-950 block mb-1">
+                          Receiver Contact Number
+                        </label>
+                        <input
+                          type="text"
+                          value={receiverPhone}
+                          onChange={(e) => setReceiverPhone(e.target.value)}
+                          placeholder="+91..."
+                          className="w-full h-10 rounded-lg border border-emerald-300 bg-white px-3 text-xs font-mono font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-xs font-semibold text-emerald-950 block mb-1">
-                        Receiver Contact Number
-                      </label>
-                      <input
-                        type="text"
-                        value={receiverPhone}
-                        onChange={(e) => setReceiverPhone(e.target.value)}
-                        placeholder="+91..."
-                        className="w-full h-9 rounded-lg border border-emerald-300 bg-white px-3 text-xs font-mono text-slate-900"
-                      />
+                  )}
+
+                  {/* Customer-Visible Dispatch Note */}
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Customer-Visible Dispatch / Tracking Note (Optional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={dispatchNotes}
+                      onChange={(e) => setDispatchNotes(e.target.value)}
+                      placeholder="e.g. Dispatched via Delhivery Air Express from Mumbai Hub. Expected delivery in 2-3 business days."
+                      className="w-full rounded-lg border border-slate-300 p-2.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Live Customer Tracking Preview Box */}
+                  <div className="rounded-xl bg-sky-50/90 border border-sky-200 p-3.5 text-xs space-y-1">
+                    <div className="font-mono text-[10px] font-bold uppercase text-sky-900 flex items-center gap-1.5">
+                      <Eye className="h-3.5 w-3.5 text-sky-700" />
+                      <span>Customer Tracking Preview (/tracking/{selectedOrder.orderNumber})</span>
                     </div>
+                    <p className="text-slate-700 text-[11px] leading-relaxed">
+                      Customer will see status{' '}
+                      <strong className="font-mono text-slate-900 font-bold bg-white px-1.5 py-0.5 rounded border border-sky-300">
+                        {targetStatus}
+                      </strong>{' '}
+                      with Courier{' '}
+                      <strong className="text-slate-900">
+                        {deliveryMethod === 'STORE_PICKUP'
+                          ? 'Store Counter Pickup'
+                          : courierPreset === 'CUSTOM'
+                          ? customCourierName || 'Custom Courier'
+                          : courierPreset}
+                      </strong>
+                      {awbNumber.trim() ? (
+                        <>
+                          {' '}
+                          and live AWB badge{' '}
+                          <strong className="font-mono text-slate-900 bg-white px-1.5 py-0.5 rounded border border-sky-300">
+                            {awbNumber.trim()}
+                          </strong>
+                        </>
+                      ) : null}
+                      .
+                    </p>
                   </div>
-                )}
-
-                {/* Customer-Visible Dispatch Note */}
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Customer-Visible Dispatch / Tracking Note (Optional)
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={dispatchNotes}
-                    onChange={(e) => setDispatchNotes(e.target.value)}
-                    placeholder="e.g. Dispatched via Delhivery Air Express from Mumbai Hub. Expected delivery in 2-3 business days."
-                    className="w-full rounded-lg border border-slate-300 p-2.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none"
-                  />
-                </div>
-
-                {/* Live Customer Tracking Preview Box */}
-                <div className="rounded-xl bg-sky-50/80 border border-sky-200 p-3.5 text-xs space-y-1">
-                  <div className="font-mono text-[10px] font-bold uppercase text-sky-900 flex items-center gap-1.5">
-                    <Eye className="h-3.5 w-3.5 text-sky-700" />
-                    <span>Customer Tracking Preview (/tracking/{selectedOrder.orderNumber})</span>
-                  </div>
-                  <p className="text-slate-700 text-[11px]">
-                    Customer will see status{' '}
-                    <strong className="font-mono text-slate-900">{targetStatus}</strong> with Courier{' '}
-                    <strong>
-                      {deliveryMethod === 'STORE_PICKUP'
-                        ? 'Store Counter Pickup'
-                        : courierPreset === 'CUSTOM'
-                        ? customCourierName || 'Custom Courier'
-                        : courierPreset}
-                    </strong>
-                    {awbNumber.trim() ? (
-                      <>
-                        {' '}
-                        and live AWB badge <strong className="font-mono">{awbNumber.trim()}</strong>
-                      </>
-                    ) : null}
-                    .
-                  </p>
                 </div>
               </div>
 
               {/* Modal Footer Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setIsUpdateModalOpen(false)}
-                  className="px-4 py-2.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-[#FFED00] text-xs font-bold flex items-center gap-2 shadow-sm transition"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  <span>
-                    {isSubmitting
-                      ? 'Updating Courier & Tracking...'
-                      : `Verify & Publish ${targetStatus.replace(/_/g, ' ')}`}
-                  </span>
-                </button>
+              <div className="sticky bottom-0 bg-white/95 backdrop-blur-xs px-4 sm:px-6 py-3.5 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+                <div className="text-[11px] text-slate-500 hidden sm:flex items-center gap-1.5">
+                  <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>Publishes status & AWB instantly to Customer Tracking</span>
+                </div>
+                <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsUpdateModalOpen(false)}
+                    className="w-1/2 sm:w-auto px-4 py-2.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-1/2 sm:w-auto px-5 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-[#FFED00] text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition"
+                  >
+                    <CheckCircle2 className="h-4 w-4 text-[#FFED00]" />
+                    <span>
+                      {isSubmitting
+                        ? 'Updating Courier & Tracking...'
+                        : targetStatus === 'DELIVERED'
+                        ? 'Confirm & Publish Delivered'
+                        : `Verify & Publish ${targetStatus.replace(/_/g, ' ')}`}
+                    </span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>

@@ -7,11 +7,13 @@ import {
   RiStore2Line,
   RiTimeLine,
   RiBox3Line,
+  RiSendPlaneLine,
 } from 'react-icons/ri';
 
 export interface PackingJobDto {
   id: string;
   orderNumber: string;
+  status?: string;
   customer: {
     id: string;
     fullName: string;
@@ -49,6 +51,7 @@ export interface PackingJobDto {
     heightCm: number;
     barcode: string;
     status: string;
+    cartonType?: string;
     shipment?: any;
   }>;
   qcChecklists: Array<{
@@ -74,37 +77,58 @@ export function PackingJobCard({
   onSelect,
 }: PackingJobCardProps) {
   const item = job.items?.[0];
+  const isDispatched =
+    job.status === 'READY_FOR_DISPATCH' ||
+    job.status === 'OUT_FOR_DELIVERY' ||
+    job.status === 'DELIVERED';
 
-  const priorityColor =
-    job.priority === 'URGENT'
-      ? 'bg-rose-50 text-rose-700 border-rose-200'
-      : job.priority === 'HIGH'
-      ? 'bg-amber-50 text-amber-800 border-amber-200'
-      : 'bg-slate-100 text-slate-700 border-slate-200';
+  const trackingAwb =
+    job.packages?.[0]?.shipment?.awbNumber ||
+    job.packages?.[0]?.barcode ||
+    null;
+
+  const priorityColor = isDispatched
+    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+    : job.priority === 'URGENT'
+    ? 'bg-rose-50 text-rose-700 border-rose-200'
+    : job.priority === 'HIGH'
+    ? 'bg-amber-50 text-amber-800 border-amber-200'
+    : 'bg-slate-100 text-slate-700 border-slate-200';
 
   return (
     <div
       onClick={() => onSelect(job)}
       className={`p-3.5 rounded-xl border cursor-pointer transition-all duration-150 select-none relative flex flex-col justify-between gap-2 shadow-2xs ${
         isSelected
-          ? 'border-amber-400 bg-amber-50/40 ring-2 ring-amber-400/80 shadow-xs'
+          ? isDispatched
+            ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-500/80 shadow-xs'
+            : 'border-amber-400 bg-amber-50/40 ring-2 ring-amber-400/80 shadow-xs'
+          : isDispatched
+          ? 'border-emerald-200/90 bg-white hover:border-emerald-300 hover:bg-emerald-50/30'
           : 'border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/70'
       }`}
     >
-      {/* Header: Order #, QC Passed Badge & Priority */}
+      {/* Header: Order #, Status Badge & Priority */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="font-mono font-bold text-xs text-slate-900 tabular-nums">
             #{job.orderNumber}
           </span>
-          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-mono">
-            <RiCheckboxCircleFill className="h-3 w-3 text-emerald-600" />
-            QC Passed
-          </span>
+          {isDispatched ? (
+            <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-800 bg-emerald-100/70 px-1.5 py-0.5 rounded border border-emerald-300 font-mono">
+              <RiCheckboxCircleFill className="h-3 w-3 text-emerald-600" />
+              Dispatched
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-mono">
+              <RiCheckboxCircleFill className="h-3 w-3 text-emerald-600" />
+              QC Passed
+            </span>
+          )}
         </div>
 
         <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded font-bold border ${priorityColor}`}>
-          {job.priority}
+          {isDispatched ? 'RELEASED' : job.priority}
         </span>
       </div>
 
@@ -117,6 +141,18 @@ export function PackingJobCard({
           {item?.productName || 'Print Order'}
         </p>
       </div>
+
+      {/* Dispatched Tracking Information if available */}
+      {isDispatched && (
+        <div className="p-1.5 bg-emerald-50/80 rounded-lg border border-emerald-100 flex items-center justify-between text-[10px] font-mono">
+          <span className="text-emerald-900 font-bold truncate">
+            {trackingAwb ? `TRK: ${trackingAwb}` : 'Manifest Handover'}
+          </span>
+          <span className="text-emerald-700 font-semibold shrink-0">
+            {job.packages?.length || 1} {job.packages?.length === 1 ? 'Box' : 'Boxes'}
+          </span>
+        </div>
+      )}
 
       {/* Footer: Run Quantity + Delivery Method + Time */}
       <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
