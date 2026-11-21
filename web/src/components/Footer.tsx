@@ -200,22 +200,22 @@ export function Footer() {
                   </Link>
                 </li>
                 <li>
-                  <Link href="/templates" className="hover:text-white transition-colors">
+                  <Link href="/templates" prefetch={false} className="hover:text-white transition-colors">
                     Design Templates
                   </Link>
                 </li>
                 <li>
-                  <Link href="/upload" className="hover:text-white transition-colors">
+                  <Link href="/upload" prefetch={false} className="hover:text-white transition-colors">
                     Upload Your Design
                   </Link>
                 </li>
                 <li>
-                  <Link href="/bulk-orders" className="hover:text-white transition-colors">
+                  <Link href="/bulk-orders" prefetch={false} className="hover:text-white transition-colors">
                     Bulk Orders
                   </Link>
                 </li>
                 <li>
-                  <Link href="/calculator" className="hover:text-white transition-colors">
+                  <Link href="/calculator" prefetch={false} className="hover:text-white transition-colors">
                     Price Calculator
                   </Link>
                 </li>
@@ -229,27 +229,27 @@ export function Footer() {
               </h4>
               <ul className="space-y-2 text-xs sm:text-[13px] text-neutral-400">
                 <li>
-                  <Link href="/tracking" className="hover:text-white transition-colors">
+                  <Link href="/tracking" prefetch={false} className="hover:text-white transition-colors">
                     Track Order
                   </Link>
                 </li>
                 <li>
-                  <Link href="/shipping-policy" className="hover:text-white transition-colors">
+                  <Link href="/shipping-policy" prefetch={false} className="hover:text-white transition-colors">
                     Shipping Policy
                   </Link>
                 </li>
                 <li>
-                  <Link href="/return-policy" className="hover:text-white transition-colors">
+                  <Link href="/return-policy" prefetch={false} className="hover:text-white transition-colors">
                     Return Policy
                   </Link>
                 </li>
                 <li>
-                  <Link href="/faqs" className="hover:text-white transition-colors">
+                  <Link href="/faqs" prefetch={false} className="hover:text-white transition-colors">
                     FAQs
                   </Link>
                 </li>
                 <li>
-                  <Link href="/contact" className="hover:text-white transition-colors">
+                  <Link href="/contact" prefetch={false} className="hover:text-white transition-colors">
                     Contact Us
                   </Link>
                 </li>
@@ -263,7 +263,7 @@ export function Footer() {
               </h4>
               <ul className="space-y-2 text-xs sm:text-[13px] text-neutral-400">
                 <li>
-                  <Link href="/about" className="hover:text-white transition-colors">
+                  <Link href="/about" prefetch={false} className="hover:text-white transition-colors">
                     Our Story
                   </Link>
                 </li>
@@ -273,12 +273,12 @@ export function Footer() {
                   </Link>
                 </li>
                 <li>
-                  <Link href="/blog" className="hover:text-white transition-colors">
+                  <Link href="/blog" prefetch={false} className="hover:text-white transition-colors">
                     Blog
                   </Link>
                 </li>
                 <li>
-                  <Link href="/careers" className="hover:text-white transition-colors">
+                  <Link href="/careers" prefetch={false} className="hover:text-white transition-colors">
                     Careers
                   </Link>
                 </li>
@@ -363,11 +363,11 @@ export function Footer() {
               © 2026 PrintBazaar. All rights reserved.
             </p>
             <div className="flex items-center gap-3">
-              <Link href="/privacy-policy" className="hover:text-white transition-colors">
+              <Link href="/privacy-policy" prefetch={false} className="hover:text-white transition-colors">
                 Privacy Policy
               </Link>
               <span className="text-neutral-600">|</span>
-              <Link href="/terms" className="hover:text-white transition-colors">
+              <Link href="/terms" prefetch={false} className="hover:text-white transition-colors">
                 Terms & Conditions
               </Link>
             </div>

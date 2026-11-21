@@ -1135,7 +1135,11 @@ function detectIsDesignServiceSelected(
         );
 
         const optPayload = Object.entries(selectedOptions)
-          .filter(([_, v]) => v !== undefined && v !== null && v !== '')
+          .filter(([k, v]) => {
+            if (v === undefined || v === null || v === '') return false;
+            if (rulesEvaluation.groupStatus?.[k]?.isHiddenByRule === true) return false;
+            return true;
+          })
           .map(([k, v]) => ({
             optionCode: k,
             valueCode: Array.isArray(v) ? v.join(',') : String(v),
@@ -1890,7 +1894,9 @@ function detectIsDesignServiceSelected(
             {(() => {
               let hasRenderedCombinedMatrix = false;
 
-              return effectiveOptionGroups.map((group, groupIdx) => {
+              return effectiveOptionGroups
+                .filter((group) => group.isCustomerVisible !== false && rulesEvaluation.groupStatus?.[group.code]?.isVisible !== false)
+                .map((group, groupIdx) => {
                 const isMulti = group.inputType === 'MULTI_SELECT' || group.selectionBehavior === 'MULTIPLE';
                 const isInputText = ['TEXT', 'TEXTAREA', 'NUMBER', 'DATE'].includes((group.inputType || '').toUpperCase());
 

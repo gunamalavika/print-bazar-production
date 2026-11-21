@@ -67,6 +67,8 @@ export interface ConfigurationEvaluationResult {
       isVisible: boolean;
       isRequired: boolean;
       isDisabled: boolean;
+      isCustomerVisible?: boolean;
+      isHiddenByRule?: boolean;
       disabledReason?: string;
       defaultValue?: string;
     }
@@ -226,6 +228,8 @@ export function evaluateProductConfiguration(
       isVisible: g.isCustomerVisible !== false,
       isRequired: Boolean(g.isRequired),
       isDisabled: false,
+      isCustomerVisible: g.isCustomerVisible !== false,
+      isHiddenByRule: false,
     };
   }
 
@@ -306,6 +310,7 @@ export function evaluateProductConfiguration(
               const prevPri = groupVisibilityPriority[targetGroup] ?? -Infinity;
               if (rulePriority >= prevPri) {
                 groupStatus[targetGroup].isVisible = false;
+                groupStatus[targetGroup].isHiddenByRule = true;
                 groupVisibilityPriority[targetGroup] = rulePriority;
               }
             }
@@ -328,6 +333,7 @@ export function evaluateProductConfiguration(
               const prevPri = groupVisibilityPriority[targetGroup] ?? -Infinity;
               if (rulePriority > prevPri) {
                 groupStatus[targetGroup].isVisible = true;
+                groupStatus[targetGroup].isHiddenByRule = false;
                 groupVisibilityPriority[targetGroup] = rulePriority;
               }
             }

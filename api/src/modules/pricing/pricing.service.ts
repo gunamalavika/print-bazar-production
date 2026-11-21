@@ -241,7 +241,7 @@ export class PricingService {
       const isDesignCondition = configurationRules.some((r: any) => /design/i.test(r.conditionGroupCode || ''));
       if (isPrintingLocation && isDesignCondition) {
         // Guard: Printing location is never hidden solely because design is not required
-      } else if (ruleEval.groupStatus[grpCode]?.isVisible === false) {
+      } else if (ruleEval.groupStatus[grpCode]?.isHiddenByRule === true) {
         throw new BadRequestException(`Option group '${grpCode}' is not applicable for this configuration.`);
       }
     }

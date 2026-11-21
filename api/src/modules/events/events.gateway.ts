@@ -19,6 +19,8 @@ import { OnEvent } from '@nestjs/event-emitter';
     credentials: true,
   },
   namespace: '/',
+  pingInterval: 10000,
+  pingTimeout: 5000,
 })
 export class EventsGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect

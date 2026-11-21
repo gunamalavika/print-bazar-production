@@ -446,7 +446,7 @@ export class OrdersService {
                 `Selected option '${chosenVal}' for '${grpCode}' is disabled by product configuration rules.`,
               );
             }
-            if (ruleEval.groupStatus[grpCode]?.isVisible === false) {
+            if (ruleEval.groupStatus[grpCode]?.isHiddenByRule === true) {
               throw new BadRequestException(
                 `Option group '${grpCode}' is not available with current selections.`,
               );
