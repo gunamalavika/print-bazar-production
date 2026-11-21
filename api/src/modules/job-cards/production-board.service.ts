@@ -111,6 +111,7 @@ export interface KanbanCard {
   version: number;
   artwork?: {
     id: string;
+    versionNumber?: number;
     storageKey: string;
     fileUrl: string;
     originalFileName: string;
@@ -120,6 +121,18 @@ export interface KanbanCard {
     isApproved: boolean;
     proofUrl?: string | null;
   } | null;
+  artworks?: Array<{
+    id: string;
+    versionNumber?: number;
+    storageKey: string;
+    fileUrl: string;
+    originalFileName: string;
+    mimeType: string;
+    fileSize: number;
+    status: string;
+    isApproved: boolean;
+    proofUrl?: string | null;
+  }>;
 }
 
 export interface KanbanColumnResponse {
@@ -144,7 +157,7 @@ export class ProductionBoardService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly eventEmitter: EventEmitter2,
-  ) { }
+  ) {}
 
   /**
    * Fetch complete production board with columns, cards, live metrics and filter values
@@ -203,7 +216,9 @@ export class ProductionBoardService {
                 category: true,
               },
             },
-            artworkVersions: true,
+            artworkVersions: {
+              orderBy: { versionNumber: 'asc' },
+            },
           },
         },
         machine: true,
@@ -286,40 +301,57 @@ export class ProductionBoardService {
       const isHeld = job.status === JobCardStatus.ON_HOLD || job.order.status === OrderStatus.ON_HOLD;
       const latestIssue = job.issues[0];
 
-      // Extract approved or active artwork for production download
+      // Extract all approved or active artworks for production operator download
       const artworkVersions = job.orderItem?.artworkVersions || [];
-      const approvedArtwork =
-        artworkVersions.find((a) => a.isApproved || a.status === ArtworkStatus.PROOF_APPROVED || a.status === ArtworkStatus.PREFLIGHT_PASSED) ||
-        artworkVersions[0];
+      const approvedVersions = artworkVersions.filter(
+        (a) =>
+          a.isApproved ||
+          a.status === ArtworkStatus.PROOF_APPROVED ||
+          a.status === ArtworkStatus.PREFLIGHT_PASSED,
+      );
+      const nonSupersededVersions = artworkVersions.filter(
+        (a) => a.status !== ArtworkStatus.SUPERSEDED,
+      );
+      const targetVersions =
+        approvedVersions.length > 0
+          ? approvedVersions
+          : nonSupersededVersions.length > 0
+          ? nonSupersededVersions
+          : artworkVersions.slice(0, 1);
 
-      let fileUrl = approvedArtwork?.storageKey || '';
-      if (fileUrl && !fileUrl.startsWith('http')) {
-        if (fileUrl.startsWith('/uploads')) {
-          // already formatted
-        } else if (fileUrl.startsWith('uploads/')) {
-          fileUrl = `/${fileUrl}`;
-        } else if (fileUrl.startsWith('artwork/')) {
-          fileUrl = `/uploads/${fileUrl}`;
-        } else if (fileUrl.startsWith('/')) {
-          fileUrl = `/uploads/artwork${fileUrl}`;
-        } else {
-          fileUrl = `/uploads/artwork/${fileUrl}`;
+      const formatArtFileUrl = (rawKey?: string | null) => {
+        let url = rawKey || '';
+        if (url && !url.startsWith('http')) {
+          if (url.startsWith('/uploads')) {
+            // already formatted
+          } else if (url.startsWith('uploads/')) {
+            url = `/${url}`;
+          } else if (url.startsWith('artwork/')) {
+            url = `/uploads/${url}`;
+          } else if (url.startsWith('/')) {
+            url = `/uploads/artwork${url}`;
+          } else {
+            url = `/uploads/artwork/${url}`;
+          }
         }
-      }
+        return url;
+      };
 
-      const artwork = approvedArtwork
-        ? {
-          id: approvedArtwork.id,
-          storageKey: approvedArtwork.storageKey,
-          fileUrl,
-          originalFileName: approvedArtwork.originalFileName || 'approved_artwork.pdf',
-          mimeType: approvedArtwork.mimeType || 'application/pdf',
-          fileSize: approvedArtwork.fileSize || 0,
-          status: approvedArtwork.status,
-          isApproved: approvedArtwork.isApproved || approvedArtwork.status === ArtworkStatus.PROOF_APPROVED,
-          proofUrl: approvedArtwork.proofUrl,
-        }
-        : null;
+      const artworks = targetVersions.map((ver, idx) => ({
+        id: ver.id,
+        versionNumber: ver.versionNumber || idx + 1,
+        storageKey: ver.storageKey,
+        fileUrl: formatArtFileUrl(ver.storageKey),
+        originalFileName:
+          ver.originalFileName || `approved_artwork_v${ver.versionNumber || idx + 1}.pdf`,
+        mimeType: ver.mimeType || 'application/pdf',
+        fileSize: ver.fileSize || 0,
+        status: ver.status,
+        isApproved: ver.isApproved || ver.status === ArtworkStatus.PROOF_APPROVED,
+        proofUrl: ver.proofUrl,
+      }));
+
+      const artwork = artworks[0] || null;
 
       // Extract clean customer-selected specifications
       const selectedOptions: Array<{ label: string; value: string }> = [];
@@ -399,18 +431,18 @@ export class ProductionBoardService {
         },
         machine: job.machine
           ? {
-            id: job.machine.id,
-            name: job.machine.name,
-            code: job.machine.code,
-            type: job.machine.type,
-          }
+              id: job.machine.id,
+              name: job.machine.name,
+              code: job.machine.code,
+              type: job.machine.type,
+            }
           : null,
         operator: job.operator
           ? {
-            id: job.operator.id,
-            fullName: job.operator.fullName,
-            role: job.operator.role,
-          }
+              id: job.operator.id,
+              fullName: job.operator.fullName,
+              role: job.operator.role,
+            }
           : null,
         status: job.status,
         orderStatus: job.order.status,
@@ -431,6 +463,7 @@ export class ProductionBoardService {
         isHeld,
         version: job.updatedAt.getTime(),
         artwork,
+        artworks,
       });
     }
 
@@ -646,8 +679,8 @@ export class ProductionBoardService {
     const allowedTransitions: string[] = [];
     const allowedActions: string[] = [];
 
-    // Admin has override capability to move to any adjacent or custom column
-    if (role === UserRole.ADMIN_MANAGER) {
+    // Admin and Production Head have override capability to move to any adjacent or custom column
+    if (role === UserRole.ADMIN_MANAGER || role === UserRole.PRODUCTION_HEAD) {
       allowedTransitions.push(
         'QC_APPROVED',
         'PRINTING',
@@ -755,7 +788,7 @@ export class ProductionBoardService {
 
     const targetColumnKey = dto.targetColumnKey || (dto as any).toStationKey || '';
     const { reason, machineId, operatorId, managerOverrideReason } = dto;
-    const isManager = user.role === UserRole.ADMIN_MANAGER;
+    const isManager = user.role === UserRole.ADMIN_MANAGER || user.role === UserRole.PRODUCTION_HEAD;
 
     if (!targetColumnKey) {
       throw new BadRequestException('targetColumnKey is required');
@@ -974,22 +1007,22 @@ export class ProductionBoardService {
     role: UserRole,
   ) {
     if (targetKey === 'PRINTING') {
-      if (role !== UserRole.PRODUCTION_OPERATOR) {
-        throw new ForbiddenException('Only PRODUCTION_OPERATOR can start printing runs.');
+      if (role !== UserRole.PRODUCTION_OPERATOR && role !== UserRole.PRODUCTION_HEAD) {
+        throw new ForbiddenException('Only PRODUCTION_OPERATOR or PRODUCTION_HEAD can start printing runs.');
       }
       if (job.status !== JobCardStatus.QUEUED && job.status !== JobCardStatus.ASSIGNED && job.status !== JobCardStatus.ON_HOLD) {
         throw new BadRequestException('Cannot move to PRINTING: Job must be in QC APPROVED or ON_HOLD state.');
       }
     } else if (targetKey === 'FINISHING') {
-      if (role !== UserRole.PRODUCTION_OPERATOR) {
-        throw new ForbiddenException('Only PRODUCTION_OPERATOR can handover jobs to Finishing.');
+      if (role !== UserRole.PRODUCTION_OPERATOR && role !== UserRole.PRODUCTION_HEAD) {
+        throw new ForbiddenException('Only PRODUCTION_OPERATOR or PRODUCTION_HEAD can handover jobs to Finishing.');
       }
       if (job.status !== JobCardStatus.PRINTING && job.status !== JobCardStatus.ON_HOLD) {
         throw new BadRequestException('Cannot move to FINISHING: Job must complete printing first.');
       }
     } else if (targetKey === 'FINAL_QC') {
-      if (role !== UserRole.PRODUCTION_OPERATOR && role !== UserRole.FINAL_QC_INSPECTOR) {
-        throw new ForbiddenException('Only PRODUCTION_OPERATOR or FINAL_QC_INSPECTOR can route jobs to Final QC.');
+      if (role !== UserRole.PRODUCTION_OPERATOR && role !== UserRole.FINAL_QC_INSPECTOR && role !== UserRole.PRODUCTION_HEAD) {
+        throw new ForbiddenException('Only PRODUCTION_OPERATOR, PRODUCTION_HEAD, or FINAL_QC_INSPECTOR can route jobs to Final QC.');
       }
       if (job.status !== JobCardStatus.FINISHING && job.status !== JobCardStatus.PRINTING_COMPLETED && job.status !== JobCardStatus.PRINTING && job.status !== JobCardStatus.ON_HOLD) {
         throw new BadRequestException('Cannot move to FINAL QC: Job must complete printing and finishing first.');
@@ -1022,9 +1055,13 @@ export class ProductionBoardService {
   }
 
   /**
-   * Column Management: Create Custom Column (Available for all roles)
+   * Column Management: Create Custom Column
    */
   async createColumn(dto: CreateColumnDto, user: JwtPayload) {
+    if (user.role !== UserRole.ADMIN_MANAGER) {
+      throw new ForbiddenException('Only ADMIN_MANAGER is authorized to configure production columns.');
+    }
+
     const key = dto.key || dto.name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
     const existing = await this.prisma.productionColumn.findUnique({
@@ -1067,9 +1104,13 @@ export class ProductionBoardService {
   }
 
   /**
-   * Column Management: Update Column (Available for all roles)
+   * Column Management: Update Column
    */
   async updateColumn(id: string, dto: UpdateColumnDto, user: JwtPayload) {
+    if (user.role !== UserRole.ADMIN_MANAGER) {
+      throw new ForbiddenException('Only ADMIN_MANAGER is authorized to update production columns.');
+    }
+
     const existing = await this.prisma.productionColumn.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException(`Column '${id}' not found.`);
@@ -1104,9 +1145,13 @@ export class ProductionBoardService {
   }
 
   /**
-   * Column Management: Reorder Columns (Available for all roles)
+   * Column Management: Reorder Columns
    */
   async reorderColumns(columnOrders: Array<{ id: string; sortOrder: number }>, user: JwtPayload) {
+    if (user.role !== UserRole.ADMIN_MANAGER) {
+      throw new ForbiddenException('Only ADMIN_MANAGER is authorized to reorder production columns.');
+    }
+
     await this.prisma.$transaction(
       columnOrders.map((item) =>
         this.prisma.productionColumn.update({
@@ -1130,20 +1175,20 @@ export class ProductionBoardService {
   }
 
   /**
-   * Column Management: Safe Archive / Delete Column (Available for all roles)
+   * Column Management: Safe Archive Column
    */
   async archiveColumn(id: string, user: JwtPayload) {
+    if (user.role !== UserRole.ADMIN_MANAGER) {
+      throw new ForbiddenException('Only ADMIN_MANAGER is authorized to archive production columns.');
+    }
+
     const column = await this.prisma.productionColumn.findUnique({ where: { id } });
     if (!column) {
       throw new NotFoundException(`Column '${id}' not found.`);
     }
 
-    // Safety check: ensure at least one active column remains
-    const activeCount = await this.prisma.productionColumn.count({
-      where: { isActive: true, key: { not: 'READY_FOR_PRODUCTION' } },
-    });
-    if (activeCount <= 1) {
-      throw new BadRequestException('At least one production station column must remain active.');
+    if (column.type === ProductionColumnType.SYSTEM) {
+      throw new BadRequestException('System default workflow columns cannot be archived.');
     }
 
     // Safety check: verify no active jobs exist in this column
@@ -1151,7 +1196,7 @@ export class ProductionBoardService {
     const targetCol = board.columns.find((c) => c.id === id);
     if (targetCol && targetCol.cardCount > 0) {
       throw new BadRequestException(
-        `This column contains ${targetCol.cardCount} active job(s). Move or reassign these jobs before deleting the column.`,
+        `This column contains ${targetCol.cardCount} active jobs. Move these jobs before deactivating the column.`,
       );
     }
 
@@ -1169,7 +1214,7 @@ export class ProductionBoardService {
       action: 'PRODUCTION_COLUMN_ARCHIVED',
       entity: 'ProductionColumn',
       entityId: archived.id,
-      reason: `Archived column ${archived.name}`,
+      reason: `Archived custom column ${archived.name}`,
     });
 
     return archived;

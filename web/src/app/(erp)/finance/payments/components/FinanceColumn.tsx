@@ -1,15 +1,10 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { FinanceJobCard, FinanceCardDto } from './FinanceJobCard';
 import {
   RiInboxLine,
   RiCheckDoubleLine,
-  RiMore2Fill,
-  RiEditLine,
-  RiArrowLeftSLine,
-  RiArrowRightSLine,
-  RiDeleteBinLine,
 } from 'react-icons/ri';
 import { formatCurrency } from '@/lib/utils';
 
@@ -32,11 +27,6 @@ interface FinanceColumnProps {
   draggedCard: FinanceCardDto | null;
   onCardDragStart: (e: React.DragEvent, card: FinanceCardDto) => void;
   onCardDragEnd: (e: React.DragEvent) => void;
-  onEditColumn?: (col: FinanceColumnDefinitionDto) => void;
-  onDeleteColumn?: (col: FinanceColumnDefinitionDto) => void;
-  onMoveColumn?: (col: FinanceColumnDefinitionDto, direction: 'left' | 'right') => void;
-  canMoveLeft?: boolean;
-  canMoveRight?: boolean;
 }
 
 export function FinanceColumn({
@@ -49,27 +39,8 @@ export function FinanceColumn({
   draggedCard,
   onCardDragStart,
   onCardDragEnd,
-  onEditColumn,
-  onDeleteColumn,
-  onMoveColumn,
-  canMoveLeft = false,
-  canMoveRight = false,
 }: FinanceColumnProps) {
   const [isDragOver, setIsDragOver] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Close menu on outside click
-  useEffect(() => {
-    if (!isMenuOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setIsMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isMenuOpen]);
 
   const isValidDropTarget =
     draggedCard !== null && draggedCard.financeStatus !== column.key;
@@ -117,7 +88,7 @@ export function FinanceColumn({
       />
 
       {/* Column Header */}
-      <div className="p-3.5 border-b border-slate-200/80 bg-white/70 rounded-t-xl flex items-center justify-between flex-shrink-0 relative">
+      <div className="p-3.5 border-b border-slate-200/80 bg-white/70 rounded-t-xl flex items-center justify-between flex-shrink-0">
         <div className="min-w-0 pr-2">
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-[13px] text-slate-900 tracking-tight uppercase truncate">
@@ -133,81 +104,6 @@ export function FinanceColumn({
             <span className="font-semibold text-slate-900">{formatCurrency(totalColumnSum)}</span>
             {column.description && <span>• {column.description}</span>}
           </div>
-        </div>
-
-        {/* Column Action Menu */}
-        <div className="relative" ref={menuRef}>
-          <button
-            type="button"
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-200/70 transition"
-            title="Column actions"
-          >
-            <RiMore2Fill className="h-4 w-4" />
-          </button>
-
-          {isMenuOpen && (
-            <div className="absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 text-xs animate-in fade-in zoom-in-95 duration-100">
-              {onEditColumn && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    onEditColumn(column);
-                  }}
-                  className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-2"
-                >
-                  <RiEditLine className="h-3.5 w-3.5 text-slate-500" />
-                  <span>Edit Column</span>
-                </button>
-              )}
-
-              {onMoveColumn && canMoveLeft && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    onMoveColumn(column, 'left');
-                  }}
-                  className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-2"
-                >
-                  <RiArrowLeftSLine className="h-3.5 w-3.5 text-slate-500" />
-                  <span>Move Left</span>
-                </button>
-              )}
-
-              {onMoveColumn && canMoveRight && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    onMoveColumn(column, 'right');
-                  }}
-                  className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-2"
-                >
-                  <RiArrowRightSLine className="h-3.5 w-3.5 text-slate-500" />
-                  <span>Move Right</span>
-                </button>
-              )}
-
-              {onDeleteColumn && (
-                <>
-                  <div className="border-t border-slate-100 my-1" />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      onDeleteColumn(column);
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-rose-50 text-rose-600 font-medium flex items-center gap-2"
-                  >
-                    <RiDeleteBinLine className="h-3.5 w-3.5 text-rose-500" />
-                    <span>Delete Column</span>
-                  </button>
-                </>
-              )}
-            </div>
-          )}
         </div>
       </div>
 

@@ -41,10 +41,13 @@ export class OperationsController {
   // ─── Operational Order List ────────────────────────────────────────────
 
   @Get('orders')
-  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_OPERATOR)
+  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_HEAD, UserRole.PRODUCTION_OPERATOR)
   @ApiOperation({ summary: 'List all orders with operational filters and pagination' })
-  async listOrders(@Query() query: OperationsDashboardFilters) {
-    return this.operationsService.listOperationalOrders(query);
+  async listOrders(
+    @Query() query: OperationsDashboardFilters,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.operationsService.listOperationalOrders(query, user);
   }
 
   // ─── New Order Intake Queue ─────────────────────────────────────────────
@@ -52,8 +55,11 @@ export class OperationsController {
   @Get('orders/intake')
   @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_OPERATOR)
   @ApiOperation({ summary: 'List incoming customer orders needing OE triage/assignment' })
-  async intakeOrders(@Query() query: OperationsDashboardFilters) {
-    return this.operationsService.listOperationalOrders({ ...query, newIntake: 'true' });
+  async intakeOrders(
+    @Query() query: OperationsDashboardFilters,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.operationsService.listOperationalOrders({ ...query, newIntake: 'true' }, user);
   }
 
   // ─── Unassigned Design Queue ───────────────────────────────────────────
@@ -61,17 +67,23 @@ export class OperationsController {
   @Get('orders/unassigned/design')
   @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_OPERATOR)
   @ApiOperation({ summary: 'List orders needing design with no assigned designer' })
-  async unassignedDesign(@Query() query: OperationsDashboardFilters) {
-    return this.operationsService.listOperationalOrders({ ...query, unassignedDesign: 'true' });
+  async unassignedDesign(
+    @Query() query: OperationsDashboardFilters,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.operationsService.listOperationalOrders({ ...query, unassignedDesign: 'true' }, user);
   }
 
   // ─── Unassigned Production Queue ───────────────────────────────────────
 
   @Get('orders/unassigned/production')
-  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_OPERATOR)
+  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_HEAD, UserRole.PRODUCTION_OPERATOR)
   @ApiOperation({ summary: 'List orders in production queue with no assigned operator' })
-  async unassignedProduction(@Query() query: OperationsDashboardFilters) {
-    return this.operationsService.listOperationalOrders({ ...query, unassignedProduction: 'true' });
+  async unassignedProduction(
+    @Query() query: OperationsDashboardFilters,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.operationsService.listOperationalOrders({ ...query, unassignedProduction: 'true' }, user);
   }
 
   // ─── Blocked Orders ────────────────────────────────────────────────────
@@ -79,14 +91,17 @@ export class OperationsController {
   @Get('orders/blocked')
   @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_OPERATOR)
   @ApiOperation({ summary: 'List orders blocked by payment, QC, hold, or other issues' })
-  async blockedOrders(@Query() query: OperationsDashboardFilters) {
-    return this.operationsService.listOperationalOrders({ ...query, blocked: 'true' });
+  async blockedOrders(
+    @Query() query: OperationsDashboardFilters,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.operationsService.listOperationalOrders({ ...query, blocked: 'true' }, user);
   }
 
   // ─── Single Order Detail ──────────────────────────────────────────────
 
   @Get('orders/:id')
-  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_OPERATOR)
+  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_HEAD, UserRole.PRODUCTION_OPERATOR)
   @ApiOperation({ summary: 'Get full operational detail for a single order' })
   async getOrderDetail(@Param('id') id: string) {
     return this.operationsService.getOperationalOrderDetail(id);
@@ -95,7 +110,7 @@ export class OperationsController {
   // ─── Order Timeline ───────────────────────────────────────────────────
 
   @Get('orders/:id/timeline')
-  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_OPERATOR)
+  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_HEAD, UserRole.PRODUCTION_OPERATOR)
   @ApiOperation({ summary: 'Get order timeline: status history, audit, assignments, notes' })
   async getTimeline(@Param('id') id: string) {
     return this.operationsService.getOrderTimeline(id);
@@ -117,7 +132,7 @@ export class OperationsController {
   // ─── Assign Production Operator ───────────────────────────────────────
 
   @Post('orders/:id/production-assignment')
-  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_OPERATOR)
+  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_HEAD, UserRole.PRODUCTION_OPERATOR)
   @ApiOperation({ summary: 'Assign or reassign a production operator to an order' })
   async assignProductionOperator(
     @Param('id') id: string,
@@ -163,7 +178,7 @@ export class OperationsController {
   }
 
   @Get('assignees/operators')
-  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_OPERATOR)
+  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_HEAD, UserRole.PRODUCTION_OPERATOR)
   @ApiOperation({ summary: 'List eligible production operators for assignment with workload info' })
   async getOperators() {
     return this.operationsService.getEligibleProductionOperators();
@@ -172,14 +187,14 @@ export class OperationsController {
   // ─── Operational Readiness & Production Release ───────────────────────
 
   @Get('orders/:id/readiness')
-  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_OPERATOR)
+  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_HEAD, UserRole.PRODUCTION_OPERATOR)
   @ApiOperation({ summary: 'Get order production readiness report with automated size validation' })
   async getOrderReadiness(@Param('id') id: string) {
     return this.operationsService.getOrderReadiness(id);
   }
 
   @Post('orders/:id/release-to-production')
-  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_OPERATOR)
+  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_HEAD, UserRole.PRODUCTION_OPERATOR)
   @ApiOperation({ summary: 'Release order to production queue with automated size check and Job Card creation' })
   async releaseToProduction(
     @Param('id') id: string,

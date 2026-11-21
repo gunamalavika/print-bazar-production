@@ -29,6 +29,12 @@ const ROLE_CONFIG: Record<string, { label: string; short: string; destination: s
     destination: '/operations/orders',
     badgeColor: 'bg-yellow-100 text-yellow-900 border-yellow-300',
   },
+  PRODUCTION_HEAD: {
+    label: 'Production Head',
+    short: 'Prod Head',
+    destination: '/production/assign',
+    badgeColor: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+  },
   DESIGNER_PREPRESS: {
     label: 'Pre-Press & Design',
     short: 'Prepress',
@@ -145,7 +151,7 @@ export function AdminSidebar({ isOpen = false, onClose }: AdminSidebarProps) {
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Brand Identity Header */}
         <div className="p-3.5 sm:p-4 border-b border-[#E5E5E5] bg-[#F8F8F8] flex items-center justify-between flex-shrink-0">
-          <Link href="/admin/dashboard" className="flex flex-col gap-1.5 group min-w-0" aria-label="Print Bazzar Admin">
+          <Link href={currentRoleMeta.destination} className="flex flex-col gap-1.5 group min-w-0" aria-label="Print Bazzar Admin">
             <Image
               src="/brand-logo.png"
               alt="Print Bazzar"

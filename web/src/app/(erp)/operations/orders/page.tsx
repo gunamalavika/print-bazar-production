@@ -134,26 +134,31 @@ const DEFAULT_OPERATORS: StaffAssignee[] = [
   },
 ];
 
-// ─── HELPER: CLEAN STAFF DISPLAY NAME ─────────────────────────────────────────
-
-function getStaffDisplayName(fullName?: string | null): { name: string; role?: string } {
-  if (!fullName) return { name: 'Unassigned' };
-  const match = fullName.match(/^(.*?)\s*\((.*?)\)$/);
-  if (match) {
-    return { name: match[1].trim(), role: match[2].trim() };
-  }
-  return { name: fullName.trim() };
-}
-
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 
 export default function OrderAssignmentCenterPage() {
   const router = useRouter();
   const { user: currentUser, isAuthenticated } = useAuth();
   const { isConnected, lastEvent, subscribeToOperations } = useSocket();
+  const isProductionHead = currentUser?.role === 'PRODUCTION_HEAD';
+  const basePath = isProductionHead ? '/production/assign' : '/operations/orders';
 
   // Primary state
   const [activeTab, setActiveTab] = useState<QueueTab>('NEEDS_ACTION');
+
+  // Production Head strictly defaults to Pending Operator Assignment and uses dedicated /production/assign URL
+  useEffect(() => {
+    if (isProductionHead) {
+      if (typeof window !== 'undefined' && window.location.pathname.startsWith('/operations/orders')) {
+        router.replace('/production/assign');
+      }
+      setActiveTab((prev) =>
+        prev === 'NEEDS_ACTION' || prev === 'DESIGN_REQUIRED' || prev === 'BLOCKED'
+          ? 'READY_FOR_PRODUCTION'
+          : prev
+      );
+    }
+  }, [isProductionHead, router]);
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
   const [searchQuery, setSearchQuery] = useState('');
   const [customerFilter, setCustomerFilter] = useState('ALL');
@@ -183,10 +188,10 @@ export default function OrderAssignmentCenterPage() {
     return () => clearTimeout(timer);
   }, [liveToast]);
 
-  // Candidate Artworks Review & Selection Modal state
+  // Candidate Artworks Review & Multi-Selection Modal state
   const [candidateModalOpen, setCandidateModalOpen] = useState(false);
   const [candidateOrder, setCandidateOrder] = useState<any | null>(null);
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
   const [selectedModalOperatorId, setSelectedModalOperatorId] = useState<string>('');
   const [oeReviewNotes, setOeReviewNotes] = useState('');
   const [isApprovingCandidate, setIsApprovingCandidate] = useState(false);
@@ -240,7 +245,7 @@ export default function OrderAssignmentCenterPage() {
     try {
       const [resOrders, resDesigners, resOperators] = await Promise.all([
         api.getOperationsOrders({ limit: 100 }).catch(() => null),
-        api.getEligibleDesigners().catch(() => null),
+        isProductionHead ? Promise.resolve(null) : api.getEligibleDesigners().catch(() => null),
         api.getEligibleProductionOperators().catch(() => null),
       ]);
 
@@ -259,19 +264,15 @@ export default function OrderAssignmentCenterPage() {
           const hasUploadedCandidates = Boolean(item.artworkVersions && item.artworkVersions.length > 0);
 
           const isArtReady =
-            bo.status !== 'ARTWORK_REVIEW' &&
-            bo.status !== 'DESIGN_REQUIRED' &&
-            (
-              bo.status === 'ARTWORK_APPROVED' ||
-              bo.status === 'PRODUCTION_QUEUE' ||
-              bo.status === 'PRINTING' ||
-              bo.status === 'FINISHING' ||
-              bo.status === 'QUALITY_CHECK' ||
-              bo.status === 'PACKING' ||
-              bo.status === 'READY_FOR_DISPATCH' ||
-              bo.status === 'DELIVERED' ||
-              hasConfirmedWork
-            );
+            bo.status === 'ARTWORK_APPROVED' ||
+            bo.status === 'PRODUCTION_QUEUE' ||
+            bo.status === 'PRINTING' ||
+            bo.status === 'FINISHING' ||
+            bo.status === 'QUALITY_CHECK' ||
+            bo.status === 'PACKING' ||
+            bo.status === 'READY_FOR_DISPATCH' ||
+            bo.status === 'DELIVERED' ||
+            hasConfirmedWork;
 
           const isDesign =
             bo.status === 'DESIGN_REQUIRED' ||
@@ -282,14 +283,13 @@ export default function OrderAssignmentCenterPage() {
             specs?.artworkSource === 'DESIGN_TEAM' ||
             specs?.artworkSource === 'CUSTOMER_WITH_DESIGN_ASSISTANCE';
 
-          const artState =
-            bo.status === 'ARTWORK_REVIEW' || (hasUploadedCandidates && !hasConfirmedWork)
-              ? 'NEEDS_OE_CONFIRMATION'
-              : isArtReady
-              ? 'READY'
-              : isDesign
-              ? 'DESIGN_REQUIRED'
-              : 'NOT_READY';
+          const artState = isArtReady
+            ? 'READY'
+            : bo.status === 'ARTWORK_REVIEW' || hasUploadedCandidates
+            ? 'NEEDS_OE_CONFIRMATION'
+            : isDesign
+            ? 'DESIGN_REQUIRED'
+            : 'NOT_READY';
 
           const rawArtUrl =
             approvedArt?.storageKey ||
@@ -303,12 +303,26 @@ export default function OrderAssignmentCenterPage() {
 
           const artFileUrl = resolveArtworkUrl(rawArtUrl);
 
-          const prodAssignee =
-            bo.assignedOperator ||
-            bo.productionAssignment?.assignedUser ||
-            bo.assignments?.find((a: any) => a.taskType === 'PRODUCTION' && a.status === 'ACTIVE')?.assignedUser ||
-            bo.assignments?.find((a: any) => a.taskType === 'PRODUCTION')?.assignedUser ||
+          const activeProdAssignment = bo.assignments?.find(
+            (a: any) => a.taskType === 'PRODUCTION' && a.status === 'ACTIVE',
+          );
+          const completedProdAssignment = bo.assignments?.find(
+            (a: any) => a.taskType === 'PRODUCTION' && a.status === 'COMPLETED',
+          );
+          const rawProdUser =
+            activeProdAssignment?.assignedUser ||
+            completedProdAssignment?.assignedUser ||
+            (bo.productionAssignment?.status === 'ACTIVE' || bo.productionAssignment?.status === 'COMPLETED'
+              ? bo.productionAssignment.assignedUser
+              : null) ||
+            (!bo.assignments ? bo.assignedOperator : null) ||
             null;
+
+          const isOperatorUser = rawProdUser?.role === 'PRODUCTION_OPERATOR';
+          const isProdHeadUser = rawProdUser?.role === 'PRODUCTION_HEAD';
+
+          const prodAssignee = isOperatorUser ? rawProdUser : null;
+          const prodHeadAssignee = isProdHeadUser ? rawProdUser : null;
 
           const activeDesignAssignment = bo.assignments?.find(
             (a: any) => a.taskType === 'DESIGN' && a.status === 'ACTIVE',
@@ -316,24 +330,31 @@ export default function OrderAssignmentCenterPage() {
           const completedDesignAssignment = bo.assignments?.find(
             (a: any) => a.taskType === 'DESIGN' && a.status === 'COMPLETED',
           );
-          const anyDesignAssignment = bo.assignments?.find(
-            (a: any) => a.taskType === 'DESIGN',
-          );
 
           const designAssignee =
-            bo.assignedDesigner ||
-            bo.designAssignment?.assignedUser ||
             activeDesignAssignment?.assignedUser ||
             completedDesignAssignment?.assignedUser ||
-            anyDesignAssignment?.assignedUser ||
+            (bo.designAssignment?.status === 'ACTIVE' || bo.designAssignment?.status === 'COMPLETED'
+              ? bo.designAssignment.assignedUser
+              : null) ||
+            (!bo.assignments ? bo.assignedDesigner : null) ||
             null;
 
+          const hasActiveDesigner = Boolean(activeDesignAssignment);
+          const hasActiveOperator = Boolean(
+            (activeProdAssignment && activeProdAssignment.assignedUser?.role === 'PRODUCTION_OPERATOR') ||
+            prodAssignee,
+          );
+          const hasCompletedDesign = Boolean(completedDesignAssignment);
+
           const isDesignCompleted = Boolean(
-            completedDesignAssignment ||
-            bo.status === 'ARTWORK_REVIEW' ||
-            bo.status === 'ARTWORK_APPROVED' ||
-            hasUploadedCandidates ||
-            isArtReady,
+            !activeDesignAssignment && (
+              completedDesignAssignment ||
+              bo.status === 'ARTWORK_REVIEW' ||
+              bo.status === 'ARTWORK_APPROVED' ||
+              hasUploadedCandidates ||
+              isArtReady
+            ),
           );
 
           const candidateArtworks = (item.artworkVersions || []).map((v: any) => ({
@@ -399,12 +420,27 @@ export default function OrderAssignmentCenterPage() {
             isUrgent: bo.priority === 'URGENT',
             assignedDesigner: designAssignee,
             assignedOperator: prodAssignee,
+            assignedProductionHead: prodHeadAssignee,
+            hasActiveDesigner,
+            hasActiveOperator,
+            hasCompletedDesign,
             isDesignCompleted,
             status: bo.status,
           };
         });
 
-        setOrders(mapped);
+        const finalOrders = isProductionHead
+          ? mapped.filter(
+              (o: any) =>
+                o.artworkState === 'READY' &&
+                !o.hasActiveDesigner &&
+                !['DELIVERED', 'CANCELLED', 'ON_HOLD', 'QUALITY_CHECK', 'PACKING', 'READY_FOR_DISPATCH', 'OUT_FOR_DELIVERY'].includes(
+                  o.status,
+                ),
+            )
+          : mapped;
+
+        setOrders(finalOrders);
       } else {
         setOrders([]);
       }
@@ -448,7 +484,7 @@ export default function OrderAssignmentCenterPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isProductionHead]);
 
   useEffect(() => {
     loadData();
@@ -475,14 +511,18 @@ export default function OrderAssignmentCenterPage() {
 
   const kpiMetrics = useMemo(() => {
     const total = orders.length;
-    // Needs Action: orders where either Designer or Production Operator is unassigned
-    const needsAction = orders.filter((o) => !o.assignedDesigner || !o.assignedOperator).length;
+    // Needs Action: orders where NEITHER Designer NOR Production Operator has been assigned yet
+    const needsAction = orders.filter((o) => !o.assignedDesigner && !o.assignedOperator).length;
     // Design Required: orders without designer or with design required artwork state
     const designReq = orders.filter((o) => !o.assignedDesigner && (o.artworkState === 'DESIGN_REQUIRED' || o.artworkState === 'NOT_READY')).length;
-    // Ready for Production: artwork ready but operator not assigned
-    const readyProd = orders.filter((o) => !o.assignedOperator && o.artworkState === 'READY').length;
-    // In Progress: active with either designer or operator
-    const inProgress = orders.filter((o) => (o.assignedDesigner || o.assignedOperator) && !['DELIVERED', 'CANCELLED', 'ON_HOLD'].includes(o.status)).length;
+    // Ready for Production: artwork ready, not routed through design, and operator not assigned
+    const readyProd = isProductionHead
+      ? orders.filter((o) => !o.assignedOperator && o.artworkState === 'READY').length
+      : orders.filter((o) => !o.assignedOperator && !o.assignedDesigner && o.artworkState === 'READY').length;
+    // In Progress: active with either designer or operator (for Production Head: assigned to operator)
+    const inProgress = isProductionHead
+      ? orders.filter((o) => Boolean(o.assignedOperator) && !['DELIVERED', 'CANCELLED', 'ON_HOLD'].includes(o.status)).length
+      : orders.filter((o) => (o.assignedDesigner || o.assignedOperator) && !['DELIVERED', 'CANCELLED', 'ON_HOLD'].includes(o.status)).length;
     // Blocked: ON_HOLD or blocked
     const blocked = orders.filter((o) => o.artworkState === 'BLOCKED' || o.status === 'ON_HOLD').length;
 
@@ -494,19 +534,25 @@ export default function OrderAssignmentCenterPage() {
       blocked,
       totalOrders: total,
     };
-  }, [orders]);
+  }, [orders, isProductionHead]);
 
   // ─── FILTERED ORDERS LIST ──────────────────────────────────────────────────
 
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
       // Tab filter
-      if (activeTab === 'NEEDS_ACTION') {
-        if (o.assignedDesigner && o.assignedOperator) return false;
+      if (isProductionHead) {
+        if (activeTab === 'READY_FOR_PRODUCTION') {
+          if (o.artworkState !== 'READY' || o.assignedOperator) return false;
+        } else if (activeTab === 'IN_PROGRESS') {
+          if (!o.assignedOperator) return false;
+        }
+      } else if (activeTab === 'NEEDS_ACTION') {
+        if (o.assignedDesigner || o.assignedOperator) return false;
       } else if (activeTab === 'DESIGN_REQUIRED') {
         if (o.artworkState !== 'DESIGN_REQUIRED' && o.artworkState !== 'NOT_READY' && o.assignedDesigner) return false;
       } else if (activeTab === 'READY_FOR_PRODUCTION') {
-        if (o.artworkState !== 'READY') return false;
+        if (o.artworkState !== 'READY' || o.assignedDesigner) return false;
       } else if (activeTab === 'IN_PROGRESS') {
         if (!o.assignedDesigner && !o.assignedOperator && !['PRINTING', 'FINISHING', 'QUALITY_CHECK'].includes(o.status)) return false;
       } else if (activeTab === 'BLOCKED') {
@@ -534,11 +580,29 @@ export default function OrderAssignmentCenterPage() {
 
       return true;
     });
-  }, [orders, activeTab, searchQuery, priorityFilter, customerFilter, productFilter]);
+  }, [orders, activeTab, searchQuery, priorityFilter, customerFilter, productFilter, isProductionHead]);
 
   // ─── DRAWER OPEN HANDLER ───────────────────────────────────────────────────
 
   const handleOpenDrawer = (order: any, type: 'DESIGN' | 'PRODUCTION') => {
+    // Production Head can only assign Production Operators
+    if (isProductionHead && type === 'DESIGN') {
+      setLiveToast('⚠️ Production Head can only assign Production Operators.');
+      return;
+    }
+
+    // Once assigned to Design, OE cannot assign Production — the Designer moves the order to Production Head
+    if (type === 'PRODUCTION' && (order.hasActiveDesigner || (!isProductionHead && order.assignedDesigner))) {
+      setLiveToast('⚠️ Operator assignment is disabled: this order is assigned to a Designer, who will move it to Production Head.');
+      return;
+    }
+
+    // Mutual exclusion: if a Production Operator is already assigned, disable Designer assignment
+    if (type === 'DESIGN' && order.hasActiveOperator) {
+      setLiveToast('⚠️ Designer assignment is disabled because a Production Operator is already assigned to this order.');
+      return;
+    }
+
     // Immediate Step Validation: If artwork is not approved, force DESIGN assignment
     if (type === 'PRODUCTION' && order.artworkState !== 'READY') {
       setLiveToast('⚠️ Artwork is not approved yet. Assign a Prepress Designer first.');
@@ -566,31 +630,55 @@ export default function OrderAssignmentCenterPage() {
   const handleOpenArtwork = (order: any) => {
     if (!order) return;
     const art = order.artworkFile;
-    const resolvedUrl = resolveArtworkUrl(
+    const candidateApproved = order.candidateArtworks?.find((c: any) => c.isApproved);
+    const candidateLatest = order.candidateArtworks?.[order.candidateArtworks.length - 1];
+
+    const rawUrl =
       art?.fileUrl ||
       art?.storageKey ||
+      candidateApproved?.fileUrl ||
+      candidateApproved?.storageKey ||
+      candidateLatest?.fileUrl ||
+      candidateLatest?.storageKey ||
       order.specs?.artworkUrl ||
       order.specs?.artworkFile?.fileUrl ||
       order.specs?.artworkFile?.storageKey ||
-      null
-    );
+      null;
+
+    const resolvedUrl = resolveArtworkUrl(rawUrl);
 
     setViewingArtwork({
       orderNumber: order.orderNumber,
       productName: order.productName,
       customerName: order.customerName,
-      fileName: art?.fileName || `${order.orderNumber}_Production_Artwork_v1.pdf`,
-      version: art?.version || 'v1',
-      fileSize: art?.fileSize || '3.2 MB',
+      fileName:
+        art?.fileName ||
+        candidateApproved?.originalFileName ||
+        candidateLatest?.originalFileName ||
+        `${order.orderNumber}_Production_Artwork_v1.pdf`,
+      version:
+        art?.version ||
+        (candidateApproved ? `v${candidateApproved.versionNumber}` : candidateLatest ? `v${candidateLatest.versionNumber}` : 'v1'),
+      fileSize:
+        art?.fileSize ||
+        candidateApproved?.fileSize ||
+        candidateLatest?.fileSize ||
+        '3.2 MB',
       fileUrl: resolvedUrl,
-      storageKey: art?.storageKey || null,
+      storageKey:
+        art?.storageKey ||
+        candidateApproved?.storageKey ||
+        candidateLatest?.storageKey ||
+        null,
       mimeType:
         art?.mimeType ||
+        candidateApproved?.mimeType ||
+        candidateLatest?.mimeType ||
         (resolvedUrl?.match(/\.(jpeg|jpg|png|webp|gif|svg)(\?.*)?$/i)
-          ? 'image/png'
+          ? 'image/jpeg'
           : 'application/pdf'),
       dimensions: art?.sizeDisplay || order.specs?.dimensions || 'Standard Press Dimensions',
-      qualityStatus: art?.qualityStatus || 'PASSED',
+      qualityStatus: art?.qualityStatus || candidateApproved?.qualityStatus || 'PASSED',
     });
     setArtworkImageError(false);
     setArtworkModalOpen(true);
@@ -599,9 +687,20 @@ export default function OrderAssignmentCenterPage() {
   // ─── CANDIDATE ARTWORKS REVIEW & APPROVAL HANDLERS ─────────────────────────
   const handleOpenCandidateReviewModal = (order: any) => {
     if (!order) return;
+    if (!isProductionHead && (order.hasActiveDesigner || order.assignedDesigner)) {
+      setLiveToast('⚠️ This order is assigned to a Prepress Designer. The Designer will move it to Production Head.');
+      return;
+    }
     setCandidateOrder(order);
-    const approved = order.candidateArtworks?.find((v: any) => v.isApproved);
-    setSelectedCandidateId(approved?.id || order.candidateArtworks?.[0]?.id || null);
+    const candidates: any[] = order.candidateArtworks || [];
+    const approvedIds = candidates.filter((v: any) => v.isApproved).map((v: any) => v.id);
+    if (approvedIds.length > 0) {
+      setSelectedCandidateIds(approvedIds);
+    } else if (candidates.length > 0) {
+      setSelectedCandidateIds([candidates[0].id]);
+    } else {
+      setSelectedCandidateIds([]);
+    }
     setOeReviewNotes('');
     setOeCorrectionNotes('');
     setShowCorrectionInput(false);
@@ -614,19 +713,39 @@ export default function OrderAssignmentCenterPage() {
     setCandidateModalOpen(true);
   };
 
+  const handleToggleCandidateId = (id: string) => {
+    setSelectedCandidateIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
+  const handleSelectAllCandidates = () => {
+    const allIds = (candidateOrder?.candidateArtworks || []).map((c: any) => c.id);
+    if (selectedCandidateIds.length === allIds.length) {
+      setSelectedCandidateIds([]);
+    } else {
+      setSelectedCandidateIds(allIds);
+    }
+  };
+
   const handleApproveCandidateWork = async () => {
-    if (!candidateOrder || !selectedCandidateId) {
-      setLiveToast('Please select a candidate artwork to confirm.');
+    if (!candidateOrder || selectedCandidateIds.length === 0) {
+      setLiveToast('Please select at least 1 candidate artwork to confirm for production.');
       return;
     }
     setIsApprovingCandidate(true);
     try {
       const orderItemId = candidateOrder.orderItemId || candidateOrder.id;
-      // 1. Authoritative Artwork confirmation
+      // 1. Authoritative Multi-Artwork confirmation
       await api.confirmArtworkWork({
         orderItemId,
-        artworkVersionId: selectedCandidateId,
-        oeNotes: oeReviewNotes || 'Confirmed by Operations Manager for production',
+        artworkVersionId: selectedCandidateIds[0],
+        artworkVersionIds: selectedCandidateIds,
+        oeNotes:
+          oeReviewNotes ||
+          (isProductionHead
+            ? `Confirmed ${selectedCandidateIds.length} artwork(s) by Production Head for production`
+            : `Confirmed ${selectedCandidateIds.length} artwork(s) by Operations Manager for production`),
       });
 
       // 2. Direct Operator Assignment if selected in modal
@@ -640,10 +759,19 @@ export default function OrderAssignmentCenterPage() {
         });
       }
 
+      const workCountLabel =
+        selectedCandidateIds.length > 1
+          ? `${selectedCandidateIds.length} artworks`
+          : 'Artwork';
+
       if (assignedOpName) {
-        setLiveToast(`✓ Artwork confirmed & assigned to Operator ${assignedOpName} (#${candidateOrder.orderNumber})! Moved to Production Queue.`);
+        setLiveToast(
+          `✓ ${workCountLabel} confirmed & assigned to Operator ${assignedOpName} (#${candidateOrder.orderNumber})! Moved to Production Queue.`,
+        );
       } else {
-        setLiveToast(`✓ Authoritative work confirmed for Order #${candidateOrder.orderNumber}! Moved to Production Queue.`);
+        setLiveToast(
+          `✓ ${workCountLabel} confirmed for Order #${candidateOrder.orderNumber}! Moved to Production Queue.`,
+        );
       }
 
       setCandidateModalOpen(false);
@@ -691,6 +819,16 @@ export default function OrderAssignmentCenterPage() {
   const handleConfirmAssignment = async () => {
     if (!drawerOrder || !selectedStaffId) return;
 
+    if (drawerType === 'PRODUCTION' && drawerOrder.hasActiveDesigner) {
+      setLiveToast('⚠️ Operator assignment is disabled while a Prepress Designer is assigned to this order.');
+      return;
+    }
+
+    if (drawerType === 'DESIGN' && drawerOrder.hasActiveOperator) {
+      setLiveToast('⚠️ Designer assignment is disabled because a Production Operator is already assigned to this order.');
+      return;
+    }
+
     if (drawerType === 'PRODUCTION' && drawerOrder.artworkState !== 'READY') {
       alert('Cannot assign Production Operator: Artwork is still pending approval. The immediate next task is Prepress Design.');
       return;
@@ -702,12 +840,11 @@ export default function OrderAssignmentCenterPage() {
     if (!token || !isAuthenticated) {
       alert(
         'Authentication Required:\n\n' +
-        'You are not currently authenticated as an Operations Coordinator.\n\n' +
-        'Please sign in with your Operations account:\n' +
-        'Email: operations@printbazzar.com\n' +
+        'Please sign in with your Operations Coordinator or Production Head account:\n\n' +
+        'Email: prodhead@printbazzar.com / operations@printbazzar.com\n' +
         'Password: Admin@12345'
       );
-      router.push('/login?returnTo=/operations/orders');
+      router.push(`/login?returnTo=${encodeURIComponent(basePath)}`);
       setIsSubmitting(false);
       return;
     }
@@ -722,18 +859,14 @@ export default function OrderAssignmentCenterPage() {
           designerId: selectedStaffId,
           reason: assignmentNotes || `Prepress Designer assignment by Operations Coordinator`,
         });
-
-        // Ensure newly assigned order defaults to 1st Kanban column (Artwork Check)
-        try {
-          const saved = localStorage.getItem('pb_kanban_prepress_card_stages');
-          const current = saved ? JSON.parse(saved) : {};
-          current[drawerOrder.id] = 'ARTWORK_CHECK';
-          localStorage.setItem('pb_kanban_prepress_card_stages', JSON.stringify(current));
-        } catch {}
       } else {
         await api.assignProductionOperator(drawerOrder.id, {
           operatorId: selectedStaffId,
-          reason: assignmentNotes || `Production Operator assignment by Operations Coordinator`,
+          reason:
+            assignmentNotes ||
+            (currentUser?.role === 'PRODUCTION_HEAD'
+              ? `Production Operator allocated by Production Head (${currentUser.fullName})`
+              : `Production Operator assignment by Operations Coordinator`),
         });
       }
 
@@ -743,11 +876,23 @@ export default function OrderAssignmentCenterPage() {
           o.id === drawerOrder.id
             ? {
                 ...o,
-                assignedDesigner: drawerType === 'DESIGN' && chosenStaff ? chosenStaff : o.assignedDesigner,
-                assignedOperator: drawerType === 'PRODUCTION' && chosenStaff ? chosenStaff : o.assignedOperator,
+                assignedDesigner:
+                  drawerType === 'DESIGN' && chosenStaff
+                    ? chosenStaff
+                    : o.assignedDesigner,
+                assignedOperator:
+                  drawerType === 'PRODUCTION' && chosenStaff
+                    ? chosenStaff
+                    : drawerType === 'DESIGN'
+                    ? null
+                    : o.assignedOperator,
+                hasActiveDesigner: drawerType === 'DESIGN',
+                hasActiveOperator: drawerType === 'PRODUCTION',
                 status:
                   drawerType === 'DESIGN'
-                    ? 'ARTWORK_REVIEW'
+                    ? o.artworkFile || (o.candidateArtworks && o.candidateArtworks.length > 0)
+                      ? 'ARTWORK_REVIEW'
+                      : 'DESIGN_REQUIRED'
                     : 'PRODUCTION_QUEUE',
               }
             : o
@@ -779,7 +924,7 @@ export default function OrderAssignmentCenterPage() {
           'Email: operations@printbazzar.com\n' +
           'Password: Admin@12345'
         );
-        router.push('/login?returnTo=/operations/orders');
+        router.push(`/login?returnTo=${encodeURIComponent(basePath)}`);
       } else {
         alert(err.message || 'Failed to complete operational assignment.');
       }
@@ -883,19 +1028,21 @@ export default function OrderAssignmentCenterPage() {
         </div>
       )}
 
-      <div className="mx-auto w-full max-w-[1600px] space-y-5 px-2 sm:px-4 lg:px-6">
+      <div className="mx-auto max-w-[1440px] space-y-5">
         {/* ─── 1. PAGE TITLE & BREADCRUMB HEADER ──────────────────────────── */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
           <div>
             <div className="flex items-center gap-1.5 text-[11px] font-mono font-bold uppercase tracking-wider text-slate-500 mb-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-              <span>OPERATIONS COORDINATION COMMAND</span>
+              <span className={`h-1.5 w-1.5 rounded-full ${currentUser?.role === 'PRODUCTION_HEAD' ? 'bg-emerald-500' : 'bg-blue-500'}`} />
+              <span>{currentUser?.role === 'PRODUCTION_HEAD' ? 'PRODUCTION HEAD OPERATIONS COMMAND' : 'OPERATIONS COORDINATION COMMAND'}</span>
             </div>
             <h1 className="text-[26px] sm:text-[28px] font-bold text-slate-900 tracking-tight leading-none font-sans flex items-center gap-2.5">
-              <span>Order Assignment Center</span>
+              <span>{currentUser?.role === 'PRODUCTION_HEAD' ? 'Production Assign' : 'Order Assignment Center'}</span>
             </h1>
             <p className="text-[13px] text-slate-500 mt-1.5 font-normal">
-              Operations Coordinator workflow: Assign Prepress Designer or Assign Production Operator directly based on operational requirements.
+              {currentUser?.role === 'PRODUCTION_HEAD'
+                ? 'Production Head workflow: Review incoming jobs from Prepress / OE, decide and assign dedicated Production Operators, and release jobs to shop floor queues.'
+                : 'Operations Coordinator workflow: Assign Prepress Designer or Assign Production Operator directly based on operational requirements.'}
             </p>
           </div>
 
@@ -926,7 +1073,67 @@ export default function OrderAssignmentCenterPage() {
           </div>
         </div>
 
-        {/* ─── 2. KPI SUMMARY ROW (6 Horizontal Cards) ────────────────────── */}
+        {/* ─── 2. KPI SUMMARY ROW ─────────────────────────────────────────── */}
+        {isProductionHead ? (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div
+              onClick={() => setActiveTab('READY_FOR_PRODUCTION')}
+              className={`p-4 rounded-xl border transition-all cursor-pointer shadow-xs ${
+                activeTab === 'READY_FOR_PRODUCTION'
+                  ? 'bg-emerald-50/90 border-emerald-300 ring-2 ring-emerald-500/20'
+                  : 'bg-white border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <div className="flex items-center gap-2 text-emerald-600 mb-2">
+                <div className="p-1.5 bg-emerald-100 rounded-lg">
+                  <RiSettings4Line className="h-4 w-4 text-emerald-600" />
+                </div>
+                <span className="text-[24px] font-black font-sans text-slate-900 leading-none">
+                  {kpiMetrics.readyForProduction}
+                </span>
+              </div>
+              <div className="text-[12px] font-bold text-slate-800 tracking-tight">Pending Operator Assignment</div>
+            </div>
+
+            <div
+              onClick={() => setActiveTab('IN_PROGRESS')}
+              className={`p-4 rounded-xl border transition-all cursor-pointer shadow-xs ${
+                activeTab === 'IN_PROGRESS'
+                  ? 'bg-blue-50/90 border-blue-300 ring-2 ring-blue-500/20'
+                  : 'bg-white border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <div className="flex items-center gap-2 text-blue-600 mb-2">
+                <div className="p-1.5 bg-blue-100 rounded-lg">
+                  <RiPrinterLine className="h-4 w-4 text-blue-600" />
+                </div>
+                <span className="text-[24px] font-bold font-sans text-slate-900 leading-none">
+                  {kpiMetrics.inProgress}
+                </span>
+              </div>
+              <div className="text-[12px] font-semibold text-slate-600 tracking-tight">Assigned to Operators</div>
+            </div>
+
+            <div
+              onClick={() => setActiveTab('ALL')}
+              className={`p-4 rounded-xl border transition-all cursor-pointer shadow-xs ${
+                activeTab === 'ALL'
+                  ? 'bg-slate-100 border-slate-400'
+                  : 'bg-white border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <div className="flex items-center gap-2 text-slate-600 mb-2">
+                <div className="p-1.5 bg-slate-100 rounded-lg">
+                  <RiFileListLine className="h-4 w-4 text-slate-600" />
+                </div>
+                <span className="text-[24px] font-bold font-sans text-slate-900 leading-none">
+                  {kpiMetrics.totalOrders}
+                </span>
+              </div>
+              <div className="text-[12px] font-semibold text-slate-600 tracking-tight">All Production Pending</div>
+            </div>
+          </div>
+        ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {/* Card 1: Needs Action (EMPHASIZED) */}
           <div
@@ -1033,7 +1240,7 @@ export default function OrderAssignmentCenterPage() {
             onClick={() => setActiveTab('ALL')}
             className={`p-4 rounded-xl border transition-all cursor-pointer shadow-xs ${
               activeTab === 'ALL'
-                ? 'bg-slate-100 border-slate-400 ring-2 ring-slate-400/20'
+                ? 'bg-slate-100 border-slate-400'
                 : 'bg-white border-slate-200 hover:border-slate-300'
             }`}
           >
@@ -1048,12 +1255,114 @@ export default function OrderAssignmentCenterPage() {
             <div className="text-[12px] font-semibold text-slate-600 tracking-tight">Total Operational Orders</div>
           </div>
         </div>
+        )}
+
+        {/* ─── 3. PRIMARY QUEUE FILTER TABS ───────────────────────────────── */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+          {isProductionHead ? (
+            <>
+              <button
+                onClick={() => setActiveTab('READY_FOR_PRODUCTION')}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                  activeTab === 'READY_FOR_PRODUCTION'
+                    ? 'bg-[#0F172A] text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200/90 hover:bg-slate-50'
+                }`}
+              >
+                Pending Operator Assignment ({kpiMetrics.readyForProduction})
+              </button>
+              <button
+                onClick={() => setActiveTab('IN_PROGRESS')}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                  activeTab === 'IN_PROGRESS'
+                    ? 'bg-[#0F172A] text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200/90 hover:bg-slate-50'
+                }`}
+              >
+                Assigned to Operators ({kpiMetrics.inProgress})
+              </button>
+              <button
+                onClick={() => setActiveTab('ALL')}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                  activeTab === 'ALL'
+                    ? 'bg-[#0F172A] text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200/90 hover:bg-slate-50'
+                }`}
+              >
+                All Production Pending ({kpiMetrics.totalOrders})
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setActiveTab('NEEDS_ACTION')}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                  activeTab === 'NEEDS_ACTION'
+                    ? 'bg-[#0F172A] text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200/90 hover:bg-slate-50'
+                }`}
+              >
+                Needs Action ({kpiMetrics.needsAction})
+              </button>
+              <button
+                onClick={() => setActiveTab('DESIGN_REQUIRED')}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                  activeTab === 'DESIGN_REQUIRED'
+                    ? 'bg-[#0F172A] text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200/90 hover:bg-slate-50'
+                }`}
+              >
+                Design Required ({kpiMetrics.designRequired})
+              </button>
+              <button
+                onClick={() => setActiveTab('READY_FOR_PRODUCTION')}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                  activeTab === 'READY_FOR_PRODUCTION'
+                    ? 'bg-[#0F172A] text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200/90 hover:bg-slate-50'
+                }`}
+              >
+                Ready for Production ({kpiMetrics.readyForProduction})
+              </button>
+              <button
+                onClick={() => setActiveTab('IN_PROGRESS')}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                  activeTab === 'IN_PROGRESS'
+                    ? 'bg-[#0F172A] text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200/90 hover:bg-slate-50'
+                }`}
+              >
+                In Progress ({kpiMetrics.inProgress})
+              </button>
+              <button
+                onClick={() => setActiveTab('BLOCKED')}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                  activeTab === 'BLOCKED'
+                    ? 'bg-[#0F172A] text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200/90 hover:bg-slate-50'
+                }`}
+              >
+                Blocked ({kpiMetrics.blocked})
+              </button>
+              <button
+                onClick={() => setActiveTab('ALL')}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                  activeTab === 'ALL'
+                    ? 'bg-[#0F172A] text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200/90 hover:bg-slate-50'
+                }`}
+              >
+                All Orders ({kpiMetrics.totalOrders})
+              </button>
+            </>
+          )}
+        </div>
 
         {/* ─── 4. FILTER TOOLBAR ──────────────────────────────────────────── */}
         <div className="bg-white border border-slate-200/90 rounded-xl p-3 shadow-xs flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[260px]">
+          <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
             {/* Search Input */}
-            <div className="relative w-full sm:w-auto min-w-[200px] flex-1 max-w-full sm:max-w-[280px]">
+            <div className="relative min-w-[220px] max-w-[280px]">
               <RiSearchLine className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
               <input
                 type="text"
@@ -1068,7 +1377,7 @@ export default function OrderAssignmentCenterPage() {
             <select
               value={customerFilter}
               onChange={(e) => setCustomerFilter(e.target.value)}
-              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#FFED00] w-full sm:w-auto flex-1 sm:flex-initial"
+              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#FFED00]"
             >
               <option value="ALL">All Customers</option>
               {Array.from(new Set(orders.map((o) => o.customerName).filter(Boolean))).map((cName) => (
@@ -1080,7 +1389,7 @@ export default function OrderAssignmentCenterPage() {
             <select
               value={productFilter}
               onChange={(e) => setProductFilter(e.target.value)}
-              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#FFED00] w-full sm:w-auto flex-1 sm:flex-initial"
+              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#FFED00]"
             >
               <option value="ALL">All Products</option>
               {Array.from(new Set(orders.map((o) => o.productName).filter(Boolean))).map((pName) => (
@@ -1092,7 +1401,7 @@ export default function OrderAssignmentCenterPage() {
             <select
               value={priorityFilter}
               onChange={(e) => setPriorityFilter(e.target.value)}
-              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#FFED00] w-full sm:w-auto flex-1 sm:flex-initial"
+              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#FFED00]"
             >
               <option value="ALL">All Priorities</option>
               <option value="URGENT">URGENT</option>
@@ -1105,7 +1414,7 @@ export default function OrderAssignmentCenterPage() {
             <select
               value={slaFilter}
               onChange={(e) => setSlaFilter(e.target.value)}
-              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#FFED00] w-full sm:w-auto flex-1 sm:flex-initial"
+              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#FFED00]"
             >
               <option value="ALL">SLA (All)</option>
               <option value="ON_TIME">On Schedule</option>
@@ -1115,7 +1424,7 @@ export default function OrderAssignmentCenterPage() {
           </div>
 
           {/* View Mode Toggle: Card View vs Table View */}
-          <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 shrink-0">
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
             <button
               onClick={() => setViewMode('card')}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all ${
@@ -1154,15 +1463,17 @@ export default function OrderAssignmentCenterPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="xs"
-                onClick={() => handleBulkExecute('DESIGN')}
-                className="bg-amber-600 hover:bg-amber-700 text-white border-none font-bold cursor-pointer"
-              >
-                <RiPaletteLine className="h-3.5 w-3.5 mr-1" />
-                <span>Bulk Assign Designer</span>
-              </Button>
+              {!isProductionHead && (
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={() => handleBulkExecute('DESIGN')}
+                  className="bg-amber-600 hover:bg-amber-700 text-white border-none font-bold cursor-pointer"
+                >
+                  <RiPaletteLine className="h-3.5 w-3.5 mr-1" />
+                  <span>Bulk Assign Designer</span>
+                </Button>
+              )}
               <Button
                 variant="primary"
                 size="xs"
@@ -1170,7 +1481,7 @@ export default function OrderAssignmentCenterPage() {
                 className="bg-blue-600 hover:bg-blue-700 text-white border-none font-bold cursor-pointer"
               >
                 <RiPrinterLine className="h-3.5 w-3.5 mr-1" />
-                <span>Bulk Assign Production</span>
+                <span>{isProductionHead ? 'Bulk Assign Operator' : 'Bulk Assign Production'}</span>
               </Button>
               <button
                 onClick={() => setSelectedOrderIds([])}
@@ -1192,263 +1503,358 @@ export default function OrderAssignmentCenterPage() {
                 <p className="text-slate-400 mt-0.5">Try clearing filters or switching tabs.</p>
               </div>
             ) : (
-              <>
-                {/* Header bar aligned with cards */}
-                <div className="hidden lg:grid lg:grid-cols-12 gap-3.5 lg:gap-4 px-4 sm:px-5 py-2 text-[10.5px] font-mono font-bold uppercase text-slate-400 tracking-wider">
-                  <div className="lg:col-span-4 pl-12">Order & Customer</div>
-                  <div className="lg:col-span-2">Artwork Status</div>
-                  <div className="lg:col-span-2">Promised Due</div>
-                  <div className="lg:col-span-3">Staff Allocations</div>
-                  <div className="lg:col-span-1 text-right pr-2">Action</div>
-                </div>
+              filteredOrders.map((order) => {
+                const isChecked = selectedOrderIds.includes(order.id);
+                const isArtReady = order.artworkState === 'READY';
+                const isAssignedToDesignOnOE =
+                  !isProductionHead && Boolean(order.hasActiveDesigner || order.assignedDesigner);
+                const isDesignerDisabled = Boolean(order.hasActiveOperator);
+                const isOperatorDisabled = isProductionHead
+                  ? Boolean(order.hasActiveDesigner)
+                  : Boolean(order.hasActiveDesigner || order.assignedDesigner);
 
-                {filteredOrders.map((order) => {
-                  const isChecked = selectedOrderIds.includes(order.id);
-                  const isArtReady = order.artworkState === 'READY';
-                  const designerDisplay = getStaffDisplayName(order.assignedDesigner?.fullName);
-                  const operatorDisplay = getStaffDisplayName(order.assignedOperator?.fullName);
+                return (
+                  <div
+                    key={order.id}
+                    className={`bg-white border rounded-xl p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col xl:flex-row xl:items-center justify-between gap-4 ${
+                      isChecked ? 'border-blue-400 bg-blue-50/20' : 'border-slate-200/90'
+                    }`}
+                  >
+                    {/* Left: Checkbox + Product Thumbnail + Order Info */}
+                    <div className="flex items-center gap-3.5 min-w-[280px]">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => handleToggleSelectOrder(order.id)}
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-[#FFED00] cursor-pointer shrink-0"
+                      />
 
-                  return (
-                    <div
-                      key={order.id}
-                      className={`bg-white border rounded-xl p-3.5 sm:p-4 shadow-xs hover:border-slate-300 transition-all ${
-                        isChecked ? 'border-blue-400 bg-blue-50/20' : 'border-slate-200/90'
-                      }`}
-                    >
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-3.5 lg:gap-4 items-center">
-                        {/* 1. Order & Customer Info (Cols 1-4 on lg) */}
-                        <div className="col-span-1 md:col-span-2 lg:col-span-4 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => handleToggleSelectOrder(order.id)}
-                                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-[#FFED00] cursor-pointer shrink-0 mt-1 sm:mt-0"
-                              />
+                      {renderThumbnail(order.thumbnailType)}
 
-                              {renderThumbnail(order.thumbnailType)}
-
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <Link
-                                    href={`/operations/orders/${order.id}`}
-                                    className="font-bold text-[14px] text-slate-900 hover:text-blue-600 hover:underline leading-tight tracking-tight font-sans"
-                                  >
-                                    #{order.orderNumber}
-                                  </Link>
-                                  {order.priority === 'URGENT' && (
-                                    <span className="bg-red-100 text-red-700 text-[10px] font-mono font-bold px-1.5 py-0.2 rounded border border-red-200 shrink-0">
-                                      URGENT
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="font-semibold text-[13px] text-slate-800 leading-tight mt-0.5 truncate" title={order.customerName}>
-                                  {order.customerName}
-                                </div>
-                                <div className="text-[12px] text-slate-500 font-medium leading-tight truncate mt-0.5" title={order.productName}>
-                                  {order.productName}
-                                </div>
-                                {/* Specs Line */}
-                                <div className="text-[11px] font-mono text-slate-400 mt-1 flex items-center gap-1.5 flex-wrap truncate">
-                                  <span>{order.specs.quantity.toLocaleString()} pcs</span>
-                                  <span>•</span>
-                                  <span>{order.specs.dimensions}</span>
-                                  <span>•</span>
-                                  <span>{order.specs.substrate}</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Mobile-Only Action Button in header */}
-                            <div className="lg:hidden shrink-0">
-                              <Link
-                                href={`/operations/orders/${order.id}`}
-                                className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition-colors shadow-2xs"
-                                title="Order Details & Timeline"
-                              >
-                                <RiMoreFill className="h-4 w-4" />
-                              </Link>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* 2. Artwork Status & Proof Preview (Cols 5-6 on lg) */}
-                        <div className="col-span-1 md:col-span-1 lg:col-span-2 min-w-0 bg-slate-50/60 lg:bg-transparent p-2.5 lg:p-0 rounded-lg lg:rounded-none border border-slate-100 lg:border-none">
-                          <span className="text-[9.5px] font-mono uppercase text-slate-400 block font-bold mb-1 lg:hidden">
-                            Artwork Proof
-                          </span>
-                          {isArtReady ? (
-                            <div>
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                                ARTWORK READY
-                              </span>
-                              <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-700 font-medium">
-                                <RiFilePdfLine className="h-3.5 w-3.5 text-blue-600 shrink-0" />
-                                <span className="font-mono text-[11px] text-slate-800 truncate max-w-[130px]">
-                                  {order.artworkFile?.fileName || 'artwork.pdf'}
-                                </span>
-                              </div>
-                              {order.artworkFile?.fileUrl && (
-                                <div className="mt-0.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenArtwork(order)}
-                                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1 cursor-pointer"
-                                  >
-                                    <RiEyeLine className="h-3 w-3" />
-                                    <span>Inspect Proof</span>
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          ) : order.artworkFile ? (
-                            <div>
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                                <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                                PROOF UPLOADED
-                              </span>
-                              <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-700 font-medium">
-                                <RiFilePdfLine className="h-3.5 w-3.5 text-blue-600 shrink-0" />
-                                <span className="font-mono text-[11px] text-slate-800 truncate max-w-[130px]">
-                                  {order.artworkFile.fileName}
-                                </span>
-                              </div>
-                              {order.artworkFile?.fileUrl && (
-                                <div className="mt-0.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenArtwork(order)}
-                                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1 cursor-pointer"
-                                  >
-                                    <RiEyeLine className="h-3 w-3" />
-                                    <span>Inspect Proof</span>
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div>
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                                {order.artworkState === 'DESIGN_REQUIRED' ? 'DESIGN REQUIRED' : 'ARTWORK PENDING'}
-                              </span>
-                              <p className="text-[11px] text-slate-500 mt-1 truncate max-w-[170px]">
-                                {order.artworkMessage}
-                              </p>
-                            </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            href={`${basePath}/${order.id}`}
+                            className="font-bold text-[14px] text-slate-900 hover:text-blue-600 hover:underline leading-tight tracking-tight font-sans"
+                          >
+                            #{order.orderNumber}
+                          </Link>
+                          {order.priority === 'URGENT' && (
+                            <span className="bg-red-100 text-red-700 text-[10px] font-mono font-bold px-1.5 py-0.2 rounded border border-red-200">
+                              URGENT
+                            </span>
                           )}
                         </div>
-
-                        {/* 3. Promised Due Column (Cols 7-8 on lg) */}
-                        <div className="col-span-1 md:col-span-1 lg:col-span-2 min-w-0 bg-slate-50/60 lg:bg-transparent p-2.5 lg:p-0 rounded-lg lg:rounded-none border border-slate-100 lg:border-none">
-                          <span className="text-[9.5px] font-mono uppercase text-slate-400 block font-bold mb-1">
-                            Promised Due
-                          </span>
-                          <div className="text-xs font-semibold text-slate-800 flex items-center gap-1 mt-0.5 font-mono">
-                            <RiCalendarLine className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                            <span>{order.dueDate}</span>
-                          </div>
-                          <span className="text-[10px] font-mono text-slate-500 block mt-0.5">
-                            {order.priority} Priority
-                          </span>
+                        <div className="font-semibold text-[13px] text-slate-800 leading-tight mt-0.5">
+                          {order.customerName}
                         </div>
-
-                        {/* 4. Staff Allocations: Prepress Designer & Production Operator (Cols 9-11 on lg) */}
-                        <div className="col-span-1 md:col-span-2 lg:col-span-3 flex flex-col gap-1.5 min-w-0 bg-slate-50/80 p-2 rounded-xl border border-slate-200/80">
-                          {/* Prepress Designer Allocation */}
-                          <div className="flex items-center justify-between gap-2 p-1.5 px-2.5 rounded-lg bg-white border border-slate-200/90 shadow-2xs min-w-0">
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                              <div
-                                className={`h-6 w-6 rounded-md flex items-center justify-center font-bold text-[10px] shrink-0 ${
-                                  order.assignedDesigner
-                                    ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                                    : 'bg-slate-100 text-slate-400'
-                                }`}
-                              >
-                                <RiPaletteLine className="h-3 w-3" />
-                              </div>
-                              <div className="flex items-baseline gap-1.5 min-w-0 flex-1">
-                                <span className="text-[9px] font-mono text-slate-400 font-bold uppercase shrink-0">
-                                  Designer:
-                                </span>
-                                <span
-                                  className="text-[12px] font-bold text-slate-800 truncate"
-                                  title={order.assignedDesigner ? order.assignedDesigner.fullName : 'Unassigned'}
-                                >
-                                  {designerDisplay.name}
-                                </span>
-                              </div>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => handleOpenDrawer(order, 'DESIGN')}
-                              className={`px-2 py-0.5 rounded text-[9.5px] font-bold transition cursor-pointer shrink-0 ml-1 ${
-                                order.assignedDesigner
-                                  ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
-                                  : 'bg-amber-500 hover:bg-amber-600 text-white shadow-2xs'
-                              }`}
-                            >
-                              {order.assignedDesigner ? 'Change' : 'Assign'}
-                            </button>
-                          </div>
-
-                          {/* Production Operator Allocation */}
-                          <div className="flex items-center justify-between gap-2 p-1.5 px-2.5 rounded-lg bg-white border border-slate-200/90 shadow-2xs min-w-0">
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                              <div
-                                className={`h-6 w-6 rounded-md flex items-center justify-center font-bold text-[10px] shrink-0 ${
-                                  order.assignedOperator
-                                    ? 'bg-blue-100 text-blue-900 border border-blue-300'
-                                    : 'bg-slate-100 text-slate-400'
-                                }`}
-                              >
-                                <RiPrinterLine className="h-3 w-3" />
-                              </div>
-                              <div className="flex items-baseline gap-1.5 min-w-0 flex-1">
-                                <span className="text-[9px] font-mono text-slate-400 font-bold uppercase shrink-0">
-                                  Operator:
-                                </span>
-                                <span
-                                  className="text-[12px] font-bold text-slate-800 truncate"
-                                  title={order.assignedOperator ? order.assignedOperator.fullName : 'Unassigned'}
-                                >
-                                  {operatorDisplay.name}
-                                </span>
-                              </div>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => handleOpenDrawer(order, 'PRODUCTION')}
-                              className={`px-2 py-0.5 rounded text-[9.5px] font-bold transition cursor-pointer shrink-0 ml-1 ${
-                                order.assignedOperator
-                                  ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
-                                  : 'bg-blue-600 hover:bg-blue-700 text-white shadow-2xs'
-                              }`}
-                            >
-                              {order.assignedOperator ? 'Change' : 'Assign'}
-                            </button>
-                          </div>
+                        <div className="text-[12px] text-slate-500 font-medium leading-tight">
+                          {order.productName}
                         </div>
-
-                        {/* 5. Desktop Actions Menu (Col 12 on lg) */}
-                        <div className="hidden lg:flex lg:col-span-1 justify-end items-center">
-                          <Link
-                            href={`/operations/orders/${order.id}`}
-                            className="h-[34px] w-[34px] flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition-colors shrink-0 shadow-2xs"
-                            title="Order Details & Operational Timeline"
-                          >
-                            <RiMoreFill className="h-4 w-4" />
-                          </Link>
+                        {/* Specs Line */}
+                        <div className="text-[11px] font-mono text-slate-400 mt-1 flex items-center gap-1.5 flex-wrap">
+                          <span>{order.specs.quantity.toLocaleString()} pcs</span>
+                          <span>•</span>
+                          <span>{order.specs.dimensions}</span>
+                          <span>•</span>
+                          <span>{order.specs.substrate}</span>
                         </div>
                       </div>
                     </div>
-                  );
-                })}
-              </>
+
+                    {/* Middle Column: Artwork Status & Proof Preview */}
+                    <div className="min-w-[200px] xl:max-w-[240px]">
+                      {isAssignedToDesignOnOE ? (
+                        <div>
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
+                              order.hasActiveDesigner
+                                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            }`}
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${
+                                order.hasActiveDesigner ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'
+                              }`}
+                            />
+                            <span>
+                              {order.hasActiveDesigner ? 'ASSIGNED TO DESIGNER' : 'MOVED TO PROD HEAD'}
+                            </span>
+                          </span>
+                          <p className="text-[11px] text-slate-500 mt-1 truncate max-w-[220px]">
+                            {order.hasActiveDesigner
+                              ? `Designer (${order.assignedDesigner?.fullName}) moves to Prod Head`
+                              : 'Sent to Production Head for operator assignment'}
+                          </p>
+                          {(order.artworkFile || (order.candidateArtworks && order.candidateArtworks.length > 0)) && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenArtwork(order)}
+                              className="mt-0.5 text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <RiEyeLine className="h-3 w-3" />
+                              <span>Inspect Proof</span>
+                            </button>
+                          )}
+                        </div>
+                      ) : isArtReady ? (
+                        <div>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                            ARTWORK READY
+                          </span>
+                          <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-700 font-medium">
+                            <RiFilePdfLine className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                            <span className="font-mono text-[11px] text-slate-800 truncate max-w-[130px]">
+                              {order.artworkFile?.fileName}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 flex items-center gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenArtwork(order)}
+                              className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <RiEyeLine className="h-3 w-3" />
+                              <span>Inspect Proof</span>
+                            </button>
+                            {isProductionHead && order.candidateArtworks && order.candidateArtworks.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenCandidateReviewModal(order)}
+                                className="text-[11px] font-bold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded inline-flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                                title="Click to view and select candidate artworks"
+                              >
+                                <RiShieldCheckLine className="h-3 w-3 text-amber-600" />
+                                <span>Select Work ({order.candidateArtworks.length})</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ) : isProductionHead && ((order.candidateArtworks && order.candidateArtworks.length > 0) || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW') ? (
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">
+                              <span className="relative flex h-1.5 w-1.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
+                              </span>
+                              <span>{order.candidateArtworks?.length || 1} Candidate Work(s)</span>
+                            </span>
+                          </div>
+                          <div className="mt-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCandidateReviewModal(order)}
+                              className="text-[11px] font-bold text-amber-950 bg-amber-200/90 hover:bg-amber-300 border border-amber-400 px-2.5 py-1 rounded-md inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95"
+                            >
+                              <RiShieldCheckLine className="h-3.5 w-3.5 text-amber-800" />
+                              <span>Select & Approve Work →</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                            {order.artworkState === 'DESIGN_REQUIRED' ? 'DESIGN REQUIRED' : 'ARTWORK PENDING'}
+                          </span>
+                          <p className="text-[11px] text-slate-500 mt-1 truncate max-w-[200px]">
+                            {order.artworkMessage}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* SLA Column */}
+                    <div className="min-w-[110px]">
+                      <span className="text-[10px] font-mono uppercase text-slate-400 block font-semibold">
+                        Promised Due
+                      </span>
+                      <div className="text-xs font-semibold text-slate-800 flex items-center gap-1 mt-0.5 font-mono">
+                        <RiCalendarLine className="h-3.5 w-3.5 text-slate-400" />
+                        <span>{order.dueDate}</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-500 block mt-0.5">
+                        {order.priority} Priority
+                      </span>
+                    </div>
+
+                    {/* Right: Operational Assignments (Prepress Design & Production Operator) */}
+                    <div
+                      className={`flex flex-wrap items-center gap-2.5 shrink-0 justify-end bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/80 ${
+                        isProductionHead ? 'min-w-[220px]' : 'min-w-[340px]'
+                      }`}
+                    >
+                      {/* 1. Prepress Designer Allocation (Hidden for Production Head) */}
+                      {!isProductionHead && (
+                      <div
+                        className={`flex items-center justify-between gap-2 p-1.5 rounded-lg border min-w-[150px] transition-opacity ${
+                          isDesignerDisabled
+                            ? 'bg-slate-50 border-slate-200/70 opacity-60'
+                            : 'bg-white border-slate-200 shadow-2xs'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div
+                            className={`h-7 w-7 rounded-md flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                              order.assignedDesigner
+                                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                : 'bg-slate-100 text-slate-400'
+                            }`}
+                          >
+                            <RiPaletteLine className="h-3.5 w-3.5" />
+                          </div>
+                          <div className="min-w-0 pr-1 text-left">
+                            <div className="text-[9px] font-mono text-slate-400 font-bold uppercase leading-none">
+                              Designer
+                            </div>
+                            <div className="text-xs font-bold text-slate-800 truncate max-w-[85px] leading-tight mt-0.5">
+                              {order.assignedDesigner ? (
+                                order.assignedDesigner.fullName
+                              ) : (
+                                <span className="text-slate-400 font-normal">None</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={isDesignerDisabled}
+                          onClick={() => !isDesignerDisabled && handleOpenDrawer(order, 'DESIGN')}
+                          title={
+                            isDesignerDisabled
+                              ? 'Designer assignment is disabled because a Production Operator is assigned'
+                              : order.assignedDesigner
+                              ? 'Change Prepress Designer'
+                              : 'Assign Prepress Designer'
+                          }
+                          className={`px-2 py-1 rounded text-[10px] font-bold transition shrink-0 ${
+                            isDesignerDisabled
+                              ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                              : order.assignedDesigner
+                              ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 cursor-pointer'
+                              : 'bg-amber-500 hover:bg-amber-600 text-white shadow-2xs cursor-pointer'
+                          }`}
+                        >
+                          {order.assignedDesigner ? 'Change' : 'Assign'}
+                        </button>
+                      </div>
+                      )}
+
+                      {/* 2. Production Operator Allocation */}
+                      <div
+                        className={`flex items-center justify-between gap-2 p-1.5 rounded-lg border min-w-[150px] transition-opacity ${
+                          isOperatorDisabled
+                            ? 'bg-slate-50 border-slate-200/70 opacity-60'
+                            : 'bg-white border-slate-200 shadow-2xs'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div
+                            className={`h-7 w-7 rounded-md flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                              order.assignedOperator
+                                ? 'bg-blue-100 text-blue-900 border border-blue-300'
+                                : 'bg-slate-100 text-slate-400'
+                            }`}
+                          >
+                            <RiPrinterLine className="h-3.5 w-3.5" />
+                          </div>
+                          <div className="min-w-0 pr-1 text-left">
+                            <div className="text-[9px] font-mono text-slate-400 font-bold uppercase leading-none">
+                              Operator
+                            </div>
+                            <div className="text-xs font-bold text-slate-800 truncate max-w-[85px] leading-tight mt-0.5">
+                              {order.assignedOperator ? (
+                                order.assignedOperator.fullName
+                              ) : order.assignedProductionHead ? (
+                                <span className="text-emerald-700 font-bold" title={`With Production Head: ${order.assignedProductionHead.fullName}`}>Prod Head</span>
+                              ) : (
+                                <span className="text-slate-400 font-normal">None</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {isOperatorDisabled ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="px-2.5 py-1 rounded text-[10.5px] font-bold bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed flex items-center gap-1 shrink-0"
+                            title="Operator assignment is disabled while a Prepress Designer is assigned"
+                          >
+                            <RiPrinterLine className="h-3 w-3" />
+                            <span>Assign</span>
+                          </button>
+                        ) : order.assignedOperator ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDrawer(order, 'PRODUCTION')}
+                            className="px-2 py-1 rounded text-[10px] font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition cursor-pointer shrink-0"
+                          >
+                            Change
+                          </button>
+                        ) : order.artworkState === 'READY' ? (
+                          order.candidateArtworks && order.candidateArtworks.length > 1 ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCandidateReviewModal(order)}
+                              className="px-2.5 py-1 rounded text-[10.5px] font-bold bg-blue-600 hover:bg-blue-700 text-white transition cursor-pointer shadow-xs active:scale-95 flex items-center gap-1 shrink-0"
+                              title="Multiple artworks uploaded. Select master artwork and assign operator."
+                            >
+                              <RiPrinterLine className="h-3 w-3" />
+                              <span>Select & Assign</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDrawer(order, 'PRODUCTION')}
+                              className="px-2.5 py-1 rounded text-[10.5px] font-bold bg-blue-600 hover:bg-blue-700 text-white transition cursor-pointer shadow-xs active:scale-95 flex items-center gap-1 shrink-0"
+                              title="Assign Production Operator for press floor execution"
+                            >
+                              <RiPrinterLine className="h-3 w-3" />
+                              <span>Assign</span>
+                            </button>
+                          )
+                        ) : (order.candidateArtworks && order.candidateArtworks.length > 0) || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW' ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCandidateReviewModal(order)}
+                            className="px-2.5 py-1 rounded text-[10.5px] font-bold bg-amber-500 hover:bg-amber-600 text-white transition cursor-pointer shadow-xs active:scale-95 flex items-center gap-1 shrink-0"
+                            title="Candidate works uploaded. Click to review and confirm."
+                          >
+                            <RiShieldCheckLine className="h-3 w-3" />
+                            <span>Select Work</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLiveToast('⚠️ Artwork must be approved before assigning Production Operator. Immediate task: Prepress Design.');
+                              handleOpenDrawer(order, 'DESIGN');
+                            }}
+                            className="px-2 py-1 rounded text-[10px] font-bold bg-slate-100 text-slate-400 hover:bg-slate-200 border border-slate-200 transition cursor-pointer shrink-0"
+                            title="Artwork must be approved before assigning Operator"
+                          >
+                            Artwork Req
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Three-Dot Menu */}
+                      <Link
+                        href={`${basePath}/${order.id}`}
+                        className="h-[34px] w-[34px] flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-500 transition-colors shrink-0"
+                        title="Order Details & Operational Timeline"
+                      >
+                        <RiMoreFill className="h-4 w-4" />
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         ) : (
@@ -1468,7 +1874,7 @@ export default function OrderAssignmentCenterPage() {
                   <th className="py-3 px-3">ORDER & CUSTOMER</th>
                   <th className="py-3 px-3">PRODUCT & SPECS</th>
                   <th className="py-3 px-3">ARTWORK STATUS</th>
-                  <th className="py-3 px-3">DESIGNER (PREPRESS)</th>
+                  {!isProductionHead && <th className="py-3 px-3">DESIGNER (PREPRESS)</th>}
                   <th className="py-3 px-3">OPERATOR (PRODUCTION)</th>
                   <th className="py-3 px-3">DUE DATE</th>
                   <th className="py-3 px-3 text-right">ACTION</th>
@@ -1478,6 +1884,12 @@ export default function OrderAssignmentCenterPage() {
                 {filteredOrders.map((order) => {
                   const isChecked = selectedOrderIds.includes(order.id);
                   const isArtReady = order.artworkState === 'READY';
+                  const isAssignedToDesignOnOE =
+                    !isProductionHead && Boolean(order.hasActiveDesigner || order.assignedDesigner);
+                  const isDesignerDisabled = Boolean(order.hasActiveOperator);
+                  const isOperatorDisabled = isProductionHead
+                    ? Boolean(order.hasActiveDesigner)
+                    : Boolean(order.hasActiveDesigner || order.assignedDesigner);
 
                   return (
                     <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
@@ -1491,7 +1903,7 @@ export default function OrderAssignmentCenterPage() {
                       </td>
                       <td className="py-3 px-3">
                         <Link
-                          href={`/operations/orders/${order.id}`}
+                          href={`${basePath}/${order.id}`}
                           className="font-bold text-slate-900 hover:text-blue-600 hover:underline font-mono"
                         >
                           #{order.orderNumber}
@@ -1505,7 +1917,22 @@ export default function OrderAssignmentCenterPage() {
                         </div>
                       </td>
                       <td className="py-3 px-3">
-                        {isArtReady ? (
+                        {isAssignedToDesignOnOE ? (
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                              order.hasActiveDesigner
+                                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            }`}
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${
+                                order.hasActiveDesigner ? 'bg-amber-500' : 'bg-emerald-500'
+                              }`}
+                            />
+                            <span>{order.hasActiveDesigner ? 'IN DESIGN' : 'WITH PROD HEAD'}</span>
+                          </span>
+                        ) : isArtReady ? (
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <button
                               type="button"
@@ -1517,35 +1944,35 @@ export default function OrderAssignmentCenterPage() {
                               <RiEyeLine className="h-3 w-3 text-emerald-700" />
                               <span>READY</span>
                             </button>
-                            {order.candidateArtworks && order.candidateArtworks.length > 1 && (
+                            {isProductionHead && order.candidateArtworks && order.candidateArtworks.length > 1 && (
                               <button
                                 type="button"
                                 onClick={() => handleOpenCandidateReviewModal(order)}
                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 transition cursor-pointer"
-                                title="Click to view and switch between multiple uploaded artworks"
+                                title="Click to view and select uploaded artworks"
                               >
                                 <RiShieldCheckLine className="h-3 w-3 text-amber-600" />
                                 <span>{order.candidateArtworks.length} Works</span>
                               </button>
                             )}
                           </div>
-                        ) : order.artworkFile ? (
-                          <div className="flex items-center gap-1.5">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                              <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                              PROOF UPLOADED
+                        ) : isProductionHead && ((order.candidateArtworks && order.candidateArtworks.length > 0) || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW') ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCandidateReviewModal(order)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[10.5px] font-mono font-bold bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 transition shadow-2xs cursor-pointer group active:scale-95"
+                            title="Candidate works uploaded by prepress designer. Click to review and select confirmed work."
+                          >
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
                             </span>
-                            {order.artworkFile.fileUrl && (
-                              <button
-                                type="button"
-                                onClick={() => handleOpenArtwork(order)}
-                                className="text-[11px] text-blue-600 hover:underline flex items-center gap-0.5 cursor-pointer font-medium"
-                              >
-                                <RiEyeLine className="h-3 w-3" />
-                                <span>View</span>
-                              </button>
-                            )}
-                          </div>
+                            <RiShieldCheckLine className="h-3.5 w-3.5 text-amber-700" />
+                            <span>{order.candidateArtworks?.length > 1 ? `${order.candidateArtworks.length} Works` : 'Select Work'}</span>
+                            <span className="text-[9px] bg-amber-200 text-amber-900 px-1 rounded font-sans group-hover:bg-amber-300">
+                              Select →
+                            </span>
+                          </button>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200">
                             <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
@@ -1553,23 +1980,44 @@ export default function OrderAssignmentCenterPage() {
                           </span>
                         )}
                       </td>
-                      {/* Designer Cell */}
+                      {/* Designer Cell (Hidden for Production Head) */}
+                      {!isProductionHead && (
                       <td className="py-3 px-3">
                         {order.assignedDesigner ? (
-                          <div className="inline-flex items-center gap-1.5">
+                          <div className={`inline-flex items-center gap-1.5 ${isDesignerDisabled ? 'opacity-60' : ''}`}>
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-semibold">
                               <RiPaletteLine className="h-3 w-3 text-amber-600" />
-                              <span className="font-semibold text-slate-800 whitespace-nowrap" title={order.assignedDesigner.fullName}>{getStaffDisplayName(order.assignedDesigner.fullName).name}</span>
+                              <span className="truncate max-w-[100px]">{order.assignedDesigner.fullName}</span>
                             </span>
                             <button
                               type="button"
-                              onClick={() => handleOpenDrawer(order, 'DESIGN')}
-                              className="text-[10px] font-bold text-slate-500 hover:text-slate-900 underline cursor-pointer"
+                              disabled={isDesignerDisabled}
+                              onClick={() => !isDesignerDisabled && handleOpenDrawer(order, 'DESIGN')}
+                              title={
+                                isDesignerDisabled
+                                  ? 'Designer assignment is disabled because a Production Operator is assigned'
+                                  : 'Edit Prepress Designer'
+                              }
+                              className={`text-[10px] font-bold ${
+                                isDesignerDisabled
+                                  ? 'text-slate-400 cursor-not-allowed'
+                                  : 'text-slate-500 hover:text-slate-900 underline cursor-pointer'
+                              }`}
                             >
                               Edit
                             </button>
                           </div>
-                        ) : order.isDesignCompleted || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW' ? (
+                        ) : isDesignerDisabled ? (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            disabled
+                            className="bg-slate-100 text-slate-400 border-slate-200 text-[10px] font-bold cursor-not-allowed opacity-70"
+                            title="Designer assignment is disabled because a Production Operator is assigned"
+                          >
+                            + Assign Designer
+                          </Button>
+                        ) : order.hasCompletedDesign || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW' ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-semibold">
                             <RiPaletteLine className="h-3 w-3 text-emerald-600" />
                             <span>Work Uploaded</span>
@@ -1585,13 +2033,24 @@ export default function OrderAssignmentCenterPage() {
                           </Button>
                         )}
                       </td>
+                      )}
                       {/* Operator Cell */}
                       <td className="py-3 px-3">
-                        {order.assignedOperator ? (
+                        {isOperatorDisabled ? (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            disabled
+                            className="bg-slate-100 text-slate-400 border-slate-200 text-[10px] font-bold cursor-not-allowed opacity-70"
+                            title="Operator assignment is disabled while a Prepress Designer is assigned"
+                          >
+                            + Assign Operator
+                          </Button>
+                        ) : order.assignedOperator ? (
                           <div className="inline-flex items-center gap-1.5">
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-900 text-[11px] font-semibold">
                               <RiPrinterLine className="h-3 w-3 text-blue-600" />
-                              <span className="font-semibold text-slate-800 whitespace-nowrap" title={order.assignedOperator.fullName}>{getStaffDisplayName(order.assignedOperator.fullName).name}</span>
+                              <span className="truncate max-w-[100px]">{order.assignedOperator.fullName}</span>
                             </span>
                             <button
                               type="button"
@@ -1601,14 +2060,57 @@ export default function OrderAssignmentCenterPage() {
                               Edit
                             </button>
                           </div>
+                        ) : order.artworkState === 'READY' ? (
+                          <div className="inline-flex items-center gap-1.5 flex-wrap">
+                            {order.assignedProductionHead && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold font-mono">
+                                <span>Prod Head Queue</span>
+                              </span>
+                            )}
+                            {order.candidateArtworks && order.candidateArtworks.length > 1 ? (
+                              <Button
+                                variant="primary"
+                                size="xs"
+                                onClick={() => handleOpenCandidateReviewModal(order)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold cursor-pointer"
+                                title="Multiple artworks uploaded. Select master artwork and assign operator."
+                              >
+                                + Select & Assign Operator
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="primary"
+                                size="xs"
+                                onClick={() => handleOpenDrawer(order, 'PRODUCTION')}
+                                className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold cursor-pointer"
+                              >
+                                + Assign Operator
+                              </Button>
+                            )}
+                          </div>
+                        ) : (order.candidateArtworks && order.candidateArtworks.length > 0) || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW' ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCandidateReviewModal(order)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-600 text-white text-[10.5px] font-bold shadow-xs transition cursor-pointer active:scale-95"
+                            title="Review candidate artworks uploaded by designer and confirm for production."
+                          >
+                            <RiShieldCheckLine className="h-3.5 w-3.5" />
+                            <span>Select Work ({order.candidateArtworks?.length || 1})</span>
+                            <RiArrowRightLine className="h-3 w-3" />
+                          </button>
                         ) : (
                           <Button
-                            variant="primary"
+                            variant="outline"
                             size="xs"
-                            onClick={() => handleOpenDrawer(order, 'PRODUCTION')}
-                            className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold cursor-pointer"
+                            onClick={() => {
+                              setLiveToast('⚠️ Artwork must be approved before assigning Production Operator. Immediate task: Prepress Design.');
+                              handleOpenDrawer(order, 'DESIGN');
+                            }}
+                            className="bg-slate-100 text-slate-400 border-slate-200 text-[10px] font-bold cursor-pointer hover:bg-slate-200"
+                            title="Artwork must be approved first"
                           >
-                            + Assign Operator
+                            Locked (Artwork Req)
                           </Button>
                         )}
                       </td>
@@ -1617,7 +2119,7 @@ export default function OrderAssignmentCenterPage() {
                       </td>
                       <td className="py-3 px-3 text-right">
                         <Link
-                          href={`/operations/orders/${order.id}`}
+                          href={`${basePath}/${order.id}`}
                           className="inline-flex items-center justify-center p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 font-semibold text-xs transition"
                           title="View Order Details"
                         >
@@ -1643,7 +2145,7 @@ export default function OrderAssignmentCenterPage() {
           />
 
           {/* Drawer Body */}
-          <div className="relative w-full max-w-[460px] bg-white h-full shadow-2xl border-l border-slate-200 flex flex-col justify-between z-10 animate-in slide-in-from-right duration-200 select-none">
+          <div className="relative w-full max-w-[540px] bg-white h-full shadow-2xl border-l border-slate-200 flex flex-col justify-between z-10 animate-in slide-in-from-right duration-200 select-none">
             {/* Drawer Top Header */}
             <div className="p-5 border-b border-slate-200">
               <div className="flex items-center justify-between">
@@ -1713,29 +2215,15 @@ export default function OrderAssignmentCenterPage() {
                   <span className="text-[9px] font-mono text-slate-400 uppercase font-bold block">
                     {drawerType === 'DESIGN' ? 'Currently Assigned Designer' : 'Currently Assigned Operator'}
                   </span>
-                  <div className="font-bold text-slate-900 text-xs mt-0.5">
+                  <div className="font-bold text-slate-900 text-xs truncate mt-0.5">
                     {drawerType === 'DESIGN' ? (
                       drawerOrder.assignedDesigner ? (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span>{getStaffDisplayName(drawerOrder.assignedDesigner.fullName).name}</span>
-                          {getStaffDisplayName(drawerOrder.assignedDesigner.fullName).role && (
-                            <span className="text-[10.5px] text-slate-500 font-medium">
-                              • {getStaffDisplayName(drawerOrder.assignedDesigner.fullName).role}
-                            </span>
-                          )}
-                        </div>
+                        drawerOrder.assignedDesigner.fullName
                       ) : (
                         <span className="text-slate-400 font-normal">Unassigned</span>
                       )
                     ) : drawerOrder.assignedOperator ? (
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span>{getStaffDisplayName(drawerOrder.assignedOperator.fullName).name}</span>
-                        {getStaffDisplayName(drawerOrder.assignedOperator.fullName).role && (
-                          <span className="text-[10.5px] text-slate-500 font-medium">
-                            • {getStaffDisplayName(drawerOrder.assignedOperator.fullName).role}
-                          </span>
-                        )}
-                      </div>
+                      drawerOrder.assignedOperator.fullName
                     ) : (
                       <span className="text-slate-400 font-normal">Unassigned</span>
                     )}
@@ -1752,20 +2240,20 @@ export default function OrderAssignmentCenterPage() {
                 </span>
               </div>
 
-              {(!isAuthenticated || (currentUser?.role !== 'OPERATIONAL_MANAGER' && currentUser?.role !== 'ADMIN_MANAGER')) && (
+              {(!isAuthenticated || (currentUser?.role !== 'OPERATIONAL_MANAGER' && currentUser?.role !== 'ADMIN_MANAGER' && currentUser?.role !== 'PRODUCTION_HEAD')) && (
                 <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 space-y-1.5 shadow-2xs">
                   <div className="flex items-center gap-2 font-bold">
                     <RiAlertLine className="h-4 w-4 text-amber-600 shrink-0" />
-                    <span>Operations Coordinator Login Required</span>
+                    <span>Operations / Production Head Authorization Required</span>
                   </div>
                   <p className="text-[11px] text-amber-800 leading-relaxed">
-                    You are currently {currentUser ? `signed in as ${currentUser.fullName} (${currentUser.role})` : 'not signed in'}. Assigning designers and operators requires an <strong>Operations Coordinator</strong> account.
+                    You are currently {currentUser ? `signed in as ${currentUser.fullName} (${currentUser.role})` : 'not signed in'}. Assigning operators and designers requires an <strong>Operations Coordinator</strong> or <strong>Production Head</strong> account.
                   </p>
                   <Link
                     href={`/login?returnTo=${encodeURIComponent('/operations/orders')}`}
                     className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] transition shadow-xs"
                   >
-                    <span>Sign In as Operations Coordinator (operations@printbazzar.com)</span>
+                    <span>Sign In (operations@printbazzar.com / prodhead@printbazzar.com)</span>
                     <RiArrowRightLine className="h-3 w-3" />
                   </Link>
                 </div>
@@ -1956,7 +2444,7 @@ export default function OrderAssignmentCenterPage() {
           />
 
           {/* Main Modal Dialog Box (Light Home Brand Theme) */}
-          <div className="relative w-full max-w-5xl max-h-[92vh] bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden z-10">
+          <div className="relative w-full max-w-6xl max-h-[92vh] bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden z-10">
             {/* Header Bar */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
               <div className="flex items-center gap-3 min-w-0">
@@ -2001,15 +2489,17 @@ export default function OrderAssignmentCenterPage() {
             <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 min-h-0">
               {/* Left Canvas Preview Area */}
               <div className="lg:col-span-8 bg-slate-50/70 p-6 flex flex-col items-center justify-center border-b lg:border-b-0 lg:border-r border-slate-200 relative select-none">
-                <div className="w-full max-w-md bg-white rounded-xl border border-slate-200 shadow-md p-5 relative overflow-hidden group">
-                  <div className="relative border-2 border-dashed border-rose-400 rounded-lg p-3 bg-slate-50 aspect-[4/3] flex flex-col items-center justify-center text-center overflow-hidden">
+                <div className="w-full max-w-2xl bg-white rounded-xl border border-slate-200 shadow-md p-5 relative overflow-hidden group">
+                  <div className="relative border-2 border-dashed border-rose-400 rounded-lg p-3 bg-slate-50 min-h-[380px] md:min-h-[440px] flex flex-col items-center justify-center text-center overflow-hidden">
                     {viewingArtwork.fileUrl && !artworkImageError && (viewingArtwork.fileUrl.match(/\.(jpeg|jpg|png|webp|gif|svg)(\?.*)?$/i) || viewingArtwork.mimeType?.startsWith('image/')) ? (
-                      <img
-                        src={viewingArtwork.fileUrl}
-                        alt="Customer Artwork Proof"
-                        onError={() => setArtworkImageError(true)}
-                        className="w-full h-full object-contain rounded bg-white shadow-2xs"
-                      />
+                      <div className="relative w-full h-[360px] md:h-[420px] flex items-center justify-center">
+                        <img
+                          src={viewingArtwork.fileUrl}
+                          alt="Customer Artwork Proof"
+                          onError={() => setArtworkImageError(true)}
+                          className="max-w-full max-h-full object-contain rounded bg-white shadow-2xs"
+                        />
+                      </div>
                     ) : (
                       <div className="space-y-3 p-4">
                         <div className="mx-auto w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center">
@@ -2020,7 +2510,7 @@ export default function OrderAssignmentCenterPage() {
                             {viewingArtwork.fileName}
                           </div>
                           <div className="text-xs text-slate-500 font-mono mt-1">
-                            PDF/X-1a:2001 • CMYK 300 DPI Prepress
+                            {viewingArtwork.mimeType?.includes('pdf') ? 'PDF/X-1a:2001 • CMYK 300 DPI Prepress' : 'Press-Ready Vector Master'}
                           </div>
                         </div>
                         <div className="flex items-center justify-center gap-1.5 pt-2">
@@ -2148,7 +2638,7 @@ export default function OrderAssignmentCenterPage() {
       {/* ─── CANDIDATE ARTWORKS REVIEW & OE CONFIRMATION MODAL ────────────────── */}
       {candidateModalOpen && candidateOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="relative w-full max-w-4xl max-h-[92vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+          <div className="relative w-[95vw] max-w-7xl max-h-[92vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
             {/* Header */}
             <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
               <div className="flex items-center gap-3">
@@ -2157,14 +2647,14 @@ export default function OrderAssignmentCenterPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="text-base font-black tracking-tight text-white font-display">
-                      Candidate Artworks Review & OE Sign-Off
+                    <h2 className="text-base font-black tracking-tight !text-white font-display">
+                      Candidate Artworks Review &amp; {isProductionHead ? 'Operator Sign-Off' : 'OE Sign-Off'}
                     </h2>
                     <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30">
                       Order #{candidateOrder.orderNumber}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-300">
                     {candidateOrder.customerName} • {candidateOrder.productName} ({candidateOrder.specs.quantity.toLocaleString()} pcs • {candidateOrder.specs.dimensions})
                   </p>
                 </div>
@@ -2179,16 +2669,32 @@ export default function OrderAssignmentCenterPage() {
             </div>
 
             {/* Instruction banner */}
-            <div className="px-6 py-2.5 bg-amber-50/80 border-b border-amber-200/80 flex items-center justify-between text-xs text-amber-950 shrink-0">
+            <div className="px-6 py-2.5 bg-amber-50/80 border-b border-amber-200/80 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-950 shrink-0">
               <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
                 <span className="font-medium">
-                  The Prepress Designer submitted <strong>{candidateOrder.candidateArtworks?.length || 1} candidate design work(s)</strong>. Select the confirmed master artwork to approve and move to production.
+                  The Prepress Designer submitted <strong>{candidateOrder.candidateArtworks?.length || 1} candidate design work(s)</strong>. Select <strong>1 or multiple artworks</strong> to approve and move to production.
                 </span>
               </div>
-              <span className="text-[11px] font-mono font-bold text-amber-900 bg-amber-200/80 px-2 py-0.5 rounded">
-                Role: Operations Manager
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                {candidateOrder.candidateArtworks && candidateOrder.candidateArtworks.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={handleSelectAllCandidates}
+                    className="text-[11px] font-bold text-amber-950 bg-white hover:bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded transition cursor-pointer"
+                  >
+                    {selectedCandidateIds.length === candidateOrder.candidateArtworks.length
+                      ? 'Clear All'
+                      : `Select All (${candidateOrder.candidateArtworks.length})`}
+                  </button>
+                )}
+                <span className="text-[11px] font-mono font-bold text-emerald-900 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded whitespace-nowrap">
+                  {selectedCandidateIds.length} Selected
+                </span>
+                <span className="text-[11px] font-mono font-bold text-amber-900 bg-amber-200/80 px-2.5 py-0.5 rounded whitespace-nowrap">
+                  Role: {isProductionHead ? 'Production Head' : 'Operations Manager'}
+                </span>
+              </div>
             </div>
 
             {/* Scrollable Content: Candidate Cards Grid */}
@@ -2196,16 +2702,20 @@ export default function OrderAssignmentCenterPage() {
               {candidateOrder.candidateArtworks && candidateOrder.candidateArtworks.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {candidateOrder.candidateArtworks.map((cand: any, idx: number) => {
-                    const isSelected = selectedCandidateId === cand.id;
+                    const isSelected = selectedCandidateIds.includes(cand.id);
                     const resolvedUrl = resolveArtworkUrl(cand.proofUrl || cand.storageKey);
                     const formattedSize = cand.fileSize
-                      ? `${(Number(cand.fileSize) / (1024 * 1024)).toFixed(1)} MB`
+                      ? typeof cand.fileSize === 'string' && cand.fileSize.includes('MB')
+                        ? cand.fileSize
+                        : !Number.isNaN(Number(cand.fileSize))
+                        ? `${(Number(cand.fileSize) / (1024 * 1024)).toFixed(1)} MB`
+                        : String(cand.fileSize)
                       : 'High-Res Asset';
 
                     return (
                       <div
                         key={cand.id || idx}
-                        onClick={() => setSelectedCandidateId(cand.id)}
+                        onClick={() => handleToggleCandidateId(cand.id)}
                         className={`relative rounded-xl border-2 transition-all p-3.5 flex flex-col justify-between cursor-pointer group ${
                           isSelected
                             ? 'border-amber-500 bg-amber-50/40 shadow-md ring-2 ring-amber-400/30'
@@ -2285,24 +2795,24 @@ export default function OrderAssignmentCenterPage() {
                           )}
                         </div>
 
-                        {/* Radio selection indicator */}
+                        {/* Multi-select checkbox indicator */}
                         <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
                             <div
-                              className={`h-4 w-4 rounded-full border-2 flex items-center justify-center ${
+                              className={`h-4 w-4 rounded border-2 flex items-center justify-center transition ${
                                 isSelected
-                                  ? 'border-amber-500 bg-amber-500'
+                                  ? 'border-amber-500 bg-amber-500 text-slate-950'
                                   : 'border-slate-300 bg-white'
                               }`}
                             >
-                              {isSelected && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+                              {isSelected && <RiCheckLine className="h-3 w-3 stroke-[3]" />}
                             </div>
                             <span
                               className={`text-[11px] font-bold ${
                                 isSelected ? 'text-amber-950 font-black' : 'text-slate-500'
                               }`}
                             >
-                              {isSelected ? 'Selected for Production' : 'Choose this work'}
+                              {isSelected ? 'Selected for Production' : 'Click to select work'}
                             </span>
                           </div>
                         </div>
@@ -2480,16 +2990,16 @@ export default function OrderAssignmentCenterPage() {
                 <Button
                   size="sm"
                   onClick={handleApproveCandidateWork}
-                  disabled={!selectedCandidateId || isApprovingCandidate}
+                  disabled={selectedCandidateIds.length === 0 || isApprovingCandidate}
                   className="bg-[#FFED00] hover:bg-[#F2DE00] text-slate-950 font-black text-xs px-5 py-2.5 rounded-xl border border-[#E3A008]/40 shadow-xs flex items-center gap-2 cursor-pointer active:scale-95"
                 >
                   <RiCheckLine className="h-4 w-4" />
                   <span>
                     {isApprovingCandidate
-                      ? 'Confirming Artwork & Assigning Operator...'
+                      ? 'Confirming Artwork(s) & Assigning Operator...'
                       : selectedModalOperatorId && selectedModalOperatorId !== 'LATER'
-                      ? `APPROVE WORK & ASSIGN TO ${operators.find((o) => o.id === selectedModalOperatorId)?.fullName?.toUpperCase() || 'OPERATOR'} →`
-                      : 'APPROVE SELECTED WORK & MOVE TO PRODUCTION →'}
+                      ? `APPROVE ${selectedCandidateIds.length > 1 ? `${selectedCandidateIds.length} WORKS` : 'WORK'} & ASSIGN TO ${operators.find((o) => o.id === selectedModalOperatorId)?.fullName?.toUpperCase() || 'OPERATOR'} →`
+                      : `APPROVE ${selectedCandidateIds.length > 1 ? `${selectedCandidateIds.length} SELECTED WORKS` : 'SELECTED WORK'} & MOVE TO PRODUCTION →`}
                   </span>
                 </Button>
               </div>

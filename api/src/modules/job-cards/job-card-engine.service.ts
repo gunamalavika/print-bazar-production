@@ -8,8 +8,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Priority, JobCardStatus, AssignmentTaskType, AssignmentStatus, OrderStatus, UserRole } from '@prisma/client';
-import { JwtPayload } from '../../common/types/roles';
+import { Priority, JobCardStatus, AssignmentTaskType, AssignmentStatus, OrderStatus } from '@prisma/client';
+import { JwtPayload, UserRole } from '../../common/types/roles';
 
 @Injectable()
 export class JobCardEngineService {
@@ -106,13 +106,15 @@ export class JobCardEngineService {
             })
           : null;
         if (prodAssignment) {
-          assignedOperatorId = prodAssignment.assignedUserId;
-        } else if (tx.user) {
-          const defaultOp = await tx.user.findFirst({
-            where: { role: UserRole.PRODUCTION_OPERATOR, isActive: true },
-            orderBy: { createdAt: 'asc' },
-          });
-          assignedOperatorId = defaultOp?.id || null;
+          const assignee = await tx.user.findUnique({ where: { id: prodAssignment.assignedUserId } });
+          // Only assign Job Card to operator if assignee is explicitly a PRODUCTION_OPERATOR
+          if (assignee?.role === UserRole.PRODUCTION_OPERATOR) {
+            assignedOperatorId = assignee.id;
+          } else {
+            assignedOperatorId = null;
+          }
+        } else {
+          assignedOperatorId = null;
         }
       }
 

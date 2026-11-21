@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
 import {
   RiPrinterLine,
   RiRefreshLine,
@@ -42,42 +41,30 @@ export function LabelActions({
         <button
           type="button"
           onClick={onPrintLabel}
-          className="flex-1 flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[12px] py-2.5 rounded-xl shadow-xs transition active:scale-95 cursor-pointer"
+          disabled={isCompleted}
+          className="flex-1 flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-bold text-[12px] py-2.5 rounded-xl shadow-xs transition active:scale-95"
         >
           <RiPrinterLine className="h-4 w-4 text-amber-300" />
-          <span>{labelPrinted ? `PRINT 4×6 LABEL (${printerName})` : `PRINT 4×6 LABEL (${printerName})`}</span>
+          <span>{labelPrinted ? `PRINT LABEL (${printerName})` : `PRINT 4×6 LABEL (${printerName})`}</span>
         </button>
 
-        <button
-          type="button"
-          onClick={onReprintLabel}
-          className="flex items-center gap-1 px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] rounded-xl border border-slate-200 transition cursor-pointer"
-          title="Reprint Shipping Label (Audited)"
-        >
-          <RiRefreshLine className="h-3.5 w-3.5" />
-          <span>Reprint {printCount > 0 ? `(${printCount})` : ''}</span>
-        </button>
+        {labelPrinted && (
+          <button
+            type="button"
+            onClick={onReprintLabel}
+            className="flex items-center gap-1 px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] rounded-xl border border-slate-200 transition"
+            title="Reprint Shipping Label (Audited)"
+          >
+            <RiRefreshLine className="h-3.5 w-3.5" />
+            <span>Reprint ({printCount})</span>
+          </button>
+        )}
       </div>
 
       {labelPrinted && !isCompleted && (
         <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 text-[11px] font-medium flex items-center gap-2">
           <RiCheckboxCircleFill className="h-4 w-4 text-emerald-600 shrink-0" />
-          <span>Shipping label preview verified. Ready to complete packing handoff.</span>
-        </div>
-      )}
-
-      {isCompleted && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 text-xs font-semibold flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <RiCheckboxCircleFill className="h-4 w-4 text-emerald-600 shrink-0" />
-            <span>Order released to Dispatch Manifest.</span>
-          </div>
-          <Link
-            href="/dispatch/manifest"
-            className="text-xs font-bold underline text-emerald-950 hover:text-emerald-700"
-          >
-            Go to Dispatch →
-          </Link>
+          <span>Shipping label printed. Ready to complete packing handoff.</span>
         </div>
       )}
 
@@ -86,13 +73,7 @@ export function LabelActions({
         type="button"
         disabled={!canComplete || isCompleting || isCompleted}
         onClick={onCompletePacking}
-        className={`w-full flex items-center justify-center gap-2 font-black text-[13px] py-3.5 rounded-xl shadow-sm border transition active:scale-[0.98] ${
-          isCompleted
-            ? 'bg-emerald-600 text-white border-emerald-700 cursor-default'
-            : !canComplete || isCompleting
-            ? 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed'
-            : 'bg-[#FFED00] hover:bg-[#FDD835] text-slate-950 border-[#E3A008]/50 cursor-pointer'
-        }`}
+        className="w-full flex items-center justify-center gap-2 bg-[#FFED00] hover:bg-[#FDD835] disabled:bg-slate-200 disabled:text-slate-400 text-slate-950 font-black text-[13px] py-3.5 rounded-xl shadow-sm border border-[#E3A008]/50 transition active:scale-[0.98]"
       >
         <RiTruckLine className="h-4 w-4" />
         <span>

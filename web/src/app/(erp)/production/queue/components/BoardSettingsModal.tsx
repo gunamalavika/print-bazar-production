@@ -1,15 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   RiCloseLine,
   RiSettings4Line,
   RiArrowUpLine,
   RiArrowDownLine,
   RiArchiveLine,
-  RiDeleteBinLine,
-  RiEditLine,
-  RiAddLine,
+  RiAlertLine,
   RiCheckLine,
 } from 'react-icons/ri';
 import { Button } from '@/components/ui';
@@ -21,8 +19,6 @@ interface BoardSettingsModalProps {
   onClose: () => void;
   onReorder: (columnOrders: Array<{ id: string; sortOrder: number }>) => Promise<void>;
   onArchiveColumn: (id: string) => Promise<void>;
-  onEditColumn?: (col: KanbanColumnDto) => void;
-  onAddColumn?: () => void;
 }
 
 export function BoardSettingsModal({
@@ -31,17 +27,11 @@ export function BoardSettingsModal({
   onClose,
   onReorder,
   onArchiveColumn,
-  onEditColumn,
-  onAddColumn,
 }: BoardSettingsModalProps) {
   const [localCols, setLocalCols] = useState<KanbanColumnDto[]>(columns);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-
-  useEffect(() => {
-    setLocalCols(columns);
-  }, [columns]);
 
   if (!isOpen) return null;
 
@@ -79,20 +69,20 @@ export function BoardSettingsModal({
 
   const handleArchive = async (col: KanbanColumnDto) => {
     if (col.cardCount > 0) {
-      setError(`Cannot delete column "${col.name}" because it contains ${col.cardCount} active jobs. Move these jobs before deleting.`);
+      setError(`Cannot archive column "${col.name}" because it contains ${col.cardCount} active jobs.`);
       return;
     }
 
-    if (!confirm(`Are you sure you want to delete column "${col.name}"?`)) {
+    if (!confirm(`Are you sure you want to archive custom column "${col.name}"?`)) {
       return;
     }
 
     try {
       await onArchiveColumn(col.id);
       setLocalCols(localCols.filter((c) => c.id !== col.id));
-      setSuccess(`Column "${col.name}" deleted.`);
+      setSuccess(`Column "${col.name}" archived.`);
     } catch (err: any) {
-      setError(err?.message || 'Failed to delete column.');
+      setError(err?.message || 'Failed to archive column.');
     }
   };
 
@@ -107,7 +97,7 @@ export function BoardSettingsModal({
             </div>
             <div>
               <h3 className="font-bold text-sm text-slate-900">Kanban Board Settings</h3>
-              <p className="text-[11px] text-slate-500 font-mono">Reorder stations & manage workflow columns</p>
+              <p className="text-[11px] text-slate-500 font-mono">Reorder stations & manage custom workflow columns</p>
             </div>
           </div>
 
@@ -134,44 +124,25 @@ export function BoardSettingsModal({
             </div>
           )}
 
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-700">
-              Active Stations ({localCols.length})
-            </span>
-            {onAddColumn && (
-              <Button
-                variant="outline"
-                size="sm"
-                type="button"
-                onClick={onAddColumn}
-                className="text-xs text-slate-800 bg-amber-50 hover:bg-amber-100 border-amber-300 font-semibold"
-              >
-                <RiAddLine className="h-3.5 w-3.5 mr-1" />
-                <span>Add Column</span>
-              </Button>
-            )}
+          <div className="text-xs text-slate-500">
+            Use the arrows to adjust station sequence. System columns cannot be deleted to preserve core state transitions.
           </div>
 
           <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar pr-1">
             {localCols.map((col, index) => (
               <div
                 key={col.id}
-                className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs hover:border-slate-300 transition"
+                className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
               >
-                <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                <div className="flex items-center gap-2 min-w-0 pr-2">
                   <div
-                    className="h-3.5 w-3.5 rounded-full flex-shrink-0 shadow-xs"
+                    className="h-3 w-3 rounded-full flex-shrink-0"
                     style={{ backgroundColor: col.color || '#3B82F6' }}
                   />
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-slate-900 truncate">{col.name}</span>
-                      <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 font-semibold uppercase">
-                        {col.type}
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-slate-500 font-mono block truncate">
-                      {col.description || 'Station'} • {col.cardCount} active job{col.cardCount === 1 ? '' : 's'}
+                    <span className="font-bold text-slate-900 block truncate">{col.name}</span>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      {col.type} • {col.cardCount} active jobs
                     </span>
                   </div>
                 </div>
@@ -181,7 +152,7 @@ export function BoardSettingsModal({
                     type="button"
                     onClick={() => moveColumn(index, 'up')}
                     disabled={index === 0}
-                    className="p-1.5 rounded hover:bg-slate-200 text-slate-600 disabled:opacity-30 transition"
+                    className="p-1 rounded hover:bg-slate-200 text-slate-600 disabled:opacity-30"
                     title="Move station left"
                   >
                     <RiArrowUpLine className="h-4 w-4" />
@@ -191,31 +162,22 @@ export function BoardSettingsModal({
                     type="button"
                     onClick={() => moveColumn(index, 'down')}
                     disabled={index === localCols.length - 1}
-                    className="p-1.5 rounded hover:bg-slate-200 text-slate-600 disabled:opacity-30 transition"
+                    className="p-1 rounded hover:bg-slate-200 text-slate-600 disabled:opacity-30"
                     title="Move station right"
                   >
                     <RiArrowDownLine className="h-4 w-4" />
                   </button>
 
-                  {onEditColumn && (
+                  {col.type !== 'SYSTEM' && (
                     <button
                       type="button"
-                      onClick={() => onEditColumn(col)}
-                      className="p-1.5 rounded hover:bg-slate-200 text-slate-700 transition"
-                      title="Edit station title & color"
+                      onClick={() => handleArchive(col)}
+                      className="p-1 rounded hover:bg-rose-100 text-rose-600 ml-1"
+                      title="Archive custom column"
                     >
-                      <RiEditLine className="h-4 w-4 text-slate-600" />
+                      <RiArchiveLine className="h-4 w-4" />
                     </button>
                   )}
-
-                  <button
-                    type="button"
-                    onClick={() => handleArchive(col)}
-                    className="p-1.5 rounded hover:bg-rose-100 text-rose-600 ml-1 transition"
-                    title="Delete column"
-                  >
-                    <RiDeleteBinLine className="h-4 w-4" />
-                  </button>
                 </div>
               </div>
             ))}
@@ -232,7 +194,6 @@ export function BoardSettingsModal({
               type="button"
               onClick={handleSaveOrder}
               isLoading={isSaving}
-              className="shadow-brand"
             >
               <span>Save Column Order</span>
             </Button>

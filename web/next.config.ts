@@ -40,14 +40,16 @@ const nextConfig: NextConfig = {
     ];
   },
   async rewrites() {
+    const rawApiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+    const apiOrigin = rawApiUrl.trim().replace(/\/+$/, '').replace(/\/api\/v1$/, '');
     return [
       {
         source: '/api/v1/:path*',
-        destination: 'http://localhost:4000/api/v1/:path*',
+        destination: `${apiOrigin}/api/v1/:path*`,
       },
       {
         source: '/uploads/:path*',
-        destination: 'http://localhost:4000/uploads/:path*',
+        destination: `${apiOrigin}/uploads/:path*`,
       },
     ];
   },

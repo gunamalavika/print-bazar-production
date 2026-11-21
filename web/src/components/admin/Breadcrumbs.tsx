@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '@/lib/auth-context';
 import { RiArrowRightSLine, RiHome4Line } from 'react-icons/ri';
 import { CANONICAL_ADMIN_NAV } from './navigation';
 
@@ -17,6 +18,7 @@ const ROUTE_LABELS: Record<string, string> = {
   customers: 'Corporate Customers',
   pricing: 'Pricing & Substrates',
   production: 'Production Floor',
+  assign: 'Production Assign',
   queue: 'Press Schedule & Queue',
   inventory: 'Materials & Substrates',
   prepress: 'Prepress Studio',
@@ -37,6 +39,9 @@ const ROUTE_LABELS: Record<string, string> = {
 
 export function Breadcrumbs() {
   const pathname = usePathname();
+  const { user, activeRole, getRoleDestination } = useAuth();
+  const isProductionHead = (activeRole || user?.role) === 'PRODUCTION_HEAD';
+  const homeHref = getRoleDestination(activeRole || user?.role);
   const segments = pathname.split('/').filter(Boolean);
 
   if (segments.length === 0) return null;
@@ -47,7 +52,12 @@ export function Breadcrumbs() {
     
     // Check if canonical nav has a matching label
     const navMatch = CANONICAL_ADMIN_NAV.find((item) => item.href === href);
-    const label = navMatch ? navMatch.label : ROUTE_LABELS[seg.toLowerCase()] || seg.toUpperCase();
+    const label =
+      isProductionHead && href === '/operations/orders'
+        ? 'Production Assign'
+        : navMatch
+        ? navMatch.label
+        : ROUTE_LABELS[seg.toLowerCase()] || seg.toUpperCase();
 
     const isLast = idx === segments.length - 1;
 
@@ -61,7 +71,7 @@ export function Breadcrumbs() {
   return (
     <nav aria-label="Breadcrumb" className="flex items-center space-x-1.5 text-[11px] font-mono">
       <Link
-        href="/admin/dashboard"
+        href={homeHref}
         className="flex items-center gap-1 text-[#525252] hover:text-black transition-colors shrink-0"
         title="Admin Operations"
       >

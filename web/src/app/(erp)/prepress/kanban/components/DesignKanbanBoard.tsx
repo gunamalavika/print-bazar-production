@@ -10,39 +10,39 @@ import { DesignKanbanColumn } from './DesignKanbanColumn';
 import { DesignCardItem, DesignKanbanStage } from './DesignJobCard';
 import { DesignJobInspectModal } from './DesignJobInspectModal';
 import {
-  DesignColumnEditModal,
-  PrepressColumnConfig,
-} from './DesignColumnEditModal';
-import { DesignColumnManagerModal } from './DesignColumnManagerModal';
-import {
   RiRefreshLine,
   RiFileList3Line,
   RiAlertFill,
   RiCheckFill,
-  RiAddLine,
-  RiSettings4Line,
+  RiPaintBrushLine,
+  RiFileSearchLine,
+  RiTimeLine,
+  RiPrinterLine,
 } from 'react-icons/ri';
 import { Button } from '@/components/ui';
 
-const STORAGE_KEY_COLUMNS = 'pb_kanban_columns_prepress';
-const STORAGE_KEY_OVERRIDES = 'pb_kanban_prepress_card_stages';
+interface ColumnConfig {
+  key: DesignKanbanStage;
+  name: string;
+  subtitle: string;
+  color: string;
+  description: string;
+}
 
-const DEFAULT_PREPRESS_COLUMNS: PrepressColumnConfig[] = [
-  {
-    key: 'ARTWORK_CHECK',
-    name: 'Artwork Check',
-    subtitle: 'File Verification & Preflight Audit',
-    color: '#0284C7', // Sky-600
-    description: 'Initial intake, bleed audit, resolution check, defect detection.',
-    isCustom: false,
-  },
+const KANBAN_COLUMNS: ColumnConfig[] = [
   {
     key: 'DESIGNING',
     name: 'Designing',
     subtitle: 'Active Design Studio & Layout',
     color: '#F59E0B', // Amber-500
     description: 'Assigned designer layout drafting & personalized artwork generation.',
-    isCustom: false,
+  },
+  {
+    key: 'ARTWORK_CHECK',
+    name: 'Artwork Check',
+    subtitle: 'File Verification & Preflight Audit',
+    color: '#0284C7', // Sky-600
+    description: 'Post-design verification of uploaded designer artwork, bleed, resolution, and preflight audit.',
   },
   {
     key: 'WAITING_FOR_APPROVAL',
@@ -50,7 +50,6 @@ const DEFAULT_PREPRESS_COLUMNS: PrepressColumnConfig[] = [
     subtitle: 'Proof Sign-Off & Customer Review',
     color: '#8B5CF6', // Purple-500
     description: 'Proof sent to customer or waiting for OE confirmation.',
-    isCustom: false,
   },
   {
     key: 'READY_TO_PRINT',
@@ -58,7 +57,6 @@ const DEFAULT_PREPRESS_COLUMNS: PrepressColumnConfig[] = [
     subtitle: 'Proof Approved & Press Ready',
     color: '#10B981', // Emerald-500
     description: 'Approved artwork locked & passed to machine production queue.',
-    isCustom: false,
   },
 ];
 
@@ -67,10 +65,6 @@ function deduceKanbanStage(order: any): DesignKanbanStage {
   const status = String(order.status || '').toUpperCase();
 
   // 1. Explicit Order Status mapping (highest fidelity)
-  if (status === 'CUSTOMER_APPROVAL_REQUIRED') {
-    return 'WAITING_FOR_APPROVAL';
-  }
-
   if (
     status === 'ARTWORK_APPROVED' ||
     status === 'PRE_PRODUCTION_QC' ||
@@ -81,6 +75,18 @@ function deduceKanbanStage(order: any): DesignKanbanStage {
     order.isPassedToProduction
   ) {
     return 'READY_TO_PRINT';
+  }
+
+  if (status === 'CUSTOMER_APPROVAL_REQUIRED') {
+    return 'WAITING_FOR_APPROVAL';
+  }
+
+  if (status === 'ARTWORK_REVIEW' || status === 'ORDER_REVIEW') {
+    return 'ARTWORK_CHECK';
+  }
+
+  if (status === 'DESIGN_REQUIRED') {
+    return 'DESIGNING';
   }
 
   // 2. Secondary heuristics if status is generic or ambiguous
@@ -94,19 +100,20 @@ function deduceKanbanStage(order: any): DesignKanbanStage {
     return 'READY_TO_PRINT';
   }
 
-  // Candidate proofs/artworks submitted awaiting review
-  const allVersions = order.allArtworkVersions || [];
-  if (allItemVersions.length > 0 || allVersions.length > 0 || Boolean(order.latestArtworkVersion)) {
-    return 'WAITING_FOR_APPROVAL';
+  // If order has candidate artwork uploaded or pending review
+  if (allItemVersions.length > 0) {
+    return 'ARTWORK_CHECK';
   }
 
-  // If order was returned for revisions with directives
-  if (order.revisionDirectives) {
+  // If order was returned for revisions or is active in design
+  if (
+    order.assignedDesignerId ||
+    (order.items || []).some((it: any) => (it.specifications as any)?.artworkSource === 'DESIGN_TEAM')
+  ) {
     return 'DESIGNING';
   }
 
-  // Default: When OE assigns the design task to designer, keep in 1st Kanban column (ARTWORK_CHECK)
-  return 'ARTWORK_CHECK';
+  return 'DESIGNING';
 }
 
 export function DesignKanbanBoard() {
@@ -114,15 +121,6 @@ export function DesignKanbanBoard() {
 
   // Raw queue items from backend
   const [rawOrders, setRawOrders] = useState<any[]>([]);
-
-  // Columns Configuration
-  const [columns, setColumns] = useState<PrepressColumnConfig[]>(DEFAULT_PREPRESS_COLUMNS);
-
-  // Modals for Column Management
-  const [isManagerModalOpen, setIsManagerModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editingColumn, setEditingColumn] = useState<PrepressColumnConfig | null>(null);
-
   // Local stage override map (orderId -> stage)
   const [stageOverrides, setStageOverrides] = useState<Record<string, DesignKanbanStage>>({});
 
@@ -154,108 +152,6 @@ export function DesignKanbanBoard() {
     }
   };
 
-  // Load custom columns and stage overrides from localStorage on mount
-  useEffect(() => {
-    try {
-      const savedCols = localStorage.getItem(STORAGE_KEY_COLUMNS);
-      if (savedCols) {
-        const parsed = JSON.parse(savedCols);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setColumns(parsed);
-        }
-      }
-
-      const savedOverrides = localStorage.getItem(STORAGE_KEY_OVERRIDES);
-      if (savedOverrides) {
-        const parsed = JSON.parse(savedOverrides);
-        if (parsed && typeof parsed === 'object') {
-          setStageOverrides(parsed);
-        }
-      }
-    } catch { }
-  }, []);
-
-  const saveColumnsState = (newCols: PrepressColumnConfig[]) => {
-    setColumns(newCols);
-    try {
-      localStorage.setItem(STORAGE_KEY_COLUMNS, JSON.stringify(newCols));
-    } catch { }
-  };
-
-  const updateStageOverride = (orderId: string, stage: DesignKanbanStage) => {
-    setStageOverrides((prev) => {
-      const updated = { ...prev, [orderId]: stage };
-      try {
-        localStorage.setItem(STORAGE_KEY_OVERRIDES, JSON.stringify(updated));
-      } catch { }
-      return updated;
-    });
-  };
-
-  // Column Management Handlers
-  const handleSaveColumn = (columnData: PrepressColumnConfig) => {
-    const existingIndex = columns.findIndex((c) => c.key === columnData.key);
-    let updated: PrepressColumnConfig[];
-    if (existingIndex >= 0) {
-      updated = [...columns];
-      updated[existingIndex] = columnData;
-      showNotification('success', `Column "${columnData.name}" updated successfully.`);
-    } else {
-      updated = [...columns, columnData];
-      showNotification('success', `Column "${columnData.name}" created successfully.`);
-    }
-    saveColumnsState(updated);
-  };
-
-  const handleDeleteColumn = (columnKey: string) => {
-    const targetCol = columns.find((c) => c.key === columnKey);
-    const updated = columns.filter((c) => c.key !== columnKey);
-    saveColumnsState(updated);
-
-    // Reassign any jobs currently in deleted column to first remaining column or ARTWORK_CHECK
-    const fallbackStage = updated[0]?.key || 'ARTWORK_CHECK';
-    setStageOverrides((prev) => {
-      let changed = false;
-      const nextOverrides = { ...prev };
-      Object.keys(nextOverrides).forEach((id) => {
-        if (nextOverrides[id] === columnKey) {
-          nextOverrides[id] = fallbackStage;
-          changed = true;
-        }
-      });
-      if (changed) {
-        try {
-          localStorage.setItem(STORAGE_KEY_OVERRIDES, JSON.stringify(nextOverrides));
-        } catch { }
-      }
-      return nextOverrides;
-    });
-
-    showNotification('success', `Column "${targetCol?.name || columnKey}" removed.`);
-  };
-
-  const handleReorderColumns = (newCols: PrepressColumnConfig[]) => {
-    saveColumnsState(newCols);
-    showNotification('success', 'Column order updated.');
-  };
-
-  const handleMoveColumn = (col: PrepressColumnConfig, direction: 'left' | 'right') => {
-    const index = columns.findIndex((c) => c.key === col.key);
-    if (index === -1) return;
-    const targetIdx = direction === 'left' ? index - 1 : index + 1;
-    if (targetIdx < 0 || targetIdx >= columns.length) return;
-
-    const copy = [...columns];
-    const [moved] = copy.splice(index, 1);
-    copy.splice(targetIdx, 0, moved);
-    saveColumnsState(copy);
-  };
-
-  const handleResetDefaults = () => {
-    saveColumnsState(DEFAULT_PREPRESS_COLUMNS);
-    showNotification('success', 'Reset to 4 default Prepress quality gates.');
-  };
-
   // Fetch Design Queue from backend
   const loadQueue = useCallback(async (isSilent = false) => {
     if (!isSilent) setIsRefreshing(true);
@@ -283,6 +179,22 @@ export function DesignKanbanBoard() {
     return () => clearInterval(timer);
   }, [loadQueue]);
 
+  // Global drag cleanup safeguard: prevents any cards from remaining faded or stuck in dragging state
+  useEffect(() => {
+    const clearDragState = () => {
+      draggedCardRef.current = null;
+      setDraggedCard(null);
+    };
+    window.addEventListener('dragend', clearDragState);
+    window.addEventListener('drop', clearDragState);
+    window.addEventListener('mouseup', clearDragState);
+    return () => {
+      window.removeEventListener('dragend', clearDragState);
+      window.removeEventListener('drop', clearDragState);
+      window.removeEventListener('mouseup', clearDragState);
+    };
+  }, []);
+
   // Transform raw orders into standardized DesignCardItem objects
   const allCards = useMemo<DesignCardItem[]>(() => {
     return rawOrders.map((o) => {
@@ -301,18 +213,35 @@ export function DesignKanbanBoard() {
         specs.priority === 'URGENT' || specs.rushOrder || o.priority === 'URGENT'
           ? 'URGENT'
           : specs.priority === 'HIGH' || o.priority === 'HIGH'
-            ? 'HIGH'
-            : 'STANDARD';
+          ? 'HIGH'
+          : 'STANDARD';
+
+      const allItemVersions = (o.items || []).flatMap((it: any) => it.artworkVersions || []);
+      const activeArtworkVersions = allItemVersions.filter((v: any) => v.status !== 'SUPERSEDED');
+      const finalArtworkVersions =
+        Array.isArray(o.finalArtworkVersions) && o.finalArtworkVersions.length > 0
+          ? o.finalArtworkVersions
+          : activeArtworkVersions.filter(
+              (v: any) =>
+                typeof v.prepressNotes === 'string' &&
+                v.prepressNotes.includes('[FINAL_ARTWORK]'),
+            );
+      const finalArtworkVersion = o.finalArtworkVersion || finalArtworkVersions[0] || null;
+      const hasFinalArtwork = Boolean(o.hasFinalArtwork || finalArtworkVersions.length > 0);
 
       const artworkUrl =
+        finalArtworkVersion?.storageKey ||
+        finalArtworkVersion?.fileUrl ||
         o.artworkUrl ||
         item.artworkUrl ||
         specs.artworkUrl ||
         specs.artworkFile?.fileUrl ||
+        item.latestArtworkVersion?.storageKey ||
         item.latestArtworkVersion?.fileUrl ||
         null;
 
       const artworkFileName =
+        finalArtworkVersion?.originalFileName ||
         specs.artworkFile?.originalFileName ||
         specs.artworkFile?.fileName ||
         item.latestArtworkVersion?.originalFileName ||
@@ -322,6 +251,7 @@ export function DesignKanbanBoard() {
         id: o.id,
         orderId: o.id,
         orderNumber: o.orderNumber,
+        orderItemId: item.id || null,
         stage: deduced,
         currentStatus: o.currentStatus || o.status,
         customerName: o.customer?.fullName || o.customerName || 'Direct Customer',
@@ -343,7 +273,11 @@ export function DesignKanbanBoard() {
         artworkUrl,
         artworkFileName,
         artworkFile: specs.artworkFile || null,
-        latestArtworkVersion: item.latestArtworkVersion || null,
+        latestArtworkVersion: finalArtworkVersion || item.latestArtworkVersion || null,
+        artworkVersions: activeArtworkVersions,
+        finalArtworkVersion,
+        finalArtworkVersions,
+        hasFinalArtwork,
         approvedArtworkVersion: o.approvedArtworkVersion || null,
         createdAt: o.createdAt,
         dueAt: o.dueAt || undefined,
@@ -397,15 +331,6 @@ export function DesignKanbanBoard() {
     });
   }, [allCards, stageFilter, designerFilter, priorityFilter, search]);
 
-  // Column card counts map
-  const cardCountsByColumn = useMemo(() => {
-    const map: Record<string, number> = {};
-    columns.forEach((c) => {
-      map[c.key] = allCards.filter((card) => card.stage === c.key).length;
-    });
-    return map;
-  }, [columns, allCards]);
-
   // Aggregate Metrics
   const metrics = useMemo(() => {
     return {
@@ -418,37 +343,147 @@ export function DesignKanbanBoard() {
     };
   }, [allCards]);
 
-  // Perform transition stage (backend call for core stages, localStorage for custom)
+  // Direct Designer Artwork Upload Handler (Supports 1 or Multiple Artwork Files — min 1 mandatory)
+  const handleUploadArtwork = async (
+    card: DesignCardItem,
+    files: File | File[],
+    targetStage?: DesignKanbanStage,
+    prepressNotes?: string,
+    resolutionDpi = 300,
+    isFinalArtwork = false,
+  ) => {
+    const fileList = Array.isArray(files) ? files : [files];
+    if (fileList.length === 0) {
+      showNotification('error', 'Please select at least 1 artwork file to upload.');
+      return;
+    }
+
+    try {
+      const countLabel =
+        fileList.length > 1 ? `${fileList.length} files` : `"${fileList[0].name}"`;
+      showNotification(
+        'success',
+        isFinalArtwork
+          ? `Uploading ${countLabel} as final artwork for Order #${card.orderNumber}...`
+          : `Uploading ${countLabel} for Order #${card.orderNumber}...`,
+      );
+
+      const targetOrderItemId =
+        card.orderItemId ||
+        rawOrders.find((o) => o.id === card.orderId)?.items?.[0]?.id;
+
+      // Upload & register each file sequentially so version numbers increment cleanly
+      for (const file of fileList) {
+        const uploadRes = await api.uploadArtwork(file);
+
+        if (targetOrderItemId) {
+          await api.registerArtwork({
+            orderItemId: targetOrderItemId,
+            storageKey: uploadRes.storageKey,
+            originalFileName: file.name,
+            fileSize: file.size,
+            mimeType: file.type || 'application/pdf',
+            resolutionDpi,
+            prepressNotes: prepressNotes || undefined,
+            isFinalArtwork,
+            keepPreviousVersions: true,
+          });
+        }
+      }
+
+      if (targetStage && targetStage !== card.stage) {
+        await api.updateDesignKanbanStage(card.orderId, {
+          stage: targetStage,
+          notes:
+            prepressNotes ||
+            (isFinalArtwork
+              ? `Designer uploaded ${countLabel} as final artwork`
+              : `Designer uploaded ${countLabel}`),
+        });
+        setStageOverrides((prev) => ({ ...prev, [card.orderId]: targetStage }));
+      }
+
+      if (isFinalArtwork && (!targetStage || targetStage === card.stage)) {
+        showNotification(
+          'success',
+          `✓ Final artwork (${countLabel}) uploaded for Order #${card.orderNumber}! You can now move it to Ready to Print.`,
+        );
+      } else if (targetStage) {
+        showNotification(
+          'success',
+          `✓ ${isFinalArtwork ? 'Final' : 'Designer'} artwork (${countLabel}) uploaded for Order #${card.orderNumber}! Moved to ${targetStage.replace(
+            /_/g,
+            ' ',
+          )}.`,
+        );
+      } else {
+        showNotification(
+          'success',
+          `✓ Artwork (${countLabel}) uploaded for Order #${card.orderNumber}!`,
+        );
+      }
+      await loadQueue(true);
+    } catch (err: any) {
+      showNotification('error', err?.message || 'Failed to upload artwork file(s).');
+      throw err;
+    }
+  };
+
+  // Perform backend transition with rollback
   const handleTransitionStage = async (
     card: DesignCardItem,
     targetStage: DesignKanbanStage,
     notes?: string,
   ) => {
+    // Mandatory Final Artwork gate for moving ANY design to Ready to Print
+    if (targetStage === 'READY_TO_PRINT' && !card.hasFinalArtwork) {
+      showNotification(
+        'error',
+        `Final Artwork Mandatory: Cannot move Order #${card.orderNumber} to Ready to Print until the designer uploads the final artwork!`,
+      );
+      return;
+    }
+
+    // Check artwork requirement for Artwork Check or Waiting for Approval
+    const hasArtwork = Boolean(
+      card.artworkUrl ||
+      card.artworkFile?.fileUrl ||
+      card.latestArtworkVersion?.fileUrl ||
+      card.latestArtworkVersion?.storageKey
+    );
+
+    if (
+      (targetStage === 'ARTWORK_CHECK' ||
+        targetStage === 'WAITING_FOR_APPROVAL') &&
+      !hasArtwork
+    ) {
+      showNotification(
+        'error',
+        `Designer Artwork Required: Cannot move Order #${card.orderNumber} to ${targetStage.replace(
+          /_/g,
+          ' ',
+        )} without uploading the designer artwork!`,
+      );
+      return;
+    }
+
     const previousStage = card.stage;
-    updateStageOverride(card.orderId, targetStage);
+    // Optimistic Update
+    setStageOverrides((prev) => ({ ...prev, [card.orderId]: targetStage }));
 
-    const isCoreStage = [
-      'ARTWORK_CHECK',
-      'DESIGNING',
-      'WAITING_FOR_APPROVAL',
-      'READY_TO_PRINT',
-    ].includes(targetStage);
+    try {
+      await api.updateDesignKanbanStage(card.orderId, {
+        stage: targetStage,
+        notes,
+      });
 
-    if (isCoreStage) {
-      try {
-        await api.updateDesignKanbanStage(card.orderId, {
-          stage: targetStage as any,
-          notes,
-        });
-        showNotification('success', `Job ${card.orderNumber} advanced to ${targetStage.replace(/_/g, ' ')}.`);
-        await loadQueue(true);
-      } catch (err: any) {
-        updateStageOverride(card.orderId, previousStage);
-        showNotification('error', err?.message || 'Failed to update stage transition.');
-        await loadQueue(true);
-      }
-    } else {
-      showNotification('success', `Job ${card.orderNumber} moved to ${targetStage.replace(/_/g, ' ')}.`);
+      showNotification('success', `Job ${card.orderNumber} advanced to ${targetStage.replace(/_/g, ' ')}.`);
+      await loadQueue(true);
+    } catch (err: any) {
+      // Rollback on error
+      setStageOverrides((prev) => ({ ...prev, [card.orderId]: previousStage }));
+      showNotification('error', err?.message || 'Failed to update stage transition.');
+      await loadQueue(true);
     }
   };
 
@@ -465,10 +500,8 @@ export function DesignKanbanBoard() {
   };
 
   const handleCardDragEnd = () => {
-    setTimeout(() => {
-      draggedCardRef.current = null;
-      setDraggedCard(null);
-    }, 150);
+    draggedCardRef.current = null;
+    setDraggedCard(null);
   };
 
   const handleDropJob = async (
@@ -484,6 +517,10 @@ export function DesignKanbanBoard() {
     if (!card && draggedCardRef.current) {
       card = draggedCardRef.current;
     }
+
+    // Immediately clear dragging state so cards are never left faded
+    draggedCardRef.current = null;
+    setDraggedCard(null);
 
     if (!card || card.stage === targetColumnKey) return;
     await handleTransitionStage(card, targetColumnKey);
@@ -504,7 +541,7 @@ export function DesignKanbanBoard() {
 
   return (
     <div className="mx-auto max-w-[1920px] space-y-5 select-none pb-12">
-      {/* 1. Header & Live Telemetry Bar */}
+      {/* 1. Header & Live Telemetry Bar (Exact Match with /production/queue) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/90 pb-4 bg-white p-5 rounded-2xl border shadow-xs">
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -517,7 +554,7 @@ export function DesignKanbanBoard() {
               <span>DESIGN PIPELINE ACTIVE</span>
             </div>
             <span className="text-[10px] font-mono text-slate-400 font-medium">
-              • {columns.length} Quality Gates
+              • 4 Quality Gates
             </span>
           </div>
 
@@ -525,7 +562,7 @@ export function DesignKanbanBoard() {
             Design Department Process Kanban
           </h1>
           <p className="text-[13px] text-slate-500 mt-0.5">
-            Artwork Check • Designing • Waiting for Approval • Ready to Print Gate Handover
+            Designing • Artwork Check • Waiting for Approval • Ready to Print Gate Handover
           </p>
         </div>
 
@@ -541,29 +578,6 @@ export function DesignKanbanBoard() {
               <span>Prepress Table View</span>
             </Button>
           </Link>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsManagerModalOpen(true)}
-            className="text-xs text-slate-700 bg-white"
-          >
-            <RiSettings4Line className="h-3.5 w-3.5 mr-1 text-slate-500" />
-            <span>Manage Columns</span>
-          </Button>
-
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => {
-              setEditingColumn(null);
-              setIsEditModalOpen(true);
-            }}
-            className="shadow-brand text-xs"
-          >
-            <RiAddLine className="h-4 w-4 mr-1" />
-            <span>Add Column</span>
-          </Button>
 
           <Button
             variant="outline"
@@ -598,10 +612,10 @@ export function DesignKanbanBoard() {
         </div>
       )}
 
-      {/* 2. Top Design Department Metrics */}
+      {/* 2. Top Design Department Metrics (Exact Match with /production/queue) */}
       <DesignKanbanMetrics metrics={metrics} />
 
-      {/* 3. Search & Filter Bar */}
+      {/* 3. Search & Filter Bar (Exact Match with /production/queue) */}
       <DesignKanbanFilters
         search={search}
         onSearchChange={setSearch}
@@ -616,10 +630,9 @@ export function DesignKanbanBoard() {
         hasActiveFilters={hasActiveFilters}
         totalCount={allCards.length}
         filteredCount={filteredCards.length}
-        columns={columns}
       />
 
-      {/* 4. Horizontal Kanban Board Canvas */}
+      {/* 4. Horizontal Kanban Board Canvas (Exact Match with /production/queue) */}
       {isLoading ? (
         <div className="h-96 flex flex-col items-center justify-center bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs font-mono text-slate-500">
           <div className="h-8 w-8 border-2 border-[#FFED00] border-t-slate-900 rounded-full animate-spin mb-3" />
@@ -628,7 +641,7 @@ export function DesignKanbanBoard() {
       ) : (
         <div className="w-full overflow-x-auto pb-4 custom-scrollbar">
           <div className="flex items-start gap-4 min-w-max pr-6">
-            {columns.map((col, index) => {
+            {KANBAN_COLUMNS.map((col) => {
               const columnCards = filteredCards.filter((card) => card.stage === col.key);
               return (
                 <DesignKanbanColumn
@@ -638,18 +651,11 @@ export function DesignKanbanBoard() {
                   userRole={user?.role}
                   onAdvanceStage={handleTransitionStage}
                   onInspect={(card) => setInspectModalCard(card)}
+                  onUploadArtwork={handleUploadArtwork}
                   onDropJob={handleDropJob}
                   draggedCard={draggedCard}
                   onCardDragStart={handleCardDragStart}
                   onCardDragEnd={handleCardDragEnd}
-                  onEditColumn={(c) => {
-                    setEditingColumn(c);
-                    setIsEditModalOpen(true);
-                  }}
-                  onDeleteColumn={(c) => handleDeleteColumn(c.key)}
-                  onMoveColumn={handleMoveColumn}
-                  canMoveLeft={index > 0}
-                  canMoveRight={index < columns.length - 1}
                 />
               );
             })}
@@ -663,38 +669,9 @@ export function DesignKanbanBoard() {
         card={inspectModalCard}
         onClose={() => setInspectModalCard(null)}
         onUpdateStage={handleTransitionStage}
-      />
-
-      {/* 6. Column Manager Modal (Reorder, Delete, Add, Reset) */}
-      <DesignColumnManagerModal
-        isOpen={isManagerModalOpen}
-        columns={columns}
-        cardCounts={cardCountsByColumn}
-        onClose={() => setIsManagerModalOpen(false)}
-        onReorder={handleReorderColumns}
-        onEditColumn={(col) => {
-          setEditingColumn(col);
-          setIsEditModalOpen(true);
-        }}
-        onDeleteColumn={handleDeleteColumn}
-        onAddNewColumn={() => {
-          setEditingColumn(null);
-          setIsEditModalOpen(true);
-        }}
-        onResetDefaults={handleResetDefaults}
-      />
-
-      {/* 7. Column Add / Edit Modal */}
-      <DesignColumnEditModal
-        isOpen={isEditModalOpen}
-        column={editingColumn}
-        onClose={() => {
-          setIsEditModalOpen(false);
-          setEditingColumn(null);
-        }}
-        onSave={handleSaveColumn}
-        onDelete={handleDeleteColumn}
+        onUploadArtwork={handleUploadArtwork}
       />
     </div>
   );
 }
+

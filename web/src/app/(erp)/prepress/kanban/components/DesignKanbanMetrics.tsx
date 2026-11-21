@@ -48,22 +48,6 @@ export function DesignKanbanMetrics({ metrics, studioInfo }: DesignKanbanMetrics
           </div>
         </div>
 
-        {/* Artwork Check */}
-        <div className="bg-sky-50/50 border border-sky-200/90 rounded-xl p-3.5 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono uppercase font-bold text-sky-900">
-              ARTWORK CHECK
-            </span>
-            <RiFileSearchLine className="h-4 w-4 text-sky-600" />
-          </div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-[22px] font-bold text-sky-950 font-mono leading-none">
-              {metrics.artworkCheck}
-            </span>
-            <span className="text-[10px] text-sky-800 font-medium">Preflight Audit</span>
-          </div>
-        </div>
-
         {/* Designing Studio */}
         <div className="bg-amber-50/50 border border-amber-200/90 rounded-xl p-3.5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
@@ -77,6 +61,22 @@ export function DesignKanbanMetrics({ metrics, studioInfo }: DesignKanbanMetrics
               {metrics.designing}
             </span>
             <span className="text-[10px] text-amber-800 font-medium">Studio Active</span>
+          </div>
+        </div>
+
+        {/* Artwork Check */}
+        <div className="bg-sky-50/50 border border-sky-200/90 rounded-xl p-3.5 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono uppercase font-bold text-sky-900">
+              ARTWORK CHECK
+            </span>
+            <RiFileSearchLine className="h-4 w-4 text-sky-600" />
+          </div>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-[22px] font-bold text-sky-950 font-mono leading-none">
+              {metrics.artworkCheck}
+            </span>
+            <span className="text-[10px] text-sky-800 font-medium">Preflight Audit</span>
           </div>
         </div>
 

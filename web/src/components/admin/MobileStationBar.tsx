@@ -47,6 +47,13 @@ const STATION_TABS: StationTab[] = [
     badge: 'OE',
   },
   {
+    id: 'production-assign',
+    label: 'Production Assign',
+    href: '/production/assign',
+    icon: RiPrinterLine,
+    permission: 'jobcard.assign',
+  },
+  {
     id: 'orders',
     label: 'Orders Master',
     href: '/sales/orders',
@@ -134,9 +141,12 @@ export function MobileStationBar() {
   const isOwner = user?.role === 'ADMIN_MANAGER';
   const roleStr = String(user?.role || '');
   const isPrepress = roleStr === 'DESIGNER_PREPRESS' || roleStr === 'PREPRESS';
+  const isProductionHead = roleStr === 'PRODUCTION_HEAD';
   const userPermissions = user?.permissions || [];
 
   const visibleTabs = STATION_TABS.filter((tab) => {
+    if (isProductionHead) return tab.id === 'production-assign';
+    if (tab.id === 'production-assign') return false;
     if (isOwner) return true;
     if (isPrepress && tab.id === 'production') return false;
     if (!tab.permission) return true;

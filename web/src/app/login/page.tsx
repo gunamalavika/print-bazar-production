@@ -83,6 +83,15 @@ const SEED_ACCOUNTS: SeedAccount[] = [
     description: 'Central order coordination & assignments',
   },
   {
+    role: 'PRODUCTION_HEAD',
+    title: 'Production Head',
+    email: 'prodhead@printbazzar.com',
+    destination: '/production/assign',
+    badge: 'Prod Head',
+    badgeColor: 'bg-[#F0FDF4] text-[#166534] border-emerald-300',
+    description: 'Production allocation & operator assignments',
+  },
+  {
     role: 'PRODUCTION_OPERATOR',
     title: 'Production Operator',
     email: 'operator@printbazzar.com',

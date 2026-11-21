@@ -9,21 +9,17 @@ import { FinanceColumn, FinanceColumnDefinitionDto } from './FinanceColumn';
 import { FinanceCardDto } from './FinanceJobCard';
 import { RecordManualPaymentModal } from './RecordManualPaymentModal';
 import { InvoiceDrawer } from './InvoiceDrawer';
-import { FinanceColumnEditModal } from './FinanceColumnEditModal';
-import { FinanceColumnManagerModal } from './FinanceColumnManagerModal';
 import {
   RiRefreshLine,
+  RiMoneyDollarCircleLine,
   RiCheckFill,
   RiAlertFill,
-  RiAddLine,
-  RiSettings4Line,
+  RiDownload2Line,
+  RiShareForwardLine,
 } from 'react-icons/ri';
 import { Button } from '@/components/ui';
 
-const STORAGE_KEY_FINANCE_COLUMNS = 'pb_kanban_columns_finance';
-const STORAGE_KEY_FINANCE_OVERRIDES = 'pb_kanban_finance_card_stages';
-
-const DEFAULT_FINANCE_COLUMNS: FinanceColumnDefinitionDto[] = [
+const FINANCE_COLUMNS: FinanceColumnDefinitionDto[] = [
   {
     id: 'col-pending',
     key: 'PAYMENT_PENDING',
@@ -61,17 +57,8 @@ const DEFAULT_FINANCE_COLUMNS: FinanceColumnDefinitionDto[] = [
 export function FinanceBoard() {
   const { user } = useAuth();
 
-  // Columns State
-  const [columns, setColumns] = useState<FinanceColumnDefinitionDto[]>(DEFAULT_FINANCE_COLUMNS);
-  const [isManagerModalOpen, setIsManagerModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editingColumn, setEditingColumn] = useState<FinanceColumnDefinitionDto | null>(null);
-
-  // Local Stage Overrides (orderId -> financeStatus)
-  const [stageOverrides, setStageOverrides] = useState<Record<string, string>>({});
-
   // Board Data
-  const [rawCards, setRawCards] = useState<FinanceCardDto[]>([]);
+  const [cards, setCards] = useState<FinanceCardDto[]>([]);
   const [metrics, setMetrics] = useState({
     totalGrossBilling: 0,
     gstCollected: 0,
@@ -108,108 +95,6 @@ export function FinanceBoard() {
   // Auto-polling toggle
   const [autoRefresh, setAutoRefresh] = useState(true);
 
-  // Load custom columns and overrides from localStorage
-  useEffect(() => {
-    try {
-      const savedCols = localStorage.getItem(STORAGE_KEY_FINANCE_COLUMNS);
-      if (savedCols) {
-        const parsed = JSON.parse(savedCols);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setColumns(parsed);
-        }
-      }
-
-      const savedOverrides = localStorage.getItem(STORAGE_KEY_FINANCE_OVERRIDES);
-      if (savedOverrides) {
-        const parsed = JSON.parse(savedOverrides);
-        if (parsed && typeof parsed === 'object') {
-          setStageOverrides(parsed);
-        }
-      }
-    } catch {}
-  }, []);
-
-  const saveColumnsState = (newCols: FinanceColumnDefinitionDto[]) => {
-    setColumns(newCols);
-    try {
-      localStorage.setItem(STORAGE_KEY_FINANCE_COLUMNS, JSON.stringify(newCols));
-    } catch {}
-  };
-
-  const updateStageOverride = (orderId: string, status: string) => {
-    setStageOverrides((prev) => {
-      const updated = { ...prev, [orderId]: status };
-      try {
-        localStorage.setItem(STORAGE_KEY_FINANCE_OVERRIDES, JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
-  };
-
-  // Column Management Handlers
-  const handleSaveColumn = (columnData: FinanceColumnDefinitionDto) => {
-    const existingIndex = columns.findIndex((c) => c.key === columnData.key);
-    let updated: FinanceColumnDefinitionDto[];
-    if (existingIndex >= 0) {
-      updated = [...columns];
-      updated[existingIndex] = columnData;
-      showNotification('success', `Column "${columnData.name}" updated successfully.`);
-    } else {
-      updated = [...columns, columnData];
-      showNotification('success', `Column "${columnData.name}" added successfully.`);
-    }
-    saveColumnsState(updated);
-  };
-
-  const handleDeleteColumn = (columnKey: string) => {
-    const targetCol = columns.find((c) => c.key === columnKey);
-    const updated = columns.filter((c) => c.key !== columnKey);
-    saveColumnsState(updated);
-
-    // Reassign jobs in deleted column to first remaining column
-    const fallbackKey = updated[0]?.key || 'PAYMENT_PENDING';
-    setStageOverrides((prev) => {
-      let changed = false;
-      const nextOverrides = { ...prev };
-      Object.keys(nextOverrides).forEach((id) => {
-        if (nextOverrides[id] === columnKey) {
-          nextOverrides[id] = fallbackKey;
-          changed = true;
-        }
-      });
-      if (changed) {
-        try {
-          localStorage.setItem(STORAGE_KEY_FINANCE_OVERRIDES, JSON.stringify(nextOverrides));
-        } catch {}
-      }
-      return nextOverrides;
-    });
-
-    showNotification('success', `Column "${targetCol?.name || columnKey}" removed.`);
-  };
-
-  const handleReorderColumns = (newCols: FinanceColumnDefinitionDto[]) => {
-    saveColumnsState(newCols);
-    showNotification('success', 'Column order updated.');
-  };
-
-  const handleMoveColumn = (col: FinanceColumnDefinitionDto, direction: 'left' | 'right') => {
-    const index = columns.findIndex((c) => c.key === col.key);
-    if (index === -1) return;
-    const targetIdx = direction === 'left' ? index - 1 : index + 1;
-    if (targetIdx < 0 || targetIdx >= columns.length) return;
-
-    const copy = [...columns];
-    const [moved] = copy.splice(index, 1);
-    copy.splice(targetIdx, 0, moved);
-    saveColumnsState(copy);
-  };
-
-  const handleResetDefaults = () => {
-    saveColumnsState(DEFAULT_FINANCE_COLUMNS);
-    showNotification('success', 'Reset to 4 default Finance columns.');
-  };
-
   // Fetch Board Data from backend
   const loadBoardData = useCallback(async (isSilent = false) => {
     if (!isSilent) setIsRefreshing(true);
@@ -218,18 +103,23 @@ export function FinanceBoard() {
         search: search || undefined,
         paymentStatus: paymentStatus !== 'ALL' ? paymentStatus : undefined,
         method: method !== 'ALL' ? method : undefined,
+        priority: priority !== 'ALL' ? priority : undefined,
       });
 
-      setRawCards(data.cards || []);
-      setMetrics(data.metrics || ({} as any));
+      if (data) {
+        setCards(data.cards || []);
+        if (data.metrics) {
+          setMetrics(data.metrics);
+        }
+      }
       setErrorBanner(null);
     } catch (err: any) {
-      setErrorBanner(err?.message || 'Failed to load live finance & payments telemetry.');
+      setErrorBanner(err?.message || 'Failed to load live finance board.');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [search, paymentStatus, method]);
+  }, [search, paymentStatus, method, priority]);
 
   useEffect(() => {
     loadBoardData();
@@ -254,30 +144,6 @@ export function FinanceBoard() {
     }
   };
 
-  // Cards with overrides applied
-  const cards = useMemo<FinanceCardDto[]>(() => {
-    return rawCards.map((c) => {
-      const override = stageOverrides[c.id];
-      if (override) {
-        return { ...c, financeStatus: override };
-      }
-      return c;
-    });
-  }, [rawCards, stageOverrides]);
-
-  // Column stats for manager modal
-  const cardStatsByColumn = useMemo(() => {
-    const map: Record<string, { count: number; totalAmount: number }> = {};
-    columns.forEach((col) => {
-      const colCards = cards.filter((c) => c.financeStatus === col.key);
-      map[col.key] = {
-        count: colCards.length,
-        totalAmount: colCards.reduce((acc, c) => acc + c.totalAmount, 0),
-      };
-    });
-    return map;
-  }, [columns, cards]);
-
   // Drag handlers
   const handleCardDragStart = (e: React.DragEvent, card: FinanceCardDto) => {
     setDraggedCard(card);
@@ -290,11 +156,16 @@ export function FinanceBoard() {
 
   const handleDropJob = async (columnKey: string, card: FinanceCardDto) => {
     if (columnKey === 'SETTLED' && card.balanceAmount > 0) {
+      // Prompt to record offline settlement
       setPayModalCard(card);
       return;
     }
 
-    updateStageOverride(card.id, columnKey);
+    // Optimistically update card stage
+    setCards((prev) =>
+      prev.map((c) => (c.id === card.id ? { ...c, financeStatus: columnKey as any } : c)),
+    );
+
     showNotification('success', `Order #${card.orderNumber} moved to ${columnKey.replace(/_/g, ' ')}.`);
   };
 
@@ -315,7 +186,6 @@ export function FinanceBoard() {
         notes,
       });
 
-      updateStageOverride(orderId, 'SETTLED');
       showNotification('success', `Payment of ₹${amount.toLocaleString()} recorded and settled!`);
       loadBoardData(true);
     } catch (err: any) {
@@ -354,8 +224,6 @@ export function FinanceBoard() {
             <span>FINANCE & TREASURY</span>
             <span>•</span>
             <span className="text-slate-900">REVENUE & INVOICE RECONCILIATION</span>
-            <span>•</span>
-            <span className="text-slate-400 font-medium">{columns.length} Stages</span>
           </div>
           <h1 className="text-[24px] sm:text-[28px] font-bold text-slate-900 tracking-tight leading-[1.2] mt-1">
             Finance & Accounts Operating Board
@@ -367,41 +235,16 @@ export function FinanceBoard() {
 
         {/* Live sync & actions */}
         <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto mt-2 sm:mt-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsManagerModalOpen(true)}
-            className="text-xs text-slate-700 bg-white"
-          >
-            <RiSettings4Line className="h-3.5 w-3.5 mr-1 text-slate-500" />
-            <span>Manage Columns</span>
-          </Button>
-
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => {
-              setEditingColumn(null);
-              setIsEditModalOpen(true);
-            }}
-            className="shadow-brand text-xs"
-          >
-            <RiAddLine className="h-4 w-4 mr-1" />
-            <span>Add Column</span>
-          </Button>
-
           <button
             onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1.5 transition flex-1 sm:flex-initial ${
-              autoRefresh
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1.5 transition flex-1 sm:flex-initial ${autoRefresh
                 ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                 : 'bg-slate-100 text-slate-600 border-slate-200'
-            }`}
+              }`}
           >
             <span
-              className={`h-2 w-2 rounded-full ${
-                autoRefresh ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
-              }`}
+              className={`h-2 w-2 rounded-full ${autoRefresh ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                }`}
             />
             <span>{autoRefresh ? 'Live Auto-Sync (15s)' : 'Auto-Sync Off'}</span>
           </button>
@@ -453,11 +296,11 @@ export function FinanceBoard() {
 
       {/* Kanban Board Columns Container */}
       <div className="flex gap-3.5 overflow-x-auto pb-4 pt-1 custom-scrollbar min-h-[560px] items-start">
-        {columns.map((column, index) => {
+        {FINANCE_COLUMNS.map((column) => {
           const columnCards = cards.filter((c) => c.financeStatus === column.key);
           return (
             <FinanceColumn
-              key={column.id || column.key}
+              key={column.id}
               column={column}
               cards={columnCards}
               onRecordPayment={handleRecordPayment}
@@ -467,14 +310,6 @@ export function FinanceBoard() {
               draggedCard={draggedCard}
               onCardDragStart={handleCardDragStart}
               onCardDragEnd={handleCardDragEnd}
-              onEditColumn={(c) => {
-                setEditingColumn(c);
-                setIsEditModalOpen(true);
-              }}
-              onDeleteColumn={(c) => handleDeleteColumn(c.key)}
-              onMoveColumn={handleMoveColumn}
-              canMoveLeft={index > 0}
-              canMoveRight={index < columns.length - 1}
             />
           );
         })}
@@ -496,37 +331,6 @@ export function FinanceBoard() {
           setIsInvoiceOpen(false);
           setInvoiceCard(null);
         }}
-      />
-
-      {/* Column Manager Modal */}
-      <FinanceColumnManagerModal
-        isOpen={isManagerModalOpen}
-        columns={columns}
-        cardStats={cardStatsByColumn}
-        onClose={() => setIsManagerModalOpen(false)}
-        onReorder={handleReorderColumns}
-        onEditColumn={(col) => {
-          setEditingColumn(col);
-          setIsEditModalOpen(true);
-        }}
-        onDeleteColumn={handleDeleteColumn}
-        onAddNewColumn={() => {
-          setEditingColumn(null);
-          setIsEditModalOpen(true);
-        }}
-        onResetDefaults={handleResetDefaults}
-      />
-
-      {/* Column Add / Edit Modal */}
-      <FinanceColumnEditModal
-        isOpen={isEditModalOpen}
-        column={editingColumn}
-        onClose={() => {
-          setIsEditModalOpen(false);
-          setEditingColumn(null);
-        }}
-        onSave={handleSaveColumn}
-        onDelete={handleDeleteColumn}
       />
     </div>
   );

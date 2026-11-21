@@ -10,18 +10,16 @@ import { AuditService } from '../audit/audit.service';
 import {
   OrderStatus,
   PaymentStatus,
-  UserRole,
   AssignmentTaskType,
   AssignmentStatus,
   Prisma,
   QCOutcome,
   Priority,
-  CustomerVisibleStatus,
 } from '@prisma/client';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { JobCardEngineService } from '../job-cards/job-card-engine.service';
 import { WorkflowStateService } from '../workflow/workflow-state.service';
-import { JwtPayload } from '../../common/types/roles';
+import { JwtPayload, UserRole } from '../../common/types/roles';
 
 // ─── DTOs ────────────────────────────────────────────────────────────────
 
@@ -172,7 +170,7 @@ export class OperationsService {
     private readonly jobCardEngine: JobCardEngineService,
     private readonly workflowState: WorkflowStateService,
     private readonly eventEmitter: EventEmitter2,
-  ) { }
+  ) {}
 
   // ═══════════════════════════════════════════════════════════════════════
   // 1. DASHBOARD METRICS (Aggregation-only, server side)
@@ -306,7 +304,7 @@ export class OperationsService {
   // 2. OPERATIONAL ORDER LIST (paginated, filtered, server-side)
   // ═══════════════════════════════════════════════════════════════════════
 
-  async listOperationalOrders(filters: OperationsDashboardFilters) {
+  async listOperationalOrders(filters: OperationsDashboardFilters, user?: JwtPayload) {
     const page = Math.max(1, parseInt(filters.page || '1', 10));
     const limit = Math.min(100, Math.max(1, parseInt(filters.limit || '20', 10)));
     const skip = (page - 1) * limit;
@@ -404,6 +402,54 @@ export class OperationsService {
       ];
     }
 
+    // Strict Production Head scoping: ONLY production-pending / production-ready orders
+    if (user?.role === UserRole.PRODUCTION_HEAD) {
+      const existingAnd = Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : [];
+      where.AND = [
+        ...existingAnd,
+        {
+          OR: [
+            {
+              status: {
+                in: [
+                  OrderStatus.ARTWORK_APPROVED,
+                  OrderStatus.PRE_PRODUCTION_QC,
+                  OrderStatus.PRODUCTION_QUEUE,
+                  OrderStatus.PRINTING,
+                  OrderStatus.FINISHING,
+                ],
+              },
+            },
+            {
+              status: {
+                in: [
+                  OrderStatus.ORDER_CREATED,
+                  OrderStatus.PAYMENT_CONFIRMED,
+                  OrderStatus.ORDER_REVIEW,
+                ],
+              },
+              items: {
+                some: {
+                  OR: [
+                    { approvedArtworkVersionId: { not: null } },
+                    { artworkVersions: { some: { isApproved: true } } },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+        {
+          assignments: {
+            none: {
+              taskType: AssignmentTaskType.DESIGN,
+              status: AssignmentStatus.ACTIVE,
+            },
+          },
+        },
+      ];
+    }
+
     // Sorting
     const orderBy: Prisma.OrderOrderByWithRelationInput = {};
     if (filters.sortBy === 'priority') {
@@ -496,8 +542,22 @@ export class OperationsService {
 
     // Derive next action and blockers for each order
     const enrichedOrders = orders.map((order) => {
-      const designAssignment = order.assignments.find((a) => a.taskType === AssignmentTaskType.DESIGN) || null;
-      const productionAssignment = order.assignments.find((a) => a.taskType === AssignmentTaskType.PRODUCTION) || null;
+      const designAssignment =
+        order.assignments.find(
+          (a) => a.taskType === AssignmentTaskType.DESIGN && a.status === AssignmentStatus.ACTIVE,
+        ) ||
+        order.assignments.find(
+          (a) => a.taskType === AssignmentTaskType.DESIGN && a.status === AssignmentStatus.COMPLETED,
+        ) ||
+        null;
+      const productionAssignment =
+        order.assignments.find(
+          (a) => a.taskType === AssignmentTaskType.PRODUCTION && a.status === AssignmentStatus.ACTIVE,
+        ) ||
+        order.assignments.find(
+          (a) => a.taskType === AssignmentTaskType.PRODUCTION && a.status === AssignmentStatus.COMPLETED,
+        ) ||
+        null;
       return {
         ...order,
         nextAction: this.getOperationalNextAction(order as any),
@@ -661,9 +721,19 @@ export class OperationsService {
     const activeDesignAssignment = order.assignments.find(
       (a) => a.taskType === AssignmentTaskType.DESIGN && a.status === AssignmentStatus.ACTIVE,
     );
+    const completedDesignAssignment = order.assignments.find(
+      (a) => a.taskType === AssignmentTaskType.DESIGN && a.status === AssignmentStatus.COMPLETED,
+    );
     const activeProductionAssignment = order.assignments.find(
       (a) => a.taskType === AssignmentTaskType.PRODUCTION && a.status === AssignmentStatus.ACTIVE,
     );
+    const completedProductionAssignment = order.assignments.find(
+      (a) => a.taskType === AssignmentTaskType.PRODUCTION && a.status === AssignmentStatus.COMPLETED,
+    );
+    const prodUser =
+      activeProductionAssignment?.assignedUser ||
+      completedProductionAssignment?.assignedUser ||
+      null;
 
     return {
       ...order,
@@ -671,6 +741,12 @@ export class OperationsService {
       blockers: this.getBlockers(order as any),
       activeDesignAssignment: activeDesignAssignment || null,
       activeProductionAssignment: activeProductionAssignment || null,
+      assignedDesigner:
+        activeDesignAssignment?.assignedUser ||
+        completedDesignAssignment?.assignedUser ||
+        null,
+      assignedOperator:
+        prodUser?.role === UserRole.PRODUCTION_OPERATOR ? prodUser : null,
       assignmentHistory: order.assignments,
     };
   }
@@ -695,7 +771,17 @@ export class OperationsService {
     const order = await this.prisma.order.findUnique({
       where: { id: resolvedOrderId },
       include: {
-        items: { select: { id: true, productName: true } },
+        items: {
+          select: {
+            id: true,
+            productName: true,
+            specifications: true,
+            approvedArtworkVersionId: true,
+            artworkVersions: {
+              select: { id: true, storageKey: true, proofUrl: true, status: true },
+            },
+          },
+        },
         assignments: {
           where: { status: AssignmentStatus.ACTIVE },
         },
@@ -785,22 +871,62 @@ export class OperationsService {
         },
       });
 
-      // Transition Order state to ARTWORK_REVIEW (Artwork Check gate) when OE assigns designer
-      const intakeStatuses: OrderStatus[] = [
+      // Determine whether the order already has customer-uploaded artwork
+      const hasExistingArtwork = (order.items || []).some((it: any) => {
+        const specs = (it.specifications as any) || {};
+        return Boolean(
+          (Array.isArray(it.artworkVersions) && it.artworkVersions.length > 0) ||
+          it.approvedArtworkVersionId ||
+          specs.artworkUrl ||
+          specs.artworkStorageKey ||
+          specs.artworkFile?.fileUrl ||
+          specs.artworkFile?.storageKey ||
+          (specs.artworkFiles && Object.keys(specs.artworkFiles).length > 0),
+        );
+      });
+
+      // If order already has artwork uploaded by customer -> route directly to ARTWORK_REVIEW ("Artwork Check" column)
+      // If order does not have artwork -> route to DESIGN_REQUIRED ("Designing" column)
+      const targetDesignStatus: OrderStatus = hasExistingArtwork
+        ? OrderStatus.ARTWORK_REVIEW
+        : OrderStatus.DESIGN_REQUIRED;
+      const targetCustomerStatus = hasExistingArtwork
+        ? 'ARTWORK_BEING_CHECKED'
+        : 'DESIGN_IN_PROGRESS';
+
+      // Unlock any pre-approved customer artwork version while the designer checks/verifies it
+      if (hasExistingArtwork && Array.isArray(order.items)) {
+        for (const it of order.items) {
+          if ((it as any).approvedArtworkVersionId) {
+            await tx.orderItem.update({
+              where: { id: it.id },
+              data: { approvedArtworkVersionId: null },
+            });
+          }
+        }
+      }
+
+      const eligibleDesignTransitionStatuses: OrderStatus[] = [
         OrderStatus.ORDER_CREATED,
         OrderStatus.PAYMENT_PENDING,
         OrderStatus.PAYMENT_CONFIRMED,
         OrderStatus.ORDER_REVIEW,
         OrderStatus.ARTWORK_REVIEW,
         OrderStatus.DESIGN_REQUIRED,
+        OrderStatus.ARTWORK_APPROVED,
+        OrderStatus.PRE_PRODUCTION_QC,
+        OrderStatus.PRODUCTION_QUEUE,
       ];
 
-      if (intakeStatuses.includes(order.status)) {
+      if (
+        eligibleDesignTransitionStatuses.includes(order.status) &&
+        order.status !== targetDesignStatus
+      ) {
         await tx.order.update({
           where: { id: order.id },
           data: {
-            status: OrderStatus.ARTWORK_REVIEW,
-            customerStatus: CustomerVisibleStatus.ARTWORK_BEING_CHECKED,
+            status: targetDesignStatus,
+            customerStatus: targetCustomerStatus as any,
           },
         });
 
@@ -808,9 +934,11 @@ export class OperationsService {
           data: {
             orderId: order.id,
             fromStatus: order.status,
-            toStatus: OrderStatus.ARTWORK_REVIEW,
+            toStatus: targetDesignStatus,
             changedById: user.sub,
-            reason: `Assigned to Designer ${designer.fullName} by OE (Queued for Artwork Check)`,
+            reason: hasExistingArtwork
+              ? `Assigned to Designer ${designer.fullName} by OE for Artwork Check (customer artwork uploaded)`
+              : `Assigned to Designer ${designer.fullName} by OE for Designing (no customer artwork)`,
             notes: dto.reason,
           },
         });
@@ -857,9 +985,10 @@ export class OperationsService {
     if (
       user.role !== UserRole.OPERATIONAL_MANAGER &&
       user.role !== UserRole.ADMIN_MANAGER &&
+      user.role !== UserRole.PRODUCTION_HEAD &&
       user.role !== UserRole.PRODUCTION_OPERATOR
     ) {
-      throw new ForbiddenException('Only Operational Managers, Administrators, or Production Operators can assign production operators');
+      throw new ForbiddenException('Only Operational Managers, Production Heads, Administrators, or Production Operators can assign production operators');
     }
 
     const resolvedOrderId = await this.resolveOrderId(orderId);
@@ -1670,8 +1799,8 @@ export class OperationsService {
     const approvalStatus: 'APPROVED' | 'PENDING' | 'NOT_REQUIRED' = isApproved
       ? 'APPROVED'
       : requiresCustomerApproval
-        ? 'PENDING'
-        : 'NOT_REQUIRED';
+      ? 'PENDING'
+      : 'NOT_REQUIRED';
 
     // 4. Blockers
     const blockers: string[] = [];
@@ -1701,13 +1830,13 @@ export class OperationsService {
       },
       artwork: latestArtwork
         ? {
-          id: latestArtwork.id,
-          versionNumber: latestArtwork.versionNumber,
-          originalFileName: latestArtwork.originalFileName,
-          proofUrl: latestArtwork.proofUrl || undefined,
-          storageKey: latestArtwork.storageKey,
-          isApproved: Boolean(latestArtwork.isApproved),
-        }
+            id: latestArtwork.id,
+            versionNumber: latestArtwork.versionNumber,
+            originalFileName: latestArtwork.originalFileName,
+            proofUrl: latestArtwork.proofUrl || undefined,
+            storageKey: latestArtwork.storageKey,
+            isApproved: Boolean(latestArtwork.isApproved),
+          }
         : null,
       sizeValidation,
       productionSpecs: {
@@ -1731,13 +1860,14 @@ export class OperationsService {
   // ═══════════════════════════════════════════════════════════════════════
 
   async releaseToProduction(orderId: string, dto: ReleaseToProductionDto, user: JwtPayload) {
-    // 1. RBAC Check: OPERATIONAL_MANAGER, ADMIN_MANAGER, or PRODUCTION_OPERATOR
+    // 1. RBAC Check: OPERATIONAL_MANAGER, ADMIN_MANAGER, PRODUCTION_HEAD, or PRODUCTION_OPERATOR
     if (
       user.role !== UserRole.OPERATIONAL_MANAGER &&
       user.role !== UserRole.ADMIN_MANAGER &&
+      user.role !== UserRole.PRODUCTION_HEAD &&
       user.role !== UserRole.PRODUCTION_OPERATOR
     ) {
-      throw new ForbiddenException('Only Operational Managers, Administrators, or Production Operators can release orders to production.');
+      throw new ForbiddenException('Only Operational Managers, Production Heads, Administrators, or Production Operators can release orders to production.');
     }
 
     const resolvedOrderId = await this.resolveOrderId(orderId);
@@ -1840,7 +1970,7 @@ export class OperationsService {
       }
     }
 
-    // 6. Optional Production Operator Assignment
+    // 6. Optional Production Operator Assignment or route to Production Head
     if (dto.assignedOperatorId) {
       try {
         await this.assignProductionOperator(
@@ -1850,6 +1980,24 @@ export class OperationsService {
         );
       } catch (err) {
         this.logger.warn(`Could not assign operator during release: ${(err as Error).message}`);
+      }
+    } else {
+      // Route assignment to Production Head for operator allocation
+      const prodHead = await this.prisma.user.findFirst({
+        where: { role: UserRole.PRODUCTION_HEAD, isActive: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (prodHead) {
+        await this.prisma.orderAssignment.create({
+          data: {
+            orderId: order.id,
+            taskType: AssignmentTaskType.PRODUCTION,
+            assignedUserId: prodHead.id,
+            assignedByUserId: user.sub,
+            status: AssignmentStatus.ACTIVE,
+            reason: 'Released to Production Head for operator allocation.',
+          },
+        });
       }
     }
 

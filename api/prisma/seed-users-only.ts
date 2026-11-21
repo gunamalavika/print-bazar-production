@@ -1,10 +1,11 @@
-import { PrismaClient, UserRole, Department } from '@prisma/client';
+import { PrismaClient, Department } from '@prisma/client';
+import { UserRole } from '../src/common/types/roles';
 import * as bcrypt from 'bcrypt';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
 
-// Load api/.env.production explicitly with override: true
-dotenv.config({ path: path.resolve(__dirname, '../.env.production'), override: true });
+// Load api/.env explicitly
+dotenv.config({ path: path.resolve(__dirname, '../.env'), override: true });
 
 const dbUrl = process.env.DATABASE_URL;
 console.log('Connecting to database:', dbUrl ? dbUrl.replace(/:[^:@]+@/, ':****@') : 'UNDEFINED');
@@ -18,6 +19,28 @@ const prisma = new PrismaClient({
 });
 
 async function main() {
+  console.log('--- CLEARING ALL ORDERS & TRANSACTIONAL TABLES ---');
+  try {
+    await (prisma as any).operationalNote?.deleteMany();
+    await (prisma as any).orderAssignment?.deleteMany();
+    await prisma.jobIssue.deleteMany();
+    await prisma.jobCard.deleteMany();
+    await prisma.artworkVersion.deleteMany();
+    await prisma.orderItem.deleteMany();
+    await prisma.qCChecklist.deleteMany();
+    await prisma.package.deleteMany();
+    await prisma.shipment.deleteMany();
+    await prisma.payment.deleteMany();
+    await prisma.invoice.deleteMany();
+    await prisma.orderStatusHistory.deleteMany();
+    await prisma.slaRecord.deleteMany();
+    await prisma.auditLog.deleteMany();
+    await prisma.order.deleteMany();
+    console.log('✅ All orders, job cards, artwork versions, payments, invoices, and transaction records cleared!');
+  } catch (err) {
+    console.warn('⚠️ Notice during transactional wipe:', err);
+  }
+
   console.log('--- SEEDING PRINT BAZZAR 2.0 USERS & ENTERPRISE ROLES ONLY ---');
 
   const salt = await bcrypt.genSalt(10);
@@ -59,6 +82,13 @@ async function main() {
       fullName: 'Priya Nair (Visual & Proofing Designer)',
       role: UserRole.DESIGNER_PREPRESS,
       department: Department.DESIGN_PREPRESS,
+    },
+    {
+      email: 'prodhead@printbazzar.com',
+      fullName: 'Rajesh Sharma (Production Head)',
+      role: UserRole.PRODUCTION_HEAD,
+      department: Department.PRODUCTION,
+      phone: '+919811223355',
     },
     {
       email: 'operator@printbazzar.com',
@@ -162,7 +192,15 @@ async function main() {
     console.log(`✓ Seeded user: ${s.email} [${s.role}]`);
   }
 
+  const [orderCount, paymentCount, jobCardCount, userCount] = await Promise.all([
+    prisma.order.count(),
+    prisma.payment.count(),
+    prisma.jobCard.count(),
+    prisma.user.count(),
+  ]);
+
   console.log(`\n🎉 Successfully seeded ${seededCount} users into production database!`);
+  console.log(`📊 Verification -> Orders: ${orderCount}, Payments: ${paymentCount}, JobCards: ${jobCardCount}, Users: ${userCount}`);
 }
 
 main()

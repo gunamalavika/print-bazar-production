@@ -1,6 +1,15 @@
-import { UserRole, Department } from '@prisma/client';
+import { UserRole as PrismaUserRole, Department } from '@prisma/client';
 
-export { UserRole, Department };
+export { Department };
+
+export const UserRole: typeof PrismaUserRole & {
+  PRODUCTION_HEAD: 'PRODUCTION_HEAD';
+} = {
+  ...PrismaUserRole,
+  PRODUCTION_HEAD: 'PRODUCTION_HEAD',
+};
+
+export type UserRole = PrismaUserRole;
 
 export interface JwtPayload {
   sub: string;
@@ -15,6 +24,7 @@ export type ActiveUserRole =
   | 'SALES_OFFICE'
   | 'OPERATIONAL_MANAGER'
   | 'DESIGNER_PREPRESS'
+  | 'PRODUCTION_HEAD'
   | 'PRODUCTION_OPERATOR'
   | 'FINAL_QC_INSPECTOR'
   | 'PACKING_OPERATOR'
@@ -75,6 +85,11 @@ export const ROLE_PERMISSIONS: Partial<Record<UserRole, string[]>> = {
     'artwork.read',
     'artwork.review',
     'artwork.proof',
+  ],
+  [UserRole.PRODUCTION_HEAD]: [
+    'operations.read',
+    'operations.assign',
+    'jobcard.assign',
   ],
   [UserRole.PRODUCTION_OPERATOR]: [
     'production.read',

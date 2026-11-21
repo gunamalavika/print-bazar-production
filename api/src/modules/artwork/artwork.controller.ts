@@ -217,20 +217,25 @@ export class ArtworkController {
   }
 
   @Post('confirm-work')
-  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER)
-  @ApiOperation({ summary: 'OE confirms which uploaded artwork version moves to production' })
+  @Roles(UserRole.OPERATIONAL_MANAGER, UserRole.ADMIN_MANAGER, UserRole.PRODUCTION_HEAD)
+  @ApiOperation({ summary: 'OE or Production Head confirms which uploaded artwork version(s) move to production' })
   async confirmArtworkWork(
     @Body()
     body: {
       orderItemId: string;
-      artworkVersionId: string;
+      artworkVersionId?: string;
+      artworkVersionIds?: string[];
       oeNotes?: string;
     },
     @CurrentUser() user: JwtPayload,
   ) {
+    const targetIds =
+      Array.isArray(body.artworkVersionIds) && body.artworkVersionIds.length > 0
+        ? body.artworkVersionIds
+        : body.artworkVersionId || [];
     return this.artworkService.confirmArtworkWork(
       body.orderItemId,
-      body.artworkVersionId,
+      targetIds,
       user,
       body.oeNotes,
     );

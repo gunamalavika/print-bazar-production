@@ -59,6 +59,7 @@ export interface StaffMember {
 }
 
 const AVAILABLE_ROLES = [
+  { id: 'PRODUCTION_HEAD', label: 'Production Head', dept: 'PRESS_OPERATIONS', destination: '/production/assign' },
   { id: 'PRODUCTION_OPERATOR', label: 'Production Operator', dept: 'PRESS_OPERATIONS', destination: '/production/queue' },
   { id: 'FINAL_QC_INSPECTOR', label: 'Final QC Inspector', dept: 'QUALITY_ASSURANCE', destination: '/qc/inspection' },
   { id: 'DESIGNER_PREPRESS', label: 'Pre-Press Designer', dept: 'PREPRESS', destination: '/prepress/artwork' },
@@ -112,6 +113,20 @@ const INITIAL_STAFF_ROSTER: StaffMember[] = [
     phone: '+919811223344',
     roles: ['ADMIN_MANAGER', 'OPERATIONAL_MANAGER'],
     department: 'OPERATIONS',
+    shift: 'General (09:00 - 18:00)',
+    station: 'Central Production Office',
+    status: 'ACTIVE_ON_FLOOR',
+    loginEnabled: true,
+  },
+  {
+    id: 'EMP-PRODHEAD',
+    name: 'Rajesh Sharma',
+    username: 'rajesh.sharma',
+    email: 'prodhead@printbazzar.com',
+    password: 'Admin@12345',
+    phone: '+919811223355',
+    roles: ['PRODUCTION_HEAD'],
+    department: 'PRESS_OPERATIONS',
     shift: 'General (09:00 - 18:00)',
     station: 'Central Production Office',
     status: 'ACTIVE_ON_FLOOR',

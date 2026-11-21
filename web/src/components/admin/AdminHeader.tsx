@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useAuth } from '@/lib/auth-context';
 import { Breadcrumbs } from './Breadcrumbs';
 import { UserMenu } from './UserMenu';
 import {
@@ -16,6 +17,9 @@ interface AdminHeaderProps {
 }
 
 export function AdminHeader({ onToggleSidebar }: AdminHeaderProps) {
+  const { user, activeRole, getRoleDestination } = useAuth();
+  const homeHref = getRoleDestination(activeRole || user?.role);
+
   return (
     <header className="h-14 bg-white border-b border-[#E5E5E5] px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs">
       {/* Left: Mobile hamburger + Breadcrumbs */}
@@ -29,7 +33,7 @@ export function AdminHeader({ onToggleSidebar }: AdminHeaderProps) {
         </button>
 
         <Link
-          href="/admin/dashboard"
+          href={homeHref}
           className="flex items-center gap-2 border-r border-[#E5E5E5] pr-3 mr-1 group"
           title="Print Bazzar Plant OS"
         >

@@ -20,20 +20,17 @@ import {
   RiSparklingFill,
   RiFileCopyLine,
   RiCheckDoubleLine,
+  RiUploadCloudLine,
 } from 'react-icons/ri';
 import { getApiHost } from '@/lib/api';
 
-export type DesignKanbanStage =
-  | 'ARTWORK_CHECK'
-  | 'DESIGNING'
-  | 'WAITING_FOR_APPROVAL'
-  | 'READY_TO_PRINT'
-  | (string & {});
+export type DesignKanbanStage = 'ARTWORK_CHECK' | 'DESIGNING' | 'WAITING_FOR_APPROVAL' | 'READY_TO_PRINT';
 
 export interface DesignCardItem {
   id: string;
   orderId: string;
   orderNumber: string;
+  orderItemId?: string | null;
   stage: DesignKanbanStage;
   currentStatus: string;
   customerName?: string;
@@ -56,6 +53,10 @@ export interface DesignCardItem {
   artworkFileName?: string;
   artworkFile?: any;
   latestArtworkVersion?: any;
+  artworkVersions?: any[];
+  finalArtworkVersion?: any;
+  finalArtworkVersions?: any[];
+  hasFinalArtwork?: boolean;
   approvedArtworkVersion?: any;
   createdAt: string;
   dueAt?: string;
@@ -64,8 +65,16 @@ export interface DesignCardItem {
 interface DesignJobCardProps {
   card: DesignCardItem;
   userRole?: string;
-  onAdvanceStage: (card: DesignCardItem, nextStage: DesignKanbanStage) => void;
+  onAdvanceStage: (card: DesignCardItem, nextStage: DesignKanbanStage, notes?: string) => void;
   onInspect: (card: DesignCardItem) => void;
+  onUploadArtwork?: (
+    card: DesignCardItem,
+    files: File | File[],
+    targetStage?: DesignKanbanStage,
+    prepressNotes?: string,
+    resolutionDpi?: number,
+    isFinalArtwork?: boolean,
+  ) => Promise<void>;
   onDragStart: (e: React.DragEvent, card: DesignCardItem) => void;
   onDragEnd: (e: React.DragEvent) => void;
   isDragging?: boolean;
@@ -76,11 +85,62 @@ export function DesignJobCard({
   userRole,
   onAdvanceStage,
   onInspect,
+  onUploadArtwork,
   onDragStart,
   onDragEnd,
   isDragging = false,
 }: DesignJobCardProps) {
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const finalFileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files ? Array.from(e.target.files) : [];
+    if (selectedFiles.length === 0) return;
+    if (onUploadArtwork) {
+      setIsUploading(true);
+      try {
+        if (card.stage === 'WAITING_FOR_APPROVAL') {
+          await onUploadArtwork(card, selectedFiles, 'WAITING_FOR_APPROVAL', undefined, 300, true);
+        } else {
+          const targetStage: DesignKanbanStage =
+            card.stage === 'ARTWORK_CHECK'
+              ? 'WAITING_FOR_APPROVAL'
+              : 'ARTWORK_CHECK';
+          await onUploadArtwork(card, selectedFiles, targetStage, undefined, 300, false);
+        }
+      } finally {
+        setIsUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleFinalFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files ? Array.from(e.target.files) : [];
+    if (selectedFiles.length === 0) return;
+    if (onUploadArtwork) {
+      setIsUploading(true);
+      try {
+        await onUploadArtwork(card, selectedFiles, card.stage, undefined, 300, true);
+      } finally {
+        setIsUploading(false);
+        if (finalFileInputRef.current) finalFileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const hasArtwork = Boolean(
+    card.artworkUrl ||
+    card.artworkFile?.fileUrl ||
+    card.latestArtworkVersion?.fileUrl ||
+    card.latestArtworkVersion?.storageKey ||
+    (card.artworkVersions && card.artworkVersions.length > 0)
+  );
+  const finalArtworkCount = card.finalArtworkVersions?.length || (card.hasFinalArtwork ? 1 : 0);
+  const totalArtworkCount = card.artworkVersions?.length || (hasArtwork ? 1 : 0);
+  const hasFinalArtwork = Boolean(card.hasFinalArtwork || finalArtworkCount > 0);
 
   // Priority color badge
   const priorityColor =
@@ -151,13 +211,15 @@ export function DesignJobCard({
   // Next stage recommendation
   const getNextStageInfo = () => {
     switch (card.stage) {
-      case 'ARTWORK_CHECK':
-        return {
-          nextStage: 'DESIGNING' as DesignKanbanStage,
-          label: 'Start Designing →',
-          buttonClass: 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold',
-        };
       case 'DESIGNING':
+        return {
+          nextStage: 'ARTWORK_CHECK' as DesignKanbanStage,
+          label: hasArtwork ? 'Send to Artwork Check →' : 'Upload Designer Artwork →',
+          buttonClass: hasArtwork
+            ? 'bg-sky-600 hover:bg-sky-700 text-white font-bold'
+            : 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold',
+        };
+      case 'ARTWORK_CHECK':
         return {
           nextStage: 'WAITING_FOR_APPROVAL' as DesignKanbanStage,
           label: 'Send for Approval →',
@@ -208,10 +270,28 @@ export function DesignJobCard({
       }}
       className={`bg-white border rounded-xl p-3.5 shadow-xs transition-all select-none group relative flex flex-col justify-between gap-2.5 ${
         isDragging
-          ? 'opacity-40 border-slate-400 scale-[0.98]'
+          ? 'border-amber-400 ring-2 ring-amber-400/70 shadow-lg scale-[0.99] bg-amber-50/15'
           : 'border-slate-200 hover:border-slate-400 hover:shadow-md'
       } ${card.revisionDirectives ? 'ring-1 ring-rose-400 bg-rose-50/20' : ''}`}
     >
+      {/* Hidden File Inputs for 1-Click Designer Artwork & Final Artwork Upload (Min 1 Mandatory, Multiple Allowed) */}
+      <input
+        type="file"
+        multiple
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        className="hidden"
+        accept=".pdf,.png,.jpg,.jpeg,.ai,.psd,.svg,.tiff"
+      />
+      <input
+        type="file"
+        multiple
+        ref={finalFileInputRef}
+        onChange={handleFinalFileChange}
+        className="hidden"
+        accept=".pdf,.png,.jpg,.jpeg,.ai,.psd,.svg,.tiff"
+      />
+
       {/* Top Row: Order Number, Customer, Priority & Tactile Drag Handle */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -307,46 +387,238 @@ export function DesignJobCard({
         </div>
       )}
 
-      {/* Prepress Artwork Box */}
-      <div className="bg-amber-50/70 border border-amber-200/80 rounded-lg p-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <div className="p-1 rounded bg-amber-100 text-amber-800 flex-shrink-0">
-            <RiFilePdfLine className="h-3.5 w-3.5" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[11px] font-bold text-slate-900 block truncate leading-tight">
-              {card.artworkFileName || (card.artworkUrl ? 'Customer Uploaded File' : 'No Artwork File')}
-            </span>
-            <span className="text-[9px] font-mono text-emerald-800 font-semibold flex items-center gap-1 leading-tight mt-0.5">
-              <RiShieldCheckLine className="h-3 w-3 text-emerald-600" />
-              <span>
-                {card.stage === 'READY_TO_PRINT'
-                  ? '300 DPI Press Ready'
-                  : card.latestArtworkVersion
-                  ? `Proof v${card.latestArtworkVersion.versionNumber || 1}`
-                  : 'Customer Artwork'}
+      {/* Missing Artwork Alert for Designing */}
+      {card.stage === 'DESIGNING' && !hasArtwork && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-2.5 flex items-center justify-between gap-2 shadow-2xs animate-in fade-in">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <RiPaintBrushLine className="h-4 w-4 text-amber-600 flex-shrink-0 animate-pulse" />
+            <div className="min-w-0">
+              <span className="text-[11px] font-black text-amber-950 block leading-tight truncate">
+                Designer Artwork Required
               </span>
-            </span>
+              <span className="text-[9.5px] font-mono text-amber-800 font-bold block leading-tight">
+                Upload layout to move to Artwork Check
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            draggable={false}
+            onMouseDown={(e) => e.stopPropagation()}
+            disabled={isUploading}
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-1 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-bold text-[10px] px-2.5 py-1.5 rounded shadow-2xs transition shrink-0 cursor-pointer"
+            title="Upload completed designer artwork"
+          >
+            {isUploading ? (
+              <RiLoader4Line className="h-3 w-3 animate-spin" />
+            ) : (
+              <RiUploadCloudLine className="h-3 w-3" />
+            )}
+            <span>{isUploading ? 'Uploading...' : 'Upload'}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Artwork Check: Prompt to upload approved artwork before moving to Waiting for Approval */}
+      {card.stage === 'ARTWORK_CHECK' && (
+        <div className="bg-sky-50 border-2 border-sky-300 rounded-lg p-2.5 flex items-center justify-between gap-2 shadow-2xs animate-in fade-in">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <RiShieldCheckLine className="h-4 w-4 text-sky-600 flex-shrink-0 animate-pulse" />
+            <div className="min-w-0">
+              <span className="text-[11px] font-black text-sky-950 block leading-tight truncate">
+                Approved Artwork Required
+              </span>
+              <span className="text-[9.5px] font-mono text-sky-800 font-bold block leading-tight">
+                Upload approved proof to move to Approval
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            draggable={false}
+            onMouseDown={(e) => e.stopPropagation()}
+            disabled={isUploading}
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-1 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-bold text-[10px] px-2.5 py-1.5 rounded shadow-2xs transition shrink-0 cursor-pointer"
+            title="Upload approved artwork and advance to Waiting for Approval"
+          >
+            {isUploading ? (
+              <RiLoader4Line className="h-3 w-3 animate-spin" />
+            ) : (
+              <RiUploadCloudLine className="h-3 w-3" />
+            )}
+            <span>{isUploading ? 'Uploading...' : 'Upload Approved'}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Waiting for Approval: Mandatory Final Artwork Upload Gate (Min 1 Required, Multiple Allowed) */}
+      {card.stage === 'WAITING_FOR_APPROVAL' && (
+        hasFinalArtwork ? (
+          <div className="bg-emerald-50 border-2 border-emerald-300 rounded-lg p-2.5 flex items-center justify-between gap-2 shadow-2xs animate-in fade-in">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <RiCheckDoubleLine className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+              <div className="min-w-0">
+                <span className="text-[11px] font-black text-emerald-950 block leading-tight truncate">
+                  {finalArtworkCount > 1
+                    ? `${finalArtworkCount} Final Artworks Uploaded ✓`
+                    : 'Final Artwork Uploaded ✓'}
+                </span>
+                <span className="text-[9.5px] font-mono text-emerald-800 font-bold block leading-tight truncate">
+                  {card.finalArtworkVersion?.originalFileName || 'Ready to move to Ready to Print'}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              draggable={false}
+              onMouseDown={(e) => e.stopPropagation()}
+              disabled={isUploading}
+              onClick={() => finalFileInputRef.current?.click()}
+              className="inline-flex items-center gap-1 bg-white hover:bg-emerald-100 border border-emerald-300 text-emerald-900 font-bold text-[10px] px-2 py-1 rounded shadow-2xs transition shrink-0 cursor-pointer"
+              title="Upload additional final artwork file(s) — multiple allowed"
+            >
+              {isUploading ? (
+                <RiLoader4Line className="h-3 w-3 animate-spin" />
+              ) : (
+                <RiUploadCloudLine className="h-3 w-3" />
+              )}
+              <span>{isUploading ? 'Uploading...' : '+ Add More'}</span>
+            </button>
+          </div>
+        ) : (
+          <div className="bg-purple-50 border-2 border-purple-300 rounded-lg p-2.5 flex items-center justify-between gap-2 shadow-2xs animate-in fade-in">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <RiAlertFill className="h-4 w-4 text-purple-700 flex-shrink-0 animate-pulse" />
+              <div className="min-w-0">
+                <span className="text-[11px] font-black text-purple-950 block leading-tight truncate">
+                  Final Artwork Required
+                </span>
+                <span className="text-[9.5px] font-mono text-purple-800 font-bold block leading-tight">
+                  Min 1 mandatory • Multiple files allowed
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              draggable={false}
+              onMouseDown={(e) => e.stopPropagation()}
+              disabled={isUploading}
+              onClick={() => finalFileInputRef.current?.click()}
+              className="inline-flex items-center gap-1 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-[10px] px-2.5 py-1.5 rounded shadow-2xs transition shrink-0 cursor-pointer"
+              title="Upload 1 or multiple final print-ready artworks"
+            >
+              {isUploading ? (
+                <RiLoader4Line className="h-3 w-3 animate-spin" />
+              ) : (
+                <RiUploadCloudLine className="h-3 w-3" />
+              )}
+              <span>{isUploading ? 'Uploading...' : 'Upload Final'}</span>
+            </button>
+          </div>
+        )
+      )}
+
+      {/* Prepress Artwork Box */}
+      {hasArtwork ? (
+        <div className="bg-amber-50/70 border border-amber-200/80 rounded-lg p-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="p-1 rounded bg-amber-100 text-amber-800 flex-shrink-0">
+              <RiFilePdfLine className="h-3.5 w-3.5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] font-bold text-slate-900 block truncate leading-tight">
+                  {card.artworkFileName || (card.artworkUrl ? 'Customer Uploaded File' : 'Artwork File')}
+                </span>
+                {totalArtworkCount > 1 && (
+                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-200 text-amber-950 shrink-0">
+                    {totalArtworkCount} files
+                  </span>
+                )}
+              </div>
+              <span className="text-[9px] font-mono text-emerald-800 font-semibold flex items-center gap-1 leading-tight mt-0.5">
+                <RiShieldCheckLine className="h-3 w-3 text-emerald-600" />
+                <span>
+                  {card.stage === 'READY_TO_PRINT'
+                    ? '300 DPI Press Ready'
+                    : card.latestArtworkVersion
+                    ? `Proof v${card.latestArtworkVersion.versionNumber || 1}`
+                    : 'Prepress Artwork'}
+                </span>
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              type="button"
+              draggable={false}
+              onMouseDown={(e) => e.stopPropagation()}
+              disabled={isUploading}
+              onClick={() =>
+                card.stage === 'WAITING_FOR_APPROVAL'
+                  ? finalFileInputRef.current?.click()
+                  : fileInputRef.current?.click()
+              }
+              className="p-1 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-200/80 transition cursor-pointer"
+              title="Upload / add artwork files (multiple allowed)"
+            >
+              <RiUploadCloudLine className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              draggable={false}
+              onMouseDown={(e) => e.stopPropagation()}
+              disabled={isDownloading || !card.artworkUrl}
+              onClick={handleDownloadArtwork}
+              className="inline-flex items-center gap-1 bg-slate-950 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-[#FFED00] font-black text-[10px] px-2.5 py-1 rounded shadow-2xs transition active:scale-95 flex-shrink-0 cursor-pointer border border-[#E3A008]/40"
+              title="Download original artwork file"
+            >
+              {isDownloading ? (
+                <RiLoader4Line className="h-3 w-3 animate-spin text-[#FFED00]" />
+              ) : (
+                <RiDownload2Line className="h-3 w-3" />
+              )}
+              <span>{isDownloading ? 'Fetching...' : 'Download'}</span>
+            </button>
           </div>
         </div>
+      ) : (
+        <div className="bg-rose-50/80 border border-rose-200 rounded-lg p-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="p-1 rounded bg-rose-100 text-rose-800 flex-shrink-0">
+              <RiAlertFill className="h-3.5 w-3.5 text-rose-600" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[11px] font-bold text-rose-950 block truncate leading-tight">
+                No Artwork Uploaded
+              </span>
+              <span className="text-[9px] font-mono text-rose-700 font-bold flex items-center gap-1 leading-tight mt-0.5">
+                Upload Artwork Required
+              </span>
+            </div>
+          </div>
 
-        <button
-          type="button"
-          draggable={false}
-          onMouseDown={(e) => e.stopPropagation()}
-          disabled={isDownloading || !card.artworkUrl}
-          onClick={handleDownloadArtwork}
-          className="inline-flex items-center gap-1 bg-slate-950 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-[#FFED00] font-black text-[10px] px-2.5 py-1 rounded shadow-2xs transition active:scale-95 flex-shrink-0 cursor-pointer border border-[#E3A008]/40"
-          title="Download original artwork file"
-        >
-          {isDownloading ? (
-            <RiLoader4Line className="h-3 w-3 animate-spin text-[#FFED00]" />
-          ) : (
-            <RiDownload2Line className="h-3 w-3" />
-          )}
-          <span>{isDownloading ? 'Fetching...' : 'Download'}</span>
-        </button>
-      </div>
+          <button
+            type="button"
+            draggable={false}
+            onMouseDown={(e) => e.stopPropagation()}
+            disabled={isUploading}
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-1 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-[10px] px-2.5 py-1 rounded shadow-2xs transition shrink-0 cursor-pointer"
+            title="Upload completed designer artwork"
+          >
+            {isUploading ? (
+              <RiLoader4Line className="h-3 w-3 animate-spin" />
+            ) : (
+              <RiUploadCloudLine className="h-3 w-3" />
+            )}
+            <span>{isUploading ? 'Uploading...' : 'Upload'}</span>
+          </button>
+        </div>
+      )}
 
       {/* Designer Assignment Badge */}
       <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5 font-medium">
@@ -370,13 +642,25 @@ export function DesignJobCard({
 
       {/* Bottom Action Controls: Advance Stage & Return Stage */}
       <div className="flex items-center gap-1.5 pt-0.5">
+        {card.stage === 'ARTWORK_CHECK' && (
+          <button
+            type="button"
+            draggable={false}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => onAdvanceStage(card, 'DESIGNING')}
+            className="h-8 px-2 text-[11px] font-bold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
+            title="Return back to Designing for corrections"
+          >
+            ← Design
+          </button>
+        )}
         {card.stage === 'WAITING_FOR_APPROVAL' && (
           <button
             type="button"
             draggable={false}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => onAdvanceStage(card, 'DESIGNING')}
-            className="h-8 px-2.5 text-[11px] font-bold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
+            className="h-8 px-2 text-[11px] font-bold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
             title="Return back to Designing for corrections"
           >
             ← Revise
@@ -388,35 +672,101 @@ export function DesignJobCard({
             draggable={false}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => onAdvanceStage(card, 'DESIGNING')}
-            className="h-8 px-2.5 text-[11px] font-bold rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors shrink-0 cursor-pointer"
+            className="h-8 px-2 text-[11px] font-bold rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors shrink-0 cursor-pointer"
             title="Return to Designing"
           >
-            ← Return to Design
-          </button>
-        )}
-        {card.stage === 'DESIGNING' && (
-          <button
-            type="button"
-            draggable={false}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={() => onAdvanceStage(card, 'ARTWORK_CHECK')}
-            className="h-8 px-2 text-[11px] font-bold rounded-lg border border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
-            title="Recheck preflight in Artwork Check"
-          >
-            ← Check
+            ← Design
           </button>
         )}
 
-        {nextInfo?.nextStage ? (
+        {/* Primary Next Action */}
+        {card.stage === 'DESIGNING' && !hasArtwork ? (
           <button
             type="button"
             draggable={false}
             onMouseDown={(e) => e.stopPropagation()}
-            onClick={() => onAdvanceStage(card, nextInfo.nextStage!)}
-            className={`flex-1 h-8 text-xs rounded-lg transition-transform active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer ${nextInfo.buttonClass}`}
+            disabled={isUploading}
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-1 h-8 text-[11px] rounded-lg transition-transform active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold"
+            title="Upload designer artwork to advance to Artwork Check"
           >
-            <span>{nextInfo.label}</span>
+            {isUploading ? (
+              <RiLoader4Line className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RiUploadCloudLine className="h-3.5 w-3.5" />
+            )}
+            <span>{isUploading ? 'Uploading...' : 'Upload Designer Artwork →'}</span>
           </button>
+        ) : card.stage === 'WAITING_FOR_APPROVAL' && !hasFinalArtwork ? (
+          <div className="flex-1 flex items-center gap-1">
+            <button
+              type="button"
+              draggable={false}
+              onMouseDown={(e) => e.stopPropagation()}
+              disabled={isUploading}
+              onClick={() => finalFileInputRef.current?.click()}
+              className="flex-1 h-8 text-[10.5px] rounded-lg transition-transform active:scale-[0.98] flex items-center justify-center gap-1 shadow-2xs cursor-pointer bg-purple-600 hover:bg-purple-700 text-white font-bold px-2"
+              title="Upload mandatory final artwork before moving to Ready to Print"
+            >
+              {isUploading ? (
+                <RiLoader4Line className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RiUploadCloudLine className="h-3.5 w-3.5" />
+              )}
+              <span>{isUploading ? 'Uploading...' : 'Upload Final Artwork'}</span>
+            </button>
+            <button
+              type="button"
+              disabled
+              draggable={false}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="h-8 px-2 text-[10px] rounded-lg bg-slate-100 text-slate-400 border border-slate-200 font-bold cursor-not-allowed shrink-0"
+              title="Upload final artwork first (mandatory) to move to Ready to Print"
+            >
+              Print →
+            </button>
+          </div>
+        ) : card.stage === 'ARTWORK_CHECK' ? (
+          <div className="flex-1 flex items-center gap-1">
+            <button
+              type="button"
+              draggable={false}
+              onMouseDown={(e) => e.stopPropagation()}
+              disabled={isUploading}
+              onClick={() => fileInputRef.current?.click()}
+              className="flex-1 h-8 text-[11px] rounded-lg transition-transform active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer bg-purple-600 hover:bg-purple-700 text-white font-bold"
+              title="Upload approved artwork and advance to Waiting for Approval"
+            >
+              {isUploading ? (
+                <RiLoader4Line className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RiUploadCloudLine className="h-3.5 w-3.5" />
+              )}
+              <span>{isUploading ? 'Uploading...' : 'Upload Approved Artwork →'}</span>
+            </button>
+            <button
+              type="button"
+              draggable={false}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={() => onAdvanceStage(card, 'WAITING_FOR_APPROVAL')}
+              className="h-8 px-2 text-[10.5px] rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 font-bold transition shadow-2xs cursor-pointer"
+              title="Advance directly to Waiting for Approval"
+            >
+              Move →
+            </button>
+          </div>
+        ) : nextInfo?.nextStage ? (
+          <div className="flex-1 flex items-center gap-1">
+            <button
+              type="button"
+              draggable={false}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={() => onAdvanceStage(card, nextInfo.nextStage!)}
+              className={`flex-1 h-8 text-xs rounded-lg transition-transform active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer ${nextInfo.buttonClass}`}
+            >
+              <span>{nextInfo.label}</span>
+            </button>
+          </div>
         ) : (
           <div className="flex-1 h-8 text-[11px] font-mono font-bold rounded-lg flex items-center justify-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200">
             <RiCheckDoubleLine className="h-3.5 w-3.5 text-emerald-600" />

@@ -7,6 +7,7 @@ export interface AuthenticatedUser {
     | 'CUSTOMER'
     | 'SALES_OFFICE'
     | 'DESIGNER_PREPRESS'
+    | 'PRODUCTION_HEAD'
     | 'PRODUCTION_OPERATOR'
     | 'FINAL_QC_INSPECTOR'
     | 'PACKING_OPERATOR'
@@ -75,6 +76,7 @@ export interface KanbanCardDto {
   version: number;
   artwork?: {
     id: string;
+    versionNumber?: number;
     storageKey: string;
     fileUrl: string;
     originalFileName: string;
@@ -84,6 +86,18 @@ export interface KanbanCardDto {
     isApproved: boolean;
     proofUrl?: string | null;
   } | null;
+  artworks?: Array<{
+    id: string;
+    versionNumber?: number;
+    storageKey: string;
+    fileUrl: string;
+    originalFileName: string;
+    mimeType: string;
+    fileSize: number;
+    status: string;
+    isApproved: boolean;
+    proofUrl?: string | null;
+  }>;
 }
 
 export interface KanbanColumnDto {
@@ -512,7 +526,7 @@ export function normalizeApiBaseUrl(rawBase?: string): string {
  */
 export function getApiHost(rawUrl?: string): string {
   const fallback = 'http://localhost:4000';
-  const url = (rawUrl || process.env.NEXT_PUBLIC_API_URL || fallback).trim();
+  const url = (rawUrl || process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL || fallback).trim();
   return url.replace(/\/+$/, '').replace(/\/api\/v1\/?$/, '');
 }
 
@@ -1061,11 +1075,10 @@ export const api = {
     }),
 
   // Packing & Dispatch
-  getPackingQueue: (query?: { search?: string; priority?: string; status?: string }) => {
+  getPackingQueue: (query?: { search?: string; priority?: string }) => {
     const params = new URLSearchParams();
     if (query?.search) params.append('search', query.search);
     if (query?.priority && query.priority !== 'ALL') params.append('priority', query.priority);
-    if (query?.status) params.append('status', query.status);
     return fetchApi<any[]>(`/packing/queue?${params.toString()}`);
   },
   getPackagingMaterials: () => fetchApi<any[]>('/packing/materials'),
@@ -1137,8 +1150,7 @@ export const api = {
       lengthCm?: number;
       widthCm?: number;
       heightCm?: number;
-      targetOrderStatus?: 'READY_FOR_DISPATCH' | 'OUT_FOR_DELIVERY' | 'DELIVERED';
-      targetStatus?: 'READY_FOR_DISPATCH' | 'OUT_FOR_DELIVERY' | 'DELIVERED';
+      targetStatus: 'READY_FOR_DISPATCH' | 'OUT_FOR_DELIVERY' | 'DELIVERED';
       receiverName?: string;
       receiverPhone?: string;
       dispatchNotes?: string;
@@ -1249,7 +1261,8 @@ export const api = {
   }) => fetchApi<any>(`/artwork/design/${orderId}/submit-multiple`, { method: 'POST', body: JSON.stringify(data) }),
   confirmArtworkWork: (data: {
     orderItemId: string;
-    artworkVersionId: string;
+    artworkVersionId?: string;
+    artworkVersionIds?: string[];
     oeNotes?: string;
   }) => fetchApi<any>('/artwork/confirm-work', { method: 'POST', body: JSON.stringify(data) }),
   returnArtworkToDesigner: (data: {

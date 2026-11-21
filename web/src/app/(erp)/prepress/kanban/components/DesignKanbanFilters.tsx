@@ -26,7 +26,6 @@ interface DesignKanbanFiltersProps {
   hasActiveFilters: boolean;
   totalCount: number;
   filteredCount: number;
-  columns?: Array<{ key: string; name: string }>;
 }
 
 export function DesignKanbanFilters({
@@ -43,7 +42,6 @@ export function DesignKanbanFilters({
   hasActiveFilters,
   totalCount,
   filteredCount,
-  columns,
 }: DesignKanbanFiltersProps) {
   return (
     <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 shadow-xs space-y-3">
@@ -77,21 +75,11 @@ export function DesignKanbanFilters({
               onChange={(e) => onStageChange(e.target.value)}
               className="w-full h-9 pl-8 pr-7 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium appearance-none focus:outline-none focus:border-slate-900 focus:bg-white transition"
             >
-              <option value="ALL">All Stages ({columns ? `${columns.length} Gates` : 'All'})</option>
-              {columns && columns.length > 0 ? (
-                columns.map((col) => (
-                  <option key={col.key} value={col.key}>
-                    {col.name}
-                  </option>
-                ))
-              ) : (
-                <>
-                  <option value="ARTWORK_CHECK">Artwork Check</option>
-                  <option value="DESIGNING">Designing</option>
-                  <option value="WAITING_FOR_APPROVAL">Waiting for Approval</option>
-                  <option value="READY_TO_PRINT">Ready to Print</option>
-                </>
-              )}
+              <option value="ALL">All Stages (4 Gates)</option>
+              <option value="DESIGNING">Designing</option>
+              <option value="ARTWORK_CHECK">Artwork Check</option>
+              <option value="WAITING_FOR_APPROVAL">Waiting for Approval</option>
+              <option value="READY_TO_PRINT">Ready to Print</option>
             </select>
             <RiPaintBrushLine className="h-3.5 w-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>

@@ -74,6 +74,17 @@ export const CANONICAL_ADMIN_NAV: AdminNavItem[] = [
     order: 13,
     description: 'Live order queue, assignment status & blocker engine',
   },
+  {
+    id: 'production-assign',
+    label: 'Production Assign',
+    href: '/production/assign',
+    icon: RiPrinterLine,
+    requiredPermissions: ['jobcard.assign'],
+    matchMode: 'all',
+    section: 'OPERATIONS_COORDINATION',
+    order: 14,
+    description: 'Production-pending orders queue & operator assignment',
+  },
 
   // SECTION: CATALOGUE & INVENTORY (ADMIN-CONTROLLED)
   {
@@ -431,6 +442,10 @@ export function getVisibleAdminNavigation(
 
   const isOperatorOnly = effectiveRoles.length === 1 && effectiveRoles[0] === 'PRODUCTION_OPERATOR';
   const isManager = effectiveRoles.some((r) => r === 'ADMIN_MANAGER' || r === 'OPERATIONAL_MANAGER');
+  const isProductionHeadOnly =
+    (userRole === 'PRODUCTION_HEAD' ||
+      (effectiveRoles.length === 1 && effectiveRoles[0] === 'PRODUCTION_HEAD')) &&
+    !isManager;
   const isPrepressRole =
     (userRole === 'DESIGNER_PREPRESS' ||
       userRole === 'PREPRESS' ||
@@ -440,6 +455,14 @@ export function getVisibleAdminNavigation(
 
   // 1. Filter authorized items (and enforce role-level exclusions)
   const authorizedItems = CANONICAL_ADMIN_NAV.filter((item) => {
+    // Production Head strictly accesses /production/assign ONLY
+    if (isProductionHeadOnly) {
+      return item.id === 'production-assign';
+    }
+    // /production/assign is exclusively for Production Head
+    if (item.id === 'production-assign') {
+      return false;
+    }
     if (
       isOperatorOnly &&
       (item.section === 'OPERATIONS_COORDINATION' || item.section === 'CATALOGUE_INVENTORY')
@@ -468,7 +491,10 @@ export function getVisibleAdminNavigation(
   for (const [sectionKey, items] of sectionMap.entries()) {
     if (items.length === 0) continue;
 
-    const meta = SECTION_METADATA[sectionKey] || { title: sectionKey, order: 99 };
+    const meta =
+      isProductionHeadOnly && sectionKey === 'OPERATIONS_COORDINATION'
+        ? { title: 'PRODUCTION HEAD QUEUE', order: 1 }
+        : SECTION_METADATA[sectionKey] || { title: sectionKey, order: 99 };
     items.sort((a, b) => a.order - b.order);
 
     resultSections.push({
@@ -506,6 +532,29 @@ export function checkRouteAuthorization(
     : (userRole ? [userRole] : []);
 
   const isOperatorOnly = effectiveRoles.length === 1 && effectiveRoles[0] === 'PRODUCTION_OPERATOR';
+  const isManager = effectiveRoles.some((r) => r === 'ADMIN_MANAGER' || r === 'OPERATIONAL_MANAGER');
+  const isProductionHeadOnly =
+    (userRole === 'PRODUCTION_HEAD' ||
+      (effectiveRoles.length === 1 && effectiveRoles[0] === 'PRODUCTION_HEAD')) &&
+    !isManager;
+
+  // Production Head is strictly restricted to /production/assign (& /production/assign/[id])
+  if (isProductionHeadOnly) {
+    const allowedForProdHead =
+      pathname === '/production/assign' || pathname.startsWith('/production/assign/');
+    return {
+      isAuthorized: allowedForProdHead,
+      requiredPermissions: matchingItem.requiredPermissions,
+    };
+  }
+
+  // /production/assign is exclusively for Production Head
+  if (pathname === '/production/assign' || pathname.startsWith('/production/assign/')) {
+    return {
+      isAuthorized: false,
+      requiredPermissions: ['jobcard.assign'],
+    };
+  }
 
   if (
     isOperatorOnly &&

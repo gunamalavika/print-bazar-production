@@ -16,6 +16,7 @@ enum UserRole {
   SALES_OFFICE
   DESIGNER_PREPRESS
   PRE_PRODUCTION_QC // Historical records only - removed from active workflow
+  PRODUCTION_HEAD
   PRODUCTION_OPERATOR
   FINAL_QC_INSPECTOR
   PACKING_OPERATOR

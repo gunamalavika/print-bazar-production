@@ -24,6 +24,7 @@ import {
   RefreshCw,
   Scale,
   Store,
+  History,
 } from 'lucide-react';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { api } from '@/lib/api';
@@ -117,28 +118,27 @@ export default function OrderTrackingPage() {
 
   const milestones = isDesignRoute ? ROUTE_B_MILESTONES : ROUTE_A_MILESTONES;
 
-  const effectiveStatus = (order.customerStatus || order.status || order.currentStatus || 'CONFIRMED').toUpperCase();
-  const isDelivered = effectiveStatus === 'DELIVERED';
+  const effectiveStatus = (order.status || order.currentStatus || 'CONFIRMED').toUpperCase();
 
   const getActiveStep = () => {
     const status = effectiveStatus;
 
     if (isDesignRoute) {
-      if (status === 'CONFIRMED' || status === 'PAYMENT_CONFIRMED' || status === 'PENDING_PAYMENT' || status === 'DRAFT' || status === 'ORDER_CREATED' || status === 'ORDER_RECEIVED') return 0;
-      if (status === 'DESIGN_REQUIRED' || status === 'DESIGN_IN_PROGRESS' || status === 'ARTWORK_PENDING' || status === 'PREPRESS_REVIEW' || status === 'ARTWORK_BEING_CHECKED') return 1;
-      if (status === 'ARTWORK_APPROVED' || status === 'CUSTOMER_APPROVAL_REQUIRED' || status === 'PROOF_READY' || status === 'APPROVAL_REQUIRED') return 2;
-      if (status === 'PRODUCTION_QUEUE' || status === 'PRINTING' || status === 'FINISHING' || status === 'IN_PRODUCTION' || status === 'PREPARING_ORDER') return 3;
-      if (status === 'QUALITY_CHECK' || status === 'FINAL_QC' || status === 'QUALITY_CHECK_AND_PACKING') return 4;
-      if (status === 'PACKING' || status === 'PACKED' || status === 'READY_FOR_DISPATCH' || status === 'READY_TO_SHIP' || status === 'READY_FOR_PICKUP') return 5;
+      if (status === 'CONFIRMED' || status === 'PAYMENT_CONFIRMED' || status === 'PENDING_PAYMENT' || status === 'DRAFT') return 0;
+      if (status === 'DESIGN_REQUIRED' || status === 'DESIGN_IN_PROGRESS' || status === 'ARTWORK_PENDING' || status === 'PREPRESS_REVIEW') return 1;
+      if (status === 'ARTWORK_APPROVED' || status === 'CUSTOMER_APPROVAL_REQUIRED' || status === 'PROOF_READY') return 2;
+      if (status === 'PRODUCTION_QUEUE' || status === 'PRINTING' || status === 'FINISHING') return 3;
+      if (status === 'QUALITY_CHECK' || status === 'FINAL_QC') return 4;
+      if (status === 'PACKING' || status === 'PACKED' || status === 'READY_FOR_DISPATCH') return 5;
       if (status === 'OUT_FOR_DELIVERY') return 6;
       if (status === 'DELIVERED') return 7;
       return 1;
     } else {
-      if (status === 'CONFIRMED' || status === 'PAYMENT_CONFIRMED' || status === 'PENDING_PAYMENT' || status === 'DRAFT' || status === 'ORDER_CREATED' || status === 'ORDER_RECEIVED') return 0;
-      if (status === 'CUSTOMER_APPROVAL_REQUIRED' || status === 'ARTWORK_APPROVED' || status === 'ARTWORK_PENDING' || status === 'PREPRESS_REVIEW' || status === 'PROOF_READY' || status === 'ARTWORK_BEING_CHECKED' || status === 'APPROVAL_REQUIRED') return 1;
-      if (status === 'PRODUCTION_QUEUE' || status === 'PRINTING' || status === 'FINISHING' || status === 'IN_PRODUCTION' || status === 'PREPARING_ORDER') return 2;
-      if (status === 'QUALITY_CHECK' || status === 'FINAL_QC' || status === 'QUALITY_CHECK_AND_PACKING') return 3;
-      if (status === 'PACKING' || status === 'PACKED' || status === 'READY_FOR_DISPATCH' || status === 'READY_TO_SHIP' || status === 'READY_FOR_PICKUP') return 4;
+      if (status === 'CONFIRMED' || status === 'PAYMENT_CONFIRMED' || status === 'PENDING_PAYMENT' || status === 'DRAFT') return 0;
+      if (status === 'CUSTOMER_APPROVAL_REQUIRED' || status === 'ARTWORK_APPROVED' || status === 'ARTWORK_PENDING' || status === 'PREPRESS_REVIEW' || status === 'PROOF_READY') return 1;
+      if (status === 'PRODUCTION_QUEUE' || status === 'PRINTING' || status === 'FINISHING') return 2;
+      if (status === 'QUALITY_CHECK' || status === 'FINAL_QC') return 3;
+      if (status === 'PACKING' || status === 'PACKED' || status === 'READY_FOR_DISPATCH') return 4;
       if (status === 'OUT_FOR_DELIVERY') return 5;
       if (status === 'DELIVERED') return 6;
       return 1;
@@ -248,160 +248,160 @@ export default function OrderTrackingPage() {
               effectiveStatus === 'READY_FOR_DISPATCH' ||
               effectiveStatus === 'OUT_FOR_DELIVERY' ||
               effectiveStatus === 'DELIVERED') && (
-                <div className="bg-white rounded-xl border-2 border-slate-900 overflow-hidden shadow-card">
-                  <div className="bg-slate-900 text-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-lg bg-[#FFED00] text-slate-950">
-                        {order.deliveryMethod === 'STORE_PICKUP' ? (
-                          <Store className="h-4 w-4" />
-                        ) : (
-                          <Truck className="h-4 w-4" />
-                        )}
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-mono uppercase tracking-wider text-[#FFED00] font-bold block">
-                          LIVE DISPATCH & COURIER TRACKING
-                        </span>
-                        <h2 className="text-sm font-bold">
-                          {shipment?.courierName ||
-                            (order.deliveryMethod === 'STORE_PICKUP'
-                              ? 'Store Counter Pickup'
-                              : 'Courier Dispatch Assigned')}
-                        </h2>
-                      </div>
+              <div className="bg-white rounded-xl border-2 border-slate-900 overflow-hidden shadow-card">
+                <div className="bg-slate-900 text-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-[#FFED00] text-slate-950">
+                      {order.deliveryMethod === 'STORE_PICKUP' ? (
+                        <Store className="h-4 w-4" />
+                      ) : (
+                        <Truck className="h-4 w-4" />
+                      )}
                     </div>
-
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-black uppercase px-2.5 py-1 rounded bg-[#FFED00] text-slate-950">
-                        {effectiveStatus === 'DELIVERED'
-                          ? '✓ DELIVERED'
-                          : effectiveStatus === 'OUT_FOR_DELIVERY'
-                            ? '● IN TRANSIT / OUT FOR DELIVERY'
-                            : 'MANIFESTED & READY'}
+                    <div>
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-[#FFED00] font-bold block">
+                        LIVE DISPATCH & COURIER TRACKING
                       </span>
+                      <h2 className="text-sm font-bold">
+                        {shipment?.courierName ||
+                          (order.deliveryMethod === 'STORE_PICKUP'
+                            ? 'Store Counter Pickup'
+                            : 'Courier Dispatch Assigned')}
+                      </h2>
                     </div>
                   </div>
 
-                  <div className="p-5 space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      {/* Courier Partner */}
-                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                        <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block">
-                          Courier / Mode
-                        </span>
-                        <div className="text-sm font-black text-slate-900 mt-0.5">
-                          {shipment?.courierName ||
-                            (order.deliveryMethod === 'STORE_PICKUP' ? 'Counter Pickup' : 'Standard Courier')}
-                        </div>
-                        <span className="text-[11px] text-slate-500 block mt-0.5">
-                          {order.packages?.length || 1} Parcel(s)
-                          {totalWeightGrams > 0 ? ` • ${totalWeightGrams}g Verified` : ''}
-                        </span>
-                      </div>
-
-                      {/* AWB / Consignment Number */}
-                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                        <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block">
-                          AWB / Tracking Number
-                        </span>
-                        {shipment?.awbNumber ? (
-                          <div className="flex items-center justify-between gap-2 mt-0.5">
-                            <span className="font-mono text-sm font-black text-slate-900 truncate">
-                              {shipment.awbNumber}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleCopyAwb(shipment.awbNumber)}
-                              className="p-1.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-[10px] font-mono font-bold flex items-center gap-1 shrink-0"
-                              title="Copy AWB Number"
-                            >
-                              <Copy className="h-3 w-3" />
-                              <span>{copiedAwb ? 'Copied' : 'Copy'}</span>
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="text-xs font-semibold text-slate-600 mt-1">
-                            {order.deliveryMethod === 'STORE_PICKUP'
-                              ? 'Ready at Store Counter'
-                              : 'AWB Being Assigned'}
-                          </div>
-                        )}
-                        {primaryPkg?.barcode && (
-                          <span className="text-[10px] font-mono text-slate-500 block mt-1 truncate">
-                            Parcel ID: {primaryPkg.barcode}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Dispatch & Delivery Timestamps */}
-                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                        <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block">
-                          Dispatch Timeline
-                        </span>
-                        {shipment?.deliveredAt ? (
-                          <div className="mt-0.5">
-                            <span className="text-xs font-bold text-emerald-700 block">
-                              Delivered on
-                            </span>
-                            <span className="text-[11px] font-mono text-slate-700">
-                              {formatDateTime(shipment.deliveredAt)}
-                            </span>
-                          </div>
-                        ) : shipment?.dispatchedAt || shipment?.manifestedAt ? (
-                          <div className="mt-0.5">
-                            <span className="text-xs font-bold text-slate-900 block">
-                              Dispatched on
-                            </span>
-                            <span className="text-[11px] font-mono text-slate-700">
-                              {formatDateTime(shipment.dispatchedAt || shipment.manifestedAt)}
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="text-xs font-medium text-slate-600 mt-1">
-                            Verified by Dispatch Team
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* External Courier Tracking Link + Destination */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
-                      {order.shippingAddress ? (
-                        <div className="flex items-start gap-2 text-xs text-slate-600">
-                          <MapPin className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
-                          <div>
-                            <span className="font-bold text-slate-900">
-                              {order.shippingAddress.recipientName}
-                            </span>{' '}
-                            • {order.shippingAddress.line1}, {order.shippingAddress.city},{' '}
-                            {order.shippingAddress.state} —{' '}
-                            <strong className="font-mono text-slate-900">
-                              {order.shippingAddress.postalCode}
-                            </strong>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-xs text-slate-600 flex items-center gap-1.5">
-                          <Store className="h-4 w-4 text-slate-400" />
-                          <span>Store Counter Pickup — Bring Order Number #{order.orderNumber}</span>
-                        </div>
-                      )}
-
-                      {shipment?.trackingUrl && (
-                        <a
-                          href={shipment.trackingUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-[#FFED00] text-xs font-bold shrink-0 transition shadow-2xs"
-                        >
-                          <span>Track on {shipment.courierName || 'Courier'}</span>
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                      )}
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono font-black uppercase px-2.5 py-1 rounded bg-[#FFED00] text-slate-950">
+                      {effectiveStatus === 'DELIVERED'
+                        ? '✓ DELIVERED'
+                        : effectiveStatus === 'OUT_FOR_DELIVERY'
+                        ? '● IN TRANSIT / OUT FOR DELIVERY'
+                        : 'MANIFESTED & READY'}
+                    </span>
                   </div>
                 </div>
-              )}
+
+                <div className="p-5 space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {/* Courier Partner */}
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block">
+                        Courier / Mode
+                      </span>
+                      <div className="text-sm font-black text-slate-900 mt-0.5">
+                        {shipment?.courierName ||
+                          (order.deliveryMethod === 'STORE_PICKUP' ? 'Counter Pickup' : 'Standard Courier')}
+                      </div>
+                      <span className="text-[11px] text-slate-500 block mt-0.5">
+                        {order.packages?.length || 1} Parcel(s)
+                        {totalWeightGrams > 0 ? ` • ${totalWeightGrams}g Verified` : ''}
+                      </span>
+                    </div>
+
+                    {/* AWB / Consignment Number */}
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block">
+                        AWB / Tracking Number
+                      </span>
+                      {shipment?.awbNumber ? (
+                        <div className="flex items-center justify-between gap-2 mt-0.5">
+                          <span className="font-mono text-sm font-black text-slate-900 truncate">
+                            {shipment.awbNumber}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyAwb(shipment.awbNumber)}
+                            className="p-1.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-[10px] font-mono font-bold flex items-center gap-1 shrink-0"
+                            title="Copy AWB Number"
+                          >
+                            <Copy className="h-3 w-3" />
+                            <span>{copiedAwb ? 'Copied' : 'Copy'}</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-xs font-semibold text-slate-600 mt-1">
+                          {order.deliveryMethod === 'STORE_PICKUP'
+                            ? 'Ready at Store Counter'
+                            : 'AWB Being Assigned'}
+                        </div>
+                      )}
+                      {primaryPkg?.barcode && (
+                        <span className="text-[10px] font-mono text-slate-500 block mt-1 truncate">
+                          Parcel ID: {primaryPkg.barcode}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Dispatch & Delivery Timestamps */}
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block">
+                        Dispatch Timeline
+                      </span>
+                      {shipment?.deliveredAt ? (
+                        <div className="mt-0.5">
+                          <span className="text-xs font-bold text-emerald-700 block">
+                            Delivered on
+                          </span>
+                          <span className="text-[11px] font-mono text-slate-700">
+                            {formatDateTime(shipment.deliveredAt)}
+                          </span>
+                        </div>
+                      ) : shipment?.dispatchedAt || shipment?.manifestedAt ? (
+                        <div className="mt-0.5">
+                          <span className="text-xs font-bold text-slate-900 block">
+                            Dispatched on
+                          </span>
+                          <span className="text-[11px] font-mono text-slate-700">
+                            {formatDateTime(shipment.dispatchedAt || shipment.manifestedAt)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="text-xs font-medium text-slate-600 mt-1">
+                          Verified by Dispatch Team
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* External Courier Tracking Link + Destination */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                    {order.shippingAddress ? (
+                      <div className="flex items-start gap-2 text-xs text-slate-600">
+                        <MapPin className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold text-slate-900">
+                            {order.shippingAddress.recipientName}
+                          </span>{' '}
+                          • {order.shippingAddress.line1}, {order.shippingAddress.city},{' '}
+                          {order.shippingAddress.state} —{' '}
+                          <strong className="font-mono text-slate-900">
+                            {order.shippingAddress.postalCode}
+                          </strong>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-slate-600 flex items-center gap-1.5">
+                        <Store className="h-4 w-4 text-slate-400" />
+                        <span>Store Counter Pickup — Bring Order Number #{order.orderNumber}</span>
+                      </div>
+                    )}
+
+                    {shipment?.trackingUrl && (
+                      <a
+                        href={shipment.trackingUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-[#FFED00] text-xs font-bold shrink-0 transition shadow-2xs"
+                      >
+                        <span>Track on {shipment.courierName || 'Courier'}</span>
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Customer Milestone Timeline */}
             <div className="bg-white rounded-xl border border-slate-200/90 p-6 shadow-card space-y-6">
@@ -434,19 +434,21 @@ export default function OrderTrackingPage() {
                       {/* Vertical connector */}
                       {idx < milestones.length - 1 && (
                         <div
-                          className={`absolute left-4 top-8 -bottom-4 w-0.5 ${isDone ? 'bg-emerald-500' : 'bg-slate-200'
-                            }`}
+                          className={`absolute left-4 top-8 -bottom-4 w-0.5 ${
+                            isDone ? 'bg-emerald-500' : 'bg-slate-200'
+                          }`}
                         />
                       )}
 
                       {/* Icon Circle */}
                       <div
-                        className={`h-8 w-8 rounded-full flex items-center justify-center font-mono font-bold text-xs flex-shrink-0 z-10 ${isDone
+                        className={`h-8 w-8 rounded-full flex items-center justify-center font-mono font-bold text-xs flex-shrink-0 z-10 ${
+                          isDone
                             ? 'bg-emerald-500 text-white shadow-xs'
                             : isCurrent
-                              ? 'bg-[#FFED00] text-slate-950 ring-4 ring-amber-100 font-black border border-[#E3A008]/40'
-                              : 'bg-slate-100 text-slate-400 border border-slate-200'
-                          }`}
+                            ? 'bg-[#FFED00] text-slate-950 ring-4 ring-amber-100 font-black border border-[#E3A008]/40'
+                            : 'bg-slate-100 text-slate-400 border border-slate-200'
+                        }`}
                       >
                         {isDone ? <Check className="h-4 w-4 stroke-[3]" /> : idx + 1}
                       </div>
@@ -455,8 +457,9 @@ export default function OrderTrackingPage() {
                       <div className="flex-1 min-w-0 pt-0.5">
                         <div className="flex items-center justify-between">
                           <h4
-                            className={`text-xs font-bold ${isCurrent ? 'text-slate-900 font-black' : isDone ? 'text-slate-900' : 'text-slate-400'
-                              }`}
+                            className={`text-xs font-bold ${
+                              isCurrent ? 'text-slate-900 font-black' : isDone ? 'text-slate-900' : 'text-slate-400'
+                            }`}
                           >
                             {ms.label}
                           </h4>
@@ -467,7 +470,7 @@ export default function OrderTrackingPage() {
                           )}
                           {isDone && (
                             <span className="font-mono text-[9px] font-bold uppercase text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                              {idx === milestones.length - 1 ? 'DELIVERED' : 'COMPLETED'}
+                              COMPLETED
                             </span>
                           )}
                         </div>
@@ -478,6 +481,51 @@ export default function OrderTrackingPage() {
                 })}
               </div>
             </div>
+
+            {/* LIVE DISPATCH & ORDER STATUS HISTORY LOG */}
+            {Array.isArray(order.statusHistory) && order.statusHistory.length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-200/90 p-6 shadow-card space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 font-display flex items-center gap-2">
+                    <History className="h-4 w-4 text-slate-700" />
+                    <span>Live Dispatch & Order Activity Log</span>
+                  </h3>
+                  <span className="text-[11px] font-mono text-slate-400">
+                    {order.statusHistory.length} updates
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {order.statusHistory.map((entry: any, idx: number) => (
+                    <div
+                      key={entry.id || idx}
+                      className={`p-3.5 rounded-xl border text-xs ${
+                        idx === 0
+                          ? 'bg-amber-50/50 border-amber-200'
+                          : 'bg-slate-50/70 border-slate-200/80'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                        <div className="flex items-center gap-2">
+                          <StatusBadge status={entry.toStatus} />
+                          {idx === 0 && (
+                            <span className="text-[10px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-slate-900 text-[#FFED00]">
+                              LATEST UPDATE
+                            </span>
+                          )}
+                        </div>
+                        <span className="font-mono text-[11px] text-slate-500">
+                          {formatDateTime(entry.createdAt)}
+                        </span>
+                      </div>
+                      {entry.notes && (
+                        <p className="text-xs text-slate-700 mt-1 leading-relaxed">{entry.notes}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Proof Approval Gate (If Waiting) */}
             {effectiveStatus === 'CUSTOMER_APPROVAL_REQUIRED' && !proofApproved && (
@@ -527,7 +575,7 @@ export default function OrderTrackingPage() {
                     className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
                   />
                   <span className="text-xs text-slate-700">
-                    I confirm that text spelling, layout dimensions, safety bleeds, and specifications are accurate.
+                    I confirm that text spelling, layout dimensions, safety bleeds, and specifications are accurate. 
                     I authorize PRINT BAZZAR to begin physical press production.
                   </span>
                 </label>

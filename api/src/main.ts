@@ -41,12 +41,7 @@ async function bootstrap() {
       req.url = req.url.replace(/\/{2,}/g, '/');
     }
 
-    // 2. Normalize uploads double-timestamp requests (e.g., _1793901183099_1793901183126.png -> _1793901183099.png)
-    if (req.url && req.url.includes('/uploads/')) {
-      req.url = req.url.replace(/_(\d{10,14})_\d{10,14}(\.[a-zA-Z0-9]+)(\?.*)?$/, '_$1$2$3');
-    }
-
-    // 3. If an API request is made without /api/v1 prefix, rewrite req.url to include /api/v1
+    // 2. If an API request is made without /api/v1 prefix, rewrite req.url to include /api/v1
     // (e.g. /products/categories, /products/site-settings, /products?featured=true)
     const apiRoutePattern = /^\/(products|auth|orders|admin|qc|prepress|production|dispatch|packaging|finance|customers|notifications|job-cards|quotes)(\/|\?|$)/;
     if (!req.url.startsWith('/api/v1/') && !req.url.startsWith('/uploads/') && apiRoutePattern.test(req.url)) {
@@ -70,28 +65,96 @@ async function bootstrap() {
     }
   }
 
-  // Fallback explicit file resolver for /uploads (handles double timestamps and root differences)
-  app.use('/uploads', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  // Fallback explicit file resolver for /uploads & /artwork (handles double timestamps, subfolder differences, and prefix matching)
+  const uploadsFallbackResolver = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const rawPath = decodeURIComponent(req.path.replace(/^\/+/, ''));
-    const strippedDoubleTimestamp = rawPath.replace(/_(\d{10,14})_\d{10,14}(\.[a-zA-Z0-9]+)$/, '_$1$2');
+    if (!rawPath) return next();
 
-    const searchNames = [rawPath, strippedDoubleTimestamp];
+    const strippedDoubleTimestamp = rawPath.replace(/_(\d{10,14})_\d{10,14}(\.[a-zA-Z0-9]+)$/, '_$1$2');
+    const searchNames = Array.from(new Set([rawPath, strippedDoubleTimestamp]));
+    const searchSubfolders = ['', 'artwork', 'references', 'products'];
 
     for (const base of candidateUploadsDirs) {
+      if (!fs.existsSync(base)) continue;
+
+      // 1. Exact or stripped double-timestamp filename matching
       for (const name of searchNames) {
+        // Direct candidate
         const fullCandidate = path.join(base, name);
         if (fs.existsSync(fullCandidate) && fs.statSync(fullCandidate).isFile()) {
           return res.sendFile(path.resolve(fullCandidate));
         }
+
+        // Subfolder candidates
+        const baseFilename = path.basename(name);
+        for (const sub of searchSubfolders) {
+          if (!sub) continue;
+          const subCandidate = path.join(base, sub, baseFilename);
+          if (fs.existsSync(subCandidate) && fs.statSync(subCandidate).isFile()) {
+            return res.sendFile(path.resolve(subCandidate));
+          }
+        }
+      }
+
+      // 2. Fuzzy prefix matching: If the request has fewer or extra timestamps or art_ prefix
+      // E.g. requested art_ACHARYAS_SNACKS_1794055561395.jpg but file is art_art_ACHARYAS_SNACKS_1794055561395_1795106896398.jpg
+      const ext = path.extname(rawPath);
+      const baseNameWithoutExt = path.basename(rawPath, ext);
+      const coreToken = baseNameWithoutExt.replace(/_?\d{10,14}$/, '');
+
+      for (const sub of searchSubfolders) {
+        const folder = sub ? path.join(base, sub) : base;
+        if (!fs.existsSync(folder)) continue;
+        try {
+          const files = fs.readdirSync(folder);
+          const matched = files.find((f) => {
+            if (ext && !f.toLowerCase().endsWith(ext.toLowerCase())) return false;
+            return (
+              f.includes(baseNameWithoutExt) ||
+              baseNameWithoutExt.includes(path.basename(f, ext)) ||
+              (coreToken && coreToken.length > 5 && f.includes(coreToken))
+            );
+          });
+          if (matched) {
+            const matchedPath = path.join(folder, matched);
+            if (fs.statSync(matchedPath).isFile()) {
+              return res.sendFile(path.resolve(matchedPath));
+            }
+          }
+        } catch {
+          // ignore directory read issues
+        }
       }
     }
     next();
-  });
+  };
+
+  app.use('/uploads', uploadsFallbackResolver);
+  app.use('/artwork', uploadsFallbackResolver);
+
+  // Health Check endpoint for Railway & Load Balancers (accessible at /health and /api/v1/health)
+  const healthHandler = (_req: express.Request, res: express.Response) => {
+    res.status(200).json({
+      status: 'ok',
+      service: 'print-bazzar-2.0-api',
+      environment: process.env.NODE_ENV || 'development',
+      uptime: Math.round(process.uptime()),
+      timestamp: new Date().toISOString(),
+    });
+  };
+  app.use('/health', healthHandler);
+  app.use('/api/v1/health', healthHandler);
 
   app.setGlobalPrefix('api/v1');
 
+  const rawCorsOrigin = process.env.CORS_ORIGIN;
+  const parsedOrigins =
+    rawCorsOrigin && rawCorsOrigin !== '*' && !rawCorsOrigin.includes('yourdomain.com')
+      ? rawCorsOrigin.split(',').map((o) => o.trim()).filter(Boolean)
+      : true;
+
   app.enableCors({
-    origin: '*',
+    origin: parsedOrigins,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
@@ -129,8 +192,8 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  const port = process.env.PORT || 4000;
-  await app.listen(port);
-  logger.log(`PRINT BAZZAR 2.0 API Server running on port ${port} (Swagger docs: http://localhost:${port}/api/docs)`);
+  const port = Number(process.env.PORT) || 4000;
+  await app.listen(port, '0.0.0.0');
+  logger.log(`PRINT BAZZAR 2.0 API Server running on port ${port} (Swagger docs: http://0.0.0.0:${port}/api/docs)`);
 }
 bootstrap();

@@ -33,10 +33,11 @@ import {
   Building,
   Settings,
   ChevronRight,
+  Download,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { Button } from '@/components/ui';
-import { api } from '@/lib/api';
+import { api, getApiHost } from '@/lib/api';
 import { formatDateTime, resolveArtworkUrl } from '@/lib/utils';
 
 // Helper to sanitize specification values & auto-hide non-applicable/empty specs
@@ -235,36 +236,117 @@ export default function ShopFloorJobCardPage({
   const specs = (orderItem?.specifications || jobData?.technicalSpecs?.specifications || {}) as Record<string, any>;
   const parsedSpecs = useMemo(() => parseDynamicSpecifications(specs), [specs]);
 
-  // Approved Artwork Version & Product Visual Fallback
-  const approvedArtwork = useMemo(() => {
-    // 1. Direct relation on JobCard
-    if (jobData?.approvedArtworkVersion) {
-      return jobData.approvedArtworkVersion;
-    }
-    // 2. OrderItem artworkVersions
-    const itemVersions = orderItem?.artworkVersions;
-    if (Array.isArray(itemVersions) && itemVersions.length > 0) {
-      const match =
-        itemVersions.find((v: any) => v.id === jobData?.approvedArtworkVersionId) ||
-        itemVersions.find((v: any) => v.isApproved || v.status === 'APPROVED' || v.status === 'PROOF_APPROVED') ||
-        itemVersions[0];
-      if (match) return match;
-    }
-    // 3. TechnicalSpecs snapshot on JobCard
-    const snapshotVersions = jobData?.technicalSpecs?.artworkVersions;
-    if (Array.isArray(snapshotVersions) && snapshotVersions.length > 0) {
-      return snapshotVersions[0];
-    }
-    // 4. Any artwork in order.items
-    if (Array.isArray(order?.items)) {
+  // All Approved Artwork Versions (Supports Single & Multiple Approved Artworks)
+  const approvedArtworks = useMemo<any[]>(() => {
+    const rawPool: any[] = [];
+    const seenIds = new Set<string>();
+
+    const pushList = (arr?: any[]) => {
+      if (!Array.isArray(arr)) return;
+      for (const item of arr) {
+        if (!item) continue;
+        const key = item.id || `${item.storageKey}-${item.originalFileName}-${item.versionNumber}`;
+        if (seenIds.has(key)) continue;
+        seenIds.add(key);
+        rawPool.push(item);
+      }
+    };
+
+    if (Array.isArray(orderItem?.artworkVersions) && orderItem.artworkVersions.length > 0) {
+      pushList(orderItem.artworkVersions);
+    } else if (Array.isArray(jobData?.technicalSpecs?.artworkVersions) && jobData.technicalSpecs.artworkVersions.length > 0) {
+      pushList(jobData.technicalSpecs.artworkVersions);
+    } else if (Array.isArray(order?.items)) {
       for (const it of order.items) {
-        if (Array.isArray(it.artworkVersions) && it.artworkVersions.length > 0) {
-          return it.artworkVersions[0];
-        }
+        pushList(it.artworkVersions);
       }
     }
-    return null;
+
+    if (rawPool.length === 0 && jobData?.approvedArtworkVersion) {
+      pushList([jobData.approvedArtworkVersion]);
+    }
+
+    // Prefer explicitly approved versions
+    const explicitlyApproved = rawPool.filter(
+      (v: any) =>
+        v.isApproved ||
+        v.status === 'APPROVED' ||
+        v.status === 'PROOF_APPROVED' ||
+        v.status === 'PREFLIGHT_PASSED' ||
+        (jobData?.approvedArtworkVersionId && v.id === jobData.approvedArtworkVersionId),
+    );
+
+    const activeNonSuperseded = rawPool.filter((v: any) => v.status !== 'SUPERSEDED');
+
+    const chosen =
+      explicitlyApproved.length > 0
+        ? explicitlyApproved
+        : activeNonSuperseded.length > 0
+        ? activeNonSuperseded
+        : rawPool;
+
+    return [...chosen].sort(
+      (a, b) => Number(a.versionNumber || 0) - Number(b.versionNumber || 0),
+    );
   }, [jobData, orderItem, order]);
+
+  const approvedArtwork = approvedArtworks[0] || null;
+  const [downloadingArtKey, setDownloadingArtKey] = useState<string | null>(null);
+  const [isDownloadingAllArtworks, setIsDownloadingAllArtworks] = useState(false);
+
+  const downloadArtworkAsset = async (art: any, index = 1) => {
+    const rawUrl = art?.storageKey || art?.fileUrl || art?.proofUrl;
+    if (!rawUrl) return;
+    const apiBase = getApiHost();
+    let targetPath = String(rawUrl);
+    if (!targetPath.startsWith('http')) {
+      if (targetPath.startsWith('/uploads')) {
+        targetPath = `${apiBase}${targetPath}`;
+      } else if (targetPath.startsWith('uploads/')) {
+        targetPath = `${apiBase}/${targetPath}`;
+      } else if (targetPath.startsWith('artwork/')) {
+        targetPath = `${apiBase}/uploads/${targetPath}`;
+      } else if (targetPath.startsWith('/')) {
+        targetPath = `${apiBase}${targetPath}`;
+      } else {
+        targetPath = `${apiBase}/uploads/artwork/${targetPath}`;
+      }
+    }
+    const fileName =
+      art?.originalFileName ||
+      `${jobData?.jobNumber || order?.orderNumber || 'Job'}_Approved_Artwork_V${art?.versionNumber || index}.pdf`;
+
+    try {
+      const res = await fetch(targetPath);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch {
+      window.open(targetPath, '_blank');
+    }
+  };
+
+  const handleDownloadAllApprovedArtworks = async () => {
+    if (approvedArtworks.length === 0) return;
+    setIsDownloadingAllArtworks(true);
+    try {
+      for (let i = 0; i < approvedArtworks.length; i++) {
+        await downloadArtworkAsset(approvedArtworks[i], i + 1);
+        if (approvedArtworks.length > 1 && i < approvedArtworks.length - 1) {
+          await new Promise((r) => setTimeout(r, 250));
+        }
+      }
+    } finally {
+      setIsDownloadingAllArtworks(false);
+    }
+  };
 
   // Resolved Artwork Image URL with fallback to catalog image
   const resolvedArtworkImageUrl = useMemo(() => {
@@ -915,98 +997,196 @@ export default function ShopFloorJobCardPage({
           </div>
 
           {/* SECTION 4: APPROVED ARTWORK & PREFLIGHT SPECIFICATIONS (9.2) */}
-          <div className="space-y-3 border-t border-slate-300 pt-5">
-            <div className="flex items-center justify-between border-b border-black pb-2">
+          <div className="space-y-4 border-t border-slate-300 pt-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-black pb-2">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="h-4 w-4 text-emerald-600" />
                 <h2 className="text-xs font-mono font-black uppercase tracking-wider text-black">
-                  APPROVED ARTWORK & PREFLIGHT VALIDATION SECTION
+                  APPROVED ARTWORK &amp; PREFLIGHT VALIDATION SECTION
                 </h2>
+                <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-950 px-2 py-0.5 rounded border border-amber-300">
+                  {approvedArtworks.length || 1} APPROVED FILE{(approvedArtworks.length || 1) > 1 ? 'S' : ''}
+                </span>
               </div>
-              <span
-                className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded uppercase ${
-                  isPreflightPassed
-                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                    : 'bg-rose-100 text-rose-900 border border-rose-300'
-                }`}
-              >
-                Preflight: {isPreflightPassed ? 'PASSED & APPROVED' : 'ACTION REQUIRED'}
-              </span>
+
+              <div className="flex items-center gap-2">
+                {approvedArtworks.length > 1 && (
+                  <button
+                    type="button"
+                    disabled={isDownloadingAllArtworks}
+                    onClick={handleDownloadAllApprovedArtworks}
+                    className="inline-flex items-center gap-1.5 bg-slate-950 hover:bg-slate-800 disabled:bg-slate-600 text-[#FFED00] font-mono font-black text-[10px] px-3 py-1 rounded border border-[#E3A008]/40 shadow-2xs transition cursor-pointer print:hidden"
+                  >
+                    {isDownloadingAllArtworks ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Download className="h-3 w-3" />
+                    )}
+                    <span>
+                      {isDownloadingAllArtworks
+                        ? 'Downloading...'
+                        : `Download All (${approvedArtworks.length})`}
+                    </span>
+                  </button>
+                )}
+                <span
+                  className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded uppercase ${
+                    isPreflightPassed
+                      ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                      : 'bg-rose-100 text-rose-900 border border-rose-300'
+                  }`}
+                >
+                  Preflight: {isPreflightPassed ? 'PASSED & APPROVED' : 'ACTION REQUIRED'}
+                </span>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start text-xs font-mono">
-              {/* Artwork Thumbnail Preview (Front / Back / Calibrated Proof) */}
-              <div className="border border-slate-300 rounded-lg p-3 bg-slate-50 space-y-2 text-center">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-700 uppercase">
-                    CALIBRATED PROOF PREVIEW
-                  </span>
-                  {resolvedArtworkImageUrl && (
-                    <a
-                      href={resolvedArtworkImageUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-0.5 print:hidden"
+            {/* All Approved Artworks Grid */}
+            <div
+              className={`grid grid-cols-1 gap-4 text-xs font-mono ${
+                approvedArtworks.length > 1
+                  ? 'sm:grid-cols-2 lg:grid-cols-3'
+                  : 'sm:grid-cols-3'
+              }`}
+            >
+              {(approvedArtworks.length > 0 ? approvedArtworks : [approvedArtwork]).map(
+                (artItem: any, idx: number) => {
+                  const artRawUrl =
+                    artItem?.proofUrl ||
+                    artItem?.storageKey ||
+                    artItem?.fileUrl ||
+                    (idx === 0
+                      ? specs?.artworkUrl ||
+                        specs?.artworkStorageKey ||
+                        specs?.referenceImageUrl
+                      : null);
+                  const itemResolvedUrl = artRawUrl
+                    ? resolveArtworkUrl(artRawUrl)
+                    : idx === 0
+                    ? resolvedArtworkImageUrl
+                    : null;
+                  const artKey = artItem?.id || `art-${idx}`;
+                  const isThisDownloading = downloadingArtKey === artKey;
+
+                  return (
+                    <div
+                      key={artKey}
+                      className="border border-slate-300 rounded-lg p-3 bg-slate-50 flex flex-col justify-between space-y-2.5 text-center"
                     >
-                      <span>Full Res</span>
-                      <ExternalLink className="h-2.5 w-2.5" />
-                    </a>
-                  )}
-                </div>
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[10px] font-black text-slate-900 bg-amber-200/80 border border-amber-400 px-2 py-0.5 rounded uppercase">
+                          APPROVED V{artItem?.versionNumber || idx + 1}
+                        </span>
+                        <div className="flex items-center gap-2 print:hidden">
+                          {itemResolvedUrl && (
+                            <a
+                              href={itemResolvedUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-0.5"
+                            >
+                              <span>Full Res</span>
+                              <ExternalLink className="h-2.5 w-2.5" />
+                            </a>
+                          )}
+                          {artItem && (
+                            <button
+                              type="button"
+                              disabled={isThisDownloading || isDownloadingAllArtworks}
+                              onClick={async () => {
+                                setDownloadingArtKey(artKey);
+                                try {
+                                  await downloadArtworkAsset(artItem, idx + 1);
+                                } finally {
+                                  setDownloadingArtKey(null);
+                                }
+                              }}
+                              className="inline-flex items-center gap-1 bg-slate-950 hover:bg-slate-800 text-[#FFED00] text-[10px] font-bold px-2 py-0.5 rounded transition cursor-pointer"
+                              title={`Download ${artItem?.originalFileName || 'Artwork'}`}
+                            >
+                              {isThisDownloading ? (
+                                <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                              ) : (
+                                <Download className="h-2.5 w-2.5" />
+                              )}
+                              <span>Download</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
 
-                <div className="relative aspect-video min-h-[140px] max-h-48 bg-white border border-slate-300 rounded-lg flex items-center justify-center overflow-hidden mx-auto shadow-inner group">
-                  {resolvedArtworkImageUrl ? (
-                    <img
-                      src={resolvedArtworkImageUrl}
-                      alt="Approved Production Artwork"
-                      className="object-contain w-full h-full p-1.5 transition-transform duration-200 group-hover:scale-105"
-                      onError={(e) => {
-                        console.warn('Failed to load artwork image from', resolvedArtworkImageUrl);
-                        const target = e.target as HTMLElement;
-                        target.style.display = 'none';
-                        const fallback = target.parentElement?.querySelector('.artwork-fallback-icon');
-                        if (fallback) (fallback as HTMLElement).style.display = 'flex';
-                      }}
-                    />
-                  ) : null}
+                      <div className="relative aspect-video min-h-[140px] max-h-48 w-full bg-white border border-slate-300 rounded-lg flex items-center justify-center overflow-hidden mx-auto shadow-inner group">
+                        {itemResolvedUrl ? (
+                          <img
+                            src={itemResolvedUrl}
+                            alt={artItem?.originalFileName || `Approved Production Artwork V${idx + 1}`}
+                            className="object-contain w-full h-full p-1.5 transition-transform duration-200 group-hover:scale-105"
+                            onError={(e) => {
+                              const target = e.target as HTMLElement;
+                              target.style.display = 'none';
+                              const fallback = target.parentElement?.querySelector('.artwork-fallback-icon');
+                              if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                            }}
+                          />
+                        ) : null}
 
-                  {/* Fallback placeholder if no image exists or load error */}
-                  <div
-                    className={`artwork-fallback-icon flex-col items-center justify-center p-3 text-slate-400 ${
-                      resolvedArtworkImageUrl ? 'hidden' : 'flex'
-                    }`}
-                  >
-                    <FileText className="h-8 w-8 text-slate-300 mb-1" />
-                    <span className="text-[10px] text-slate-500 font-bold">Vector PDF Artwork</span>
-                    <span className="text-[9px] text-slate-400">Prepress Calibrated Proof</span>
-                  </div>
+                        <div
+                          className={`artwork-fallback-icon flex-col items-center justify-center p-3 text-slate-400 ${
+                            itemResolvedUrl ? 'hidden' : 'flex'
+                          }`}
+                        >
+                          <FileText className="h-8 w-8 text-slate-300 mb-1" />
+                          <span className="text-[10px] text-slate-500 font-bold">Vector PDF Artwork</span>
+                          <span className="text-[9px] text-slate-400">Prepress Calibrated Proof</span>
+                        </div>
 
-                  {/* Bleed Safety Margin Overlay Indicator */}
-                  <div className="absolute inset-0 border-2 border-dashed border-rose-400/80 pointer-events-none m-1.5 rounded flex items-start justify-between p-1">
-                    <span className="text-[8px] bg-rose-600 text-white px-1.5 py-0.2 rounded font-black shadow-xs">
-                      +3mm Bleed Safety Line
-                    </span>
-                    <span className="text-[8px] bg-black/75 text-[#FFED00] px-1 py-0.2 rounded font-mono font-bold">
-                      CMYK
-                    </span>
-                  </div>
-                </div>
+                        <div className="absolute inset-0 border-2 border-dashed border-rose-400/80 pointer-events-none m-1.5 rounded flex items-start justify-between p-1">
+                          <span className="text-[8px] bg-rose-600 text-white px-1.5 py-0.2 rounded font-black shadow-xs">
+                            +3mm Bleed Safety Line
+                          </span>
+                          <span className="text-[8px] bg-black/75 text-[#FFED00] px-1 py-0.2 rounded font-mono font-bold">
+                            CMYK
+                          </span>
+                        </div>
+                      </div>
 
-                <div className="space-y-0.5">
-                  <span className="text-[10px] text-slate-800 font-bold block truncate font-mono">
-                    {approvedArtwork?.originalFileName || `Artwork_${order?.orderNumber || 'PB'}_Proof.png`}
-                  </span>
-                  {approvedArtwork?.fileSize && (
-                    <span className="text-[9px] text-slate-500 block">
-                      {(approvedArtwork.fileSize / (1024 * 1024)).toFixed(2)} MB • {approvedArtwork.mimeType || 'image/png'}
-                    </span>
-                  )}
-                </div>
-              </div>
+                      <div className="space-y-0.5 text-left">
+                        <span
+                          className="text-[10.5px] text-slate-900 font-bold block truncate font-mono"
+                          title={artItem?.originalFileName}
+                        >
+                          {artItem?.originalFileName ||
+                            `Artwork_${order?.orderNumber || 'PB'}_Proof_V${idx + 1}.png`}
+                        </span>
+                        <div className="flex items-center justify-between text-[9.5px] text-slate-500">
+                          <span>
+                            {artItem?.fileSize
+                              ? `${(Number(artItem.fileSize) / (1024 * 1024)).toFixed(2)} MB`
+                              : 'Press Ready'}{' '}
+                            • {artItem?.mimeType || 'application/pdf'}
+                          </span>
+                          <span className="font-bold text-emerald-700">
+                            {artItem?.resolutionDpi ? `${artItem.resolutionDpi} DPI` : '300 DPI'}
+                          </span>
+                        </div>
+                        {artItem?.prepressNotes && (
+                          <p className="text-[10px] text-amber-950 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1 line-clamp-2">
+                            {String(artItem.prepressNotes).replace(/^\[FINAL_ARTWORK\]\s*/i, '')}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                },
+              )}
 
               {/* Preflight Technical Specs */}
-              <div className="sm:col-span-2 space-y-2">
-                <div className="grid grid-cols-2 gap-2">
+              <div
+                className={`space-y-2 ${
+                  approvedArtworks.length > 1 ? 'sm:col-span-2 lg:col-span-3' : 'sm:col-span-2'
+                }`}
+              >
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
                   <div className="p-2.5 bg-slate-50 border border-slate-200 rounded">
                     <span className="text-[9px] uppercase font-bold text-slate-500 block">PREFLIGHT STATUS</span>
                     <strong className="text-emerald-700 font-bold block text-xs mt-0.5">
@@ -1036,15 +1216,11 @@ export default function ShopFloorJobCardPage({
                     <strong className="text-black font-bold block text-xs mt-0.5 truncate">
                       {approvedArtwork?.id ? `RIP-${approvedArtwork.id.slice(0, 8)}` : `AI-STUDIO-${jobData?.jobNumber || '01'}`}
                     </strong>
-                    <span className="text-[10px] text-slate-500">Prepress approved identifier</span>
+                    <span className="text-[10px] text-slate-500">
+                      {approvedArtworks.length || 1} approved master{(approvedArtworks.length || 1) > 1 ? 's' : ''}
+                    </span>
                   </div>
                 </div>
-
-                {approvedArtwork?.prepressNotes && (
-                  <div className="p-2.5 bg-amber-50 rounded border border-amber-200 text-[11px] text-amber-950">
-                    <strong>Prepress Notes:</strong> {approvedArtwork.prepressNotes}
-                  </div>
-                )}
               </div>
             </div>
           </div>

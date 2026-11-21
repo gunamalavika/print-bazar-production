@@ -1,15 +1,10 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { QCJobCard, QCJobCardDto } from './QCJobCard';
 import {
   RiInboxLine,
   RiCheckDoubleLine,
-  RiMore2Fill,
-  RiEditLine,
-  RiArrowLeftSLine,
-  RiArrowRightSLine,
-  RiDeleteBinLine,
 } from 'react-icons/ri';
 
 export interface QCColumnDefinitionDto {
@@ -18,8 +13,7 @@ export interface QCColumnDefinitionDto {
   name: string;
   description?: string;
   color?: string;
-  type?: 'SYSTEM' | 'HOLD' | 'APPROVED' | 'CUSTOM';
-  isCustom?: boolean;
+  type?: 'SYSTEM' | 'HOLD' | 'APPROVED';
 }
 
 interface QCColumnProps {
@@ -31,11 +25,6 @@ interface QCColumnProps {
   draggedCard: QCJobCardDto | null;
   onCardDragStart: (e: React.DragEvent, card: QCJobCardDto) => void;
   onCardDragEnd: (e: React.DragEvent) => void;
-  onEditColumn?: (col: QCColumnDefinitionDto) => void;
-  onDeleteColumn?: (col: QCColumnDefinitionDto) => void;
-  onMoveColumn?: (col: QCColumnDefinitionDto, direction: 'left' | 'right') => void;
-  canMoveLeft?: boolean;
-  canMoveRight?: boolean;
 }
 
 export function QCColumn({
@@ -47,27 +36,8 @@ export function QCColumn({
   draggedCard,
   onCardDragStart,
   onCardDragEnd,
-  onEditColumn,
-  onDeleteColumn,
-  onMoveColumn,
-  canMoveLeft = false,
-  canMoveRight = false,
 }: QCColumnProps) {
   const [isDragOver, setIsDragOver] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Close menu on outside click
-  useEffect(() => {
-    if (!isMenuOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setIsMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isMenuOpen]);
 
   // Check if current dragged card can be dropped into this column
   const isValidDropTarget =
@@ -117,7 +87,7 @@ export function QCColumn({
       />
 
       {/* Column Header */}
-      <div className="p-3.5 border-b border-slate-200/80 bg-white/70 rounded-t-xl flex items-center justify-between flex-shrink-0 relative">
+      <div className="p-3.5 border-b border-slate-200/80 bg-white/70 rounded-t-xl flex items-center justify-between flex-shrink-0">
         <div className="min-w-0 pr-2">
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-[13px] text-slate-900 tracking-tight uppercase truncate">
@@ -136,7 +106,7 @@ export function QCColumn({
           )}
         </div>
 
-        {/* Column Type Badges and Action Menu */}
+        {/* Column Type Badges */}
         <div className="flex items-center gap-1">
           {column.type === 'HOLD' && (
             <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200 uppercase">
@@ -148,80 +118,6 @@ export function QCColumn({
               RELEASED
             </span>
           )}
-
-          <div className="relative" ref={menuRef}>
-            <button
-              type="button"
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="p-1 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-200/70 transition"
-              title="Station actions"
-            >
-              <RiMore2Fill className="h-4 w-4" />
-            </button>
-
-            {isMenuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 text-xs animate-in fade-in zoom-in-95 duration-100">
-                {onEditColumn && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      onEditColumn(column);
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-2"
-                  >
-                    <RiEditLine className="h-3.5 w-3.5 text-slate-500" />
-                    <span>Edit Station</span>
-                  </button>
-                )}
-
-                {onMoveColumn && canMoveLeft && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      onMoveColumn(column, 'left');
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-2"
-                  >
-                    <RiArrowLeftSLine className="h-3.5 w-3.5 text-slate-500" />
-                    <span>Move Left</span>
-                  </button>
-                )}
-
-                {onMoveColumn && canMoveRight && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      onMoveColumn(column, 'right');
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-2"
-                  >
-                    <RiArrowRightSLine className="h-3.5 w-3.5 text-slate-500" />
-                    <span>Move Right</span>
-                  </button>
-                )}
-
-                {onDeleteColumn && (
-                  <>
-                    <div className="border-t border-slate-100 my-1" />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsMenuOpen(false);
-                        onDeleteColumn(column);
-                      }}
-                      className="w-full text-left px-3 py-1.5 hover:bg-rose-50 text-rose-600 font-medium flex items-center gap-2"
-                    >
-                      <RiDeleteBinLine className="h-3.5 w-3.5 text-rose-500" />
-                      <span>Delete Station</span>
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
         </div>
       </div>
 
@@ -249,9 +145,9 @@ export function QCColumn({
             }`}
           >
             <RiInboxLine className="h-6 w-6 mb-1 text-slate-400" />
-            <span className="text-xs font-semibold text-slate-600">No inspection jobs</span>
+            <span className="text-xs font-semibold text-slate-600">No active orders</span>
             <span className="text-[10px] text-slate-400 font-mono mt-0.5">
-              {isValidDropTarget ? 'Drop ticket to update QC gate' : 'Inspection queue clear'}
+              {isValidDropTarget ? 'Drop order card here' : 'Queue clear for this stage'}
             </span>
           </div>
         )}
@@ -261,7 +157,7 @@ export function QCColumn({
       {isDragOver && isValidDropTarget && (
         <div className="p-2 bg-emerald-500 text-white text-[11px] font-bold text-center rounded-b-xl flex items-center justify-center gap-1.5 animate-pulse">
           <RiCheckDoubleLine className="h-3.5 w-3.5" />
-          <span>Release to transition to {column.name}</span>
+          <span>Release to advance to {column.name}</span>
         </div>
       )}
     </div>

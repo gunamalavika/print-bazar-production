@@ -14,10 +14,8 @@ import {
   OrderStatus,
   AssignmentTaskType,
   AssignmentStatus,
-  UserRole,
-  CustomerVisibleStatus,
 } from '@prisma/client';
-import { JwtPayload } from '../../common/types/roles';
+import { JwtPayload, UserRole } from '../../common/types/roles';
 import * as crypto from 'crypto';
 import { extractDimensionsFromFile, extractImageDimensions } from '../../common/utils/image-dimensions.util';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
@@ -35,6 +33,9 @@ export interface RegisterArtworkDto {
   hasBleed?: boolean;
   colorProfile?: string;
   notes?: string;
+  prepressNotes?: string;
+  isFinalArtwork?: boolean;
+  keepPreviousVersions?: boolean;
 }
 
 export interface ApproveProofDto {
@@ -62,7 +63,7 @@ export class ArtworkService {
     private readonly eventEmitter: EventEmitter2,
     private readonly storageService: SupabaseStorageService,
     @Optional() private readonly jobCardEngine?: JobCardEngineService,
-  ) { }
+  ) {}
 
   /**
    * Upload / Register new artwork version (e.g. v1, v2, v3...)
@@ -77,18 +78,25 @@ export class ArtworkService {
     if (!item) throw new NotFoundException(`OrderItem '${dto.orderItemId}' not found`);
 
     // Determine next sequential version number
-    const nextVersion = item.artworkVersions.length + 1;
+    const maxVersion = item.artworkVersions.reduce((max, v) => Math.max(max, v.versionNumber), 0);
+    const nextVersion = maxVersion + 1;
     const checksum = crypto
       .createHash('sha256')
-      .update(`${dto.storageKey}-${dto.originalFileName}-${Date.now()}`)
+      .update(`${dto.storageKey}-${dto.originalFileName}-${Date.now()}-${nextVersion}`)
       .digest('hex');
 
     const artwork = await this.prisma.$transaction(async (tx) => {
-      // Mark previous unapproved versions as superseded
-      await tx.artworkVersion.updateMany({
-        where: { orderItemId: item.id, isApproved: false },
-        data: { status: ArtworkStatus.SUPERSEDED },
-      });
+      // Mark previous unapproved versions as superseded unless keeping multiple active artworks
+      if (!dto.keepPreviousVersions) {
+        await tx.artworkVersion.updateMany({
+          where: { orderItemId: item.id, isApproved: false },
+          data: { status: ArtworkStatus.SUPERSEDED },
+        });
+      }
+
+      const resolvedPrepressNotes = dto.isFinalArtwork
+        ? `[FINAL_ARTWORK] ${(dto.prepressNotes || dto.notes || 'Final print-ready artwork uploaded by designer').trim()}`
+        : dto.prepressNotes || undefined;
 
       const created = await tx.artworkVersion.create({
         data: {
@@ -108,6 +116,7 @@ export class ArtworkService {
           status: ArtworkStatus.PENDING_REVIEW,
           uploadedBy: uploaderId,
           customerNotes: dto.notes,
+          prepressNotes: resolvedPrepressNotes,
         },
       });
 
@@ -321,9 +330,9 @@ export class ArtworkService {
     const feedback = dto.revisionFeedback || dto.reason || dto.customerNotes || 'Artwork revision / preflight defect flagged';
     let artwork = dto.artworkVersionId
       ? await this.prisma.artworkVersion.findUnique({
-        where: { id: dto.artworkVersionId },
-        include: { orderItem: { include: { order: true } } },
-      })
+          where: { id: dto.artworkVersionId },
+          include: { orderItem: { include: { order: true } } },
+        })
       : null;
 
     if (!artwork && dto.orderItemId) {
@@ -520,27 +529,27 @@ export class ArtworkService {
         },
         ...(filterByMine
           ? {
-            OR: [
-              {
-                assignments: {
-                  some: {
-                    assignedUserId: user.sub,
-                    taskType: AssignmentTaskType.DESIGN,
+              OR: [
+                {
+                  assignments: {
+                    some: {
+                      assignedUserId: user.sub,
+                      taskType: AssignmentTaskType.DESIGN,
+                    },
                   },
                 },
-              },
-              // Allow unclaimed orders in DESIGN_REQUIRED to be seen by the designer
-              {
-                status: OrderStatus.DESIGN_REQUIRED,
-                assignments: {
-                  none: {
-                    taskType: AssignmentTaskType.DESIGN,
-                    status: AssignmentStatus.ACTIVE,
+                // Allow unclaimed orders in DESIGN_REQUIRED to be seen by the designer
+                {
+                  status: OrderStatus.DESIGN_REQUIRED,
+                  assignments: {
+                    none: {
+                      taskType: AssignmentTaskType.DESIGN,
+                      status: AssignmentStatus.ACTIVE,
+                    },
                   },
                 },
-              },
-            ],
-          }
+              ],
+            }
           : {}),
       };
     } else if (tab === 'passed') {
@@ -598,26 +607,26 @@ export class ArtworkService {
             },
             ...(filterByMine
               ? {
-                OR: [
-                  {
-                    assignments: {
-                      some: {
-                        assignedUserId: user.sub,
-                        taskType: AssignmentTaskType.DESIGN,
+                  OR: [
+                    {
+                      assignments: {
+                        some: {
+                          assignedUserId: user.sub,
+                          taskType: AssignmentTaskType.DESIGN,
+                        },
                       },
                     },
-                  },
-                  {
-                    status: OrderStatus.DESIGN_REQUIRED,
-                    assignments: {
-                      none: {
-                        taskType: AssignmentTaskType.DESIGN,
-                        status: AssignmentStatus.ACTIVE,
+                    {
+                      status: OrderStatus.DESIGN_REQUIRED,
+                      assignments: {
+                        none: {
+                          taskType: AssignmentTaskType.DESIGN,
+                          status: AssignmentStatus.ACTIVE,
+                        },
                       },
                     },
-                  },
-                ],
-              }
+                  ],
+                }
               : {}),
           },
           // 2. Completed design assignments
@@ -746,6 +755,14 @@ export class ArtworkService {
 
       // Check if design is completed & passed to production
       const allItemVersions = o.items.flatMap((it) => it.artworkVersions || []);
+      const finalArtworkVersions = allItemVersions.filter(
+        (v) =>
+          v.status !== ArtworkStatus.SUPERSEDED &&
+          typeof v.prepressNotes === 'string' &&
+          v.prepressNotes.includes('[FINAL_ARTWORK]'),
+      );
+      const finalArtworkVersion = finalArtworkVersions[0] || null;
+      const hasFinalArtwork = finalArtworkVersions.length > 0;
       const approvedArtworkVersion =
         allItemVersions.find((v) => v.isApproved || v.status === ArtworkStatus.PROOF_APPROVED) ||
         null;
@@ -876,25 +893,25 @@ export class ArtworkService {
 
       const latestReturnEntry = isActualRevisionReturn
         ? o.statusHistory?.find(
-          (h) =>
-            h.toStatus === OrderStatus.DESIGN_REQUIRED &&
-            (h.fromStatus === OrderStatus.ARTWORK_REVIEW ||
-              h.fromStatus === OrderStatus.PRODUCTION_QUEUE ||
-              h.fromStatus === OrderStatus.ARTWORK_APPROVED) &&
-            (h.reason?.toLowerCase().includes('return') ||
-              h.reason?.toLowerCase().includes('correction') ||
-              h.reason?.includes('Directives:')),
-        )
+            (h) =>
+              h.toStatus === OrderStatus.DESIGN_REQUIRED &&
+              (h.fromStatus === OrderStatus.ARTWORK_REVIEW ||
+                h.fromStatus === OrderStatus.PRODUCTION_QUEUE ||
+                h.fromStatus === OrderStatus.ARTWORK_APPROVED) &&
+              (h.reason?.toLowerCase().includes('return') ||
+                h.reason?.toLowerCase().includes('correction') ||
+                h.reason?.includes('Directives:')),
+          )
         : null;
 
       const revisionDirectives = isActualRevisionReturn
         ? (activeDesignAssignment?.reason?.startsWith('OE Revision Directives:')
-          ? activeDesignAssignment.reason.replace(/^OE Revision Directives:\s*/i, '').trim()
-          : latestReturnEntry?.notes ||
-          (latestReturnEntry?.reason?.includes('Directives:')
-            ? latestReturnEntry.reason.split('Directives:')[1]?.trim()
-            : null) ||
-          null)
+            ? activeDesignAssignment.reason.replace(/^OE Revision Directives:\s*/i, '').trim()
+            : latestReturnEntry?.notes ||
+              (latestReturnEntry?.reason?.includes('Directives:')
+                ? latestReturnEntry.reason.split('Directives:')[1]?.trim()
+                : null) ||
+              null)
         : null;
 
       const returnedBy = isActualRevisionReturn ? (latestReturnEntry?.changedBy?.fullName || null) : null;
@@ -953,7 +970,10 @@ export class ArtworkService {
         createdAt: o.createdAt,
         updatedAt: o.updatedAt,
         dueAt: o.dueAt,
-        latestArtworkVersion: approvedArtworkVersion || item?.artworkVersions?.[0] || null,
+        latestArtworkVersion: finalArtworkVersion || approvedArtworkVersion || item?.artworkVersions?.[0] || null,
+        finalArtworkVersion,
+        finalArtworkVersions,
+        hasFinalArtwork,
         approvedArtworkVersion,
         approvedArtworkVersionId: item?.approvedArtworkVersionId || (approvedArtworkVersion?.isApproved ? approvedArtworkVersion.id : null),
         allArtworkVersions: allItemVersions,
@@ -1141,50 +1161,72 @@ export class ArtworkService {
         },
       });
 
-      // 4. Update Order Status to ARTWORK_REVIEW so Operations Coordinator (OE) receives the artwork and assigns production operator
+      // 4. Route assignment to Production Head for operator allocation
+      const prodHead = await tx.user.findFirst({
+        where: { role: UserRole.PRODUCTION_HEAD, isActive: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      if (prodHead) {
+        await tx.orderAssignment.create({
+          data: {
+            orderId: order.id,
+            taskType: AssignmentTaskType.PRODUCTION,
+            assignedUserId: prodHead.id,
+            assignedByUserId: userId,
+            status: AssignmentStatus.ACTIVE,
+            reason: 'Design completed by Prepress Designer and routed to Production Head for operator allocation.',
+          },
+        });
+      }
+
+      // 5. Transition Master Order directly to PRODUCTION_QUEUE
       const updatedOrder = await tx.order.update({
         where: { id: order.id },
         data: {
-          status: OrderStatus.ARTWORK_REVIEW,
-          customerStatus: CustomerVisibleStatus.APPROVAL_REQUIRED,
+          status: OrderStatus.PRODUCTION_QUEUE,
+          customerStatus: 'IN_PRODUCTION',
         },
       });
 
-      // 5. Record sequential status history
+      // 6. Record sequential status history
       await tx.orderStatusHistory.create({
         data: {
           orderId: order.id,
           fromStatus: order.status,
-          toStatus: OrderStatus.ARTWORK_REVIEW,
+          toStatus: OrderStatus.PRODUCTION_QUEUE,
           changedById: userId,
-          reason: `Design completed by Prepress Designer (v${nextVersion}). Routed to Operations Coordinator (OE) for production assignment.`,
+          reason: `Design completed by Prepress Designer (v${nextVersion}). Routed to Production Head for operator allocation.`,
           notes: dto.prepressNotes,
         },
       });
 
-      return { artwork, order: updatedOrder };
+      return { artwork, order: updatedOrder, operatorId: prodHead?.id || null };
     });
+
+    // Auto-generate Job Cards directly for production shop-floor
+    if (this.jobCardEngine) {
+      try {
+        await this.jobCardEngine.generateJobCardForOrderItem(item.id, userId, result.operatorId || undefined);
+      } catch (err: any) {
+        this.logger.warn(`JobCard generation for item ${item.id}: ${err?.message}`);
+      }
+    }
 
     await this.auditService.log({
       actorId: userId,
-      action: 'DESIGN_JOB_COMPLETED_ROUTED_TO_OE',
+      action: 'DESIGN_COMPLETED_DIRECT_PRODUCTION',
       entity: 'Order',
       entityId: order.id,
       orderId: order.id,
-      newState: { status: OrderStatus.ARTWORK_REVIEW, versionNumber: nextVersion },
-      reason: `Design completed by designer and routed to OE for operator assignment`,
+      newState: { status: OrderStatus.PRODUCTION_QUEUE, artworkVersionId: result.artwork.id },
+      reason: `Design completed and moved directly to Production Operator`,
     });
 
     this.eventEmitter.emit('design.completed', {
       orderId: order.id,
       orderNumber: order.orderNumber,
-      versionId: result.artwork.id,
-    });
-
-    this.eventEmitter.emit('order:updated', {
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      status: OrderStatus.ARTWORK_REVIEW,
+      artworkVersionId: result.artwork.id,
     });
 
     return result;
@@ -1269,6 +1311,8 @@ export class ArtworkService {
           ? `[${file.label}] ${dto.prepressNotes || ''}`.trim()
           : dto.prepressNotes || 'Submitted by prepress studio team';
 
+        const isPrimary = i === 0;
+
         const artwork = await tx.artworkVersion.create({
           data: {
             orderItemId: item.id,
@@ -1279,15 +1323,25 @@ export class ArtworkService {
             fileSize: file.fileSize || 1024 * 1024,
             checksum,
             resolutionDpi: file.resolutionDpi || dto.resolutionDpi || 300,
-            status: ArtworkStatus.PENDING_REVIEW,
-            isApproved: false,
-            approvedAt: null,
+            status: isPrimary ? ArtworkStatus.PROOF_APPROVED : ArtworkStatus.PENDING_REVIEW,
+            isApproved: isPrimary,
+            approvedAt: isPrimary ? new Date() : null,
             prepressNotes: combinedNotes,
             uploadedBy: userId,
           },
         });
 
         createdVersions.push(artwork);
+      }
+
+      // Automatically lock the primary candidate work as the approved version on the order item
+      if (createdVersions.length > 0) {
+        await tx.orderItem.update({
+          where: { id: item.id },
+          data: {
+            approvedArtworkVersionId: createdVersions[0].id,
+          },
+        });
       }
 
       // Mark any active DESIGN assignment as COMPLETED
@@ -1300,7 +1354,7 @@ export class ArtworkService {
         data: {
           status: AssignmentStatus.COMPLETED,
           completedAt: new Date(),
-          reason: `Prepress uploaded ${dto.files.length} design candidate work(s). Routed to Operations Coordinator (OE) for review & confirmation.`,
+          reason: `Prepress uploaded ${dto.files.length} design candidate work(s). Moved directly to Production Operator.`,
         },
       });
 
@@ -1315,17 +1369,36 @@ export class ArtworkService {
             taskType: AssignmentTaskType.DESIGN,
             status: AssignmentStatus.COMPLETED,
             completedAt: new Date(),
-            reason: `Prepress uploaded ${dto.files.length} design candidate work(s). Routed to Operations Coordinator (OE) for review & confirmation.`,
+            reason: `Prepress uploaded ${dto.files.length} design candidate work(s). Moved directly to Production Operator.`,
           },
         });
       }
 
-      // Update Order Status to ARTWORK_REVIEW so Operations Coordinator (OE) can inspect candidate designs and confirm
+      // Route assignment to Production Head for operator allocation
+      const prodHead = await tx.user.findFirst({
+        where: { role: UserRole.PRODUCTION_HEAD, isActive: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      if (prodHead) {
+        await tx.orderAssignment.create({
+          data: {
+            orderId: order.id,
+            taskType: AssignmentTaskType.PRODUCTION,
+            assignedUserId: prodHead.id,
+            assignedByUserId: userId,
+            status: AssignmentStatus.ACTIVE,
+            reason: 'Candidate artwork uploaded by Prepress Designer and routed to Production Head for operator allocation.',
+          },
+        });
+      }
+
+      // Update Order Status directly to PRODUCTION_QUEUE (bypassing OE confirmation gate)
       const updatedOrder = await tx.order.update({
         where: { id: order.id },
         data: {
-          status: OrderStatus.ARTWORK_REVIEW,
-          customerStatus: CustomerVisibleStatus.APPROVAL_REQUIRED,
+          status: OrderStatus.PRODUCTION_QUEUE,
+          customerStatus: 'IN_PRODUCTION',
         },
       });
 
@@ -1333,24 +1406,33 @@ export class ArtworkService {
         data: {
           orderId: order.id,
           fromStatus: order.status,
-          toStatus: OrderStatus.ARTWORK_REVIEW,
+          toStatus: OrderStatus.PRODUCTION_QUEUE,
           changedById: userId,
-          reason: `Prepress uploaded ${dto.files.length} candidate artwork file(s). Routed to Operations Coordinator (OE) for review and confirmation.`,
+          reason: `Prepress uploaded ${dto.files.length} candidate artwork file(s). Routed to Production Head for operator allocation.`,
           notes: dto.prepressNotes,
         },
       });
 
-      return { versions: createdVersions, order: updatedOrder };
+      return { versions: createdVersions, order: updatedOrder, operatorId: prodHead?.id || null };
     });
+
+    // Auto-generate Job Cards directly for production shop-floor
+    if (this.jobCardEngine) {
+      try {
+        await this.jobCardEngine.generateJobCardForOrderItem(item.id, userId, result.operatorId || undefined);
+      } catch (err: any) {
+        this.logger.warn(`JobCard generation for item ${item.id}: ${err?.message}`);
+      }
+    }
 
     await this.auditService.log({
       actorId: userId,
-      action: 'DESIGN_MULTIPLE_UPLOADED_FOR_OE_REVIEW',
+      action: 'DESIGN_MULTIPLE_UPLOADED_DIRECT_PRODUCTION',
       entity: 'Order',
       entityId: order.id,
       orderId: order.id,
-      newState: { status: OrderStatus.ARTWORK_REVIEW, fileCount: dto.files.length },
-      reason: `Prepress uploaded ${dto.files.length} candidate artwork files for OE review and confirmation`,
+      newState: { status: OrderStatus.PRODUCTION_QUEUE, fileCount: dto.files.length },
+      reason: `Prepress uploaded ${dto.files.length} candidate artwork files and moved directly to Production Operator`,
     });
 
     this.eventEmitter.emit('design.submitted_multiple', {
@@ -1358,13 +1440,17 @@ export class ArtworkService {
       orderNumber: order.orderNumber,
       fileCount: dto.files.length,
       versions: createdVersions,
+      directToProduction: true,
     });
 
-    this.eventEmitter.emit('order:updated', {
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      status: OrderStatus.ARTWORK_REVIEW,
-    });
+    if (createdVersions.length > 0) {
+      this.eventEmitter.emit('artwork.confirmed', {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        artworkVersionId: createdVersions[0].id,
+        versionNumber: createdVersions[0].versionNumber,
+      });
+    }
 
     return result;
   }
@@ -1377,27 +1463,41 @@ export class ArtworkService {
    */
   async confirmArtworkWork(
     orderItemId: string,
-    artworkVersionId: string,
+    artworkVersionIdOrIds: string | string[],
     user: JwtPayload | string,
     oeNotes?: string,
   ) {
     const userId = typeof user === 'string' ? user : user.sub;
     const userRole = typeof user === 'string' ? null : user.role;
 
-    // RBAC: Prepress Designers, Operations Coordinators, or Admins can confirm authoritative work for production
+    // RBAC: Prepress Designers, Operations Coordinators, Production Head, or Admins can confirm authoritative work for production
     if (
       userRole &&
       userRole !== UserRole.OPERATIONAL_MANAGER &&
       userRole !== UserRole.ADMIN_MANAGER &&
+      userRole !== UserRole.PRODUCTION_HEAD &&
       userRole !== UserRole.DESIGNER_PREPRESS
     ) {
       throw new ForbiddenException(
-        'Only Prepress Designers, Operations Coordinators, or Administrators can confirm artwork for production.',
+        'Only Prepress Designers, Operations Coordinators, Production Head, or Administrators can confirm artwork for production.',
       );
     }
 
-    const version = await this.prisma.artworkVersion.findUnique({
-      where: { id: artworkVersionId },
+    const selectedIds = Array.from(
+      new Set(
+        (Array.isArray(artworkVersionIdOrIds)
+          ? artworkVersionIdOrIds
+          : [artworkVersionIdOrIds]
+        ).filter(Boolean),
+      ),
+    );
+
+    if (selectedIds.length === 0) {
+      throw new BadRequestException('At least one artwork version must be selected to confirm for production.');
+    }
+
+    const versions = await this.prisma.artworkVersion.findMany({
+      where: { id: { in: selectedIds } },
       include: {
         orderItem: {
           include: {
@@ -1406,21 +1506,23 @@ export class ArtworkService {
           },
         },
       },
+      orderBy: { versionNumber: 'desc' },
     });
 
-    if (!version) {
-      throw new NotFoundException(`Artwork version '${artworkVersionId}' not found`);
+    if (!versions || versions.length === 0) {
+      throw new NotFoundException(`Selected artwork version(s) not found`);
     }
 
-    const item = version.orderItem;
+    const primaryVersion = versions.find((v) => v.id === selectedIds[0]) || versions[0];
+    const item = primaryVersion.orderItem;
     const order = item.order;
 
     const result = await this.prisma.$transaction(async (tx) => {
-      // 1. Mark all other versions for this order item as NOT approved
+      // 1. Mark all non-selected versions for this order item as NOT approved
       await tx.artworkVersion.updateMany({
         where: {
           orderItemId: item.id,
-          id: { not: artworkVersionId },
+          id: { notIn: selectedIds },
         },
         data: {
           isApproved: false,
@@ -1428,24 +1530,30 @@ export class ArtworkService {
         },
       });
 
-      // 2. Mark this specific chosen version as APPROVED
-      const confirmedVersion = await tx.artworkVersion.update({
-        where: { id: artworkVersionId },
-        data: {
-          isApproved: true,
-          status: ArtworkStatus.PROOF_APPROVED,
-          approvedAt: new Date(),
-          prepressNotes: oeNotes
-            ? `${version.prepressNotes || ''} | Confirmed: ${oeNotes}`.trim()
-            : version.prepressNotes,
-        },
+      // 2. Mark all selected versions as APPROVED for production
+      for (const ver of versions) {
+        await tx.artworkVersion.update({
+          where: { id: ver.id },
+          data: {
+            isApproved: true,
+            status: ArtworkStatus.PROOF_APPROVED,
+            approvedAt: new Date(),
+            prepressNotes: oeNotes
+              ? `${ver.prepressNotes || ''} | Confirmed: ${oeNotes}`.trim()
+              : ver.prepressNotes,
+          },
+        });
+      }
+
+      const confirmedVersion = await tx.artworkVersion.findUnique({
+        where: { id: primaryVersion.id },
       });
 
-      // 3. Lock this confirmed version ID on OrderItem
+      // 3. Lock the primary confirmed version ID on OrderItem
       await tx.orderItem.update({
         where: { id: item.id },
         data: {
-          approvedArtworkVersionId: confirmedVersion.id,
+          approvedArtworkVersionId: primaryVersion.id,
         },
       });
 
@@ -1489,6 +1597,10 @@ export class ArtworkService {
         },
       });
 
+      const versionsSummary = versions
+        .map((v) => `v${v.versionNumber} (${v.originalFileName})`)
+        .join(', ');
+
       // 6. Audit history
       await tx.orderStatusHistory.create({
         data: {
@@ -1496,18 +1608,23 @@ export class ArtworkService {
           fromStatus: order.status,
           toStatus: OrderStatus.PRODUCTION_QUEUE,
           changedById: userId,
-          reason: `Artwork Version v${version.versionNumber} (${version.originalFileName}) confirmed and released directly to Production Operator.`,
+          reason: `${versions.length} Artwork Version(s) [${versionsSummary}] confirmed and released directly to Production.`,
           notes: oeNotes,
         },
       });
 
-      return { confirmedVersion, order: updatedOrder, operatorId: confirmedOperatorId };
+      return {
+        confirmedVersion,
+        confirmedVersionIds: selectedIds,
+        order: updatedOrder,
+        operatorId: confirmedOperatorId,
+      };
     });
 
     // Auto-generate Job Cards directly for production shop-floor
     if (this.jobCardEngine) {
       try {
-        await this.jobCardEngine.generateJobCardForOrderItem(item.id, userId, result.operatorId);
+        await this.jobCardEngine.generateJobCardForOrderItem(item.id, userId, result.operatorId || undefined);
       } catch (err: any) {
         this.logger.warn(`JobCard generation for item ${item.id}: ${err?.message}`);
       }
@@ -1519,15 +1636,19 @@ export class ArtworkService {
       entity: 'Order',
       entityId: order.id,
       orderId: order.id,
-      newState: { status: OrderStatus.PRODUCTION_QUEUE, confirmedArtworkVersionId: artworkVersionId },
-      reason: `Artwork Version v${version.versionNumber} confirmed and moved directly to Production Operator`,
+      newState: {
+        status: OrderStatus.PRODUCTION_QUEUE,
+        confirmedArtworkVersionIds: selectedIds,
+      },
+      reason: `${versions.length} Artwork Version(s) confirmed and moved directly to Production`,
     });
 
     this.eventEmitter.emit('artwork.confirmed', {
       orderId: order.id,
       orderNumber: order.orderNumber,
-      artworkVersionId,
-      versionNumber: version.versionNumber,
+      artworkVersionId: primaryVersion.id,
+      artworkVersionIds: selectedIds,
+      versionNumber: primaryVersion.versionNumber,
     });
 
     return result;
@@ -1747,12 +1868,29 @@ export class ArtworkService {
       }
     } else if (stage === 'DESIGNING') {
       targetStatus = OrderStatus.DESIGN_REQUIRED;
+      const returningFromReadyToPrint = [
+        OrderStatus.ARTWORK_APPROVED,
+        OrderStatus.PRE_PRODUCTION_QC,
+        OrderStatus.PRODUCTION_QUEUE,
+      ].includes(order.status as any);
       // If returning to designing, unlock previously locked versions
       for (const item of order.items) {
         if (item.approvedArtworkVersionId) {
           await this.prisma.orderItem.update({
             where: { id: item.id },
             data: { approvedArtworkVersionId: null },
+          });
+        }
+        if (returningFromReadyToPrint) {
+          await this.prisma.artworkVersion.updateMany({
+            where: {
+              orderItemId: item.id,
+              prepressNotes: { contains: '[FINAL_ARTWORK]' },
+            },
+            data: {
+              isApproved: false,
+              status: ArtworkStatus.SUPERSEDED,
+            },
           });
         }
       }
@@ -1775,18 +1913,54 @@ export class ArtworkService {
     } else if (stage === 'WAITING_FOR_APPROVAL') {
       targetStatus = OrderStatus.CUSTOMER_APPROVAL_REQUIRED;
     } else if (stage === 'READY_TO_PRINT') {
+      const alreadyReadyToPrint = [
+        OrderStatus.ARTWORK_APPROVED,
+        OrderStatus.PRE_PRODUCTION_QC,
+        OrderStatus.PRODUCTION_QUEUE,
+        OrderStatus.PRINTING,
+        OrderStatus.FINISHING,
+        OrderStatus.QUALITY_CHECK,
+      ].includes(order.status as any);
+
+      const allVersions = order.items.flatMap((it) => it.artworkVersions || []);
+      const hasUploadedFinalArtwork = allVersions.some(
+        (v) =>
+          v.status !== ArtworkStatus.SUPERSEDED &&
+          typeof v.prepressNotes === 'string' &&
+          v.prepressNotes.includes('[FINAL_ARTWORK]'),
+      );
+
+      if (!alreadyReadyToPrint && !hasUploadedFinalArtwork) {
+        throw new BadRequestException(
+          'Final artwork upload is mandatory before moving to Ready to Print. Please upload the final artwork first.',
+        );
+      }
+
       targetStatus = OrderStatus.ARTWORK_APPROVED;
-      // Lock latest artwork version if available
+      // Lock all active final artwork versions (or latest) if available
       for (const item of order.items) {
-        if (item.artworkVersions && item.artworkVersions.length > 0 && !item.approvedArtworkVersionId) {
-          const latest = item.artworkVersions[0];
+        if (item.artworkVersions && item.artworkVersions.length > 0) {
+          const itemFinalVersions = item.artworkVersions.filter(
+            (v) =>
+              v.status !== ArtworkStatus.SUPERSEDED &&
+              typeof v.prepressNotes === 'string' &&
+              v.prepressNotes.includes('[FINAL_ARTWORK]'),
+          );
+          const primaryFinal = itemFinalVersions[0] || item.artworkVersions[0];
+
           await this.prisma.orderItem.update({
             where: { id: item.id },
-            data: { approvedArtworkVersionId: latest.id },
+            data: { approvedArtworkVersionId: primaryFinal.id },
           });
-          await this.prisma.artworkVersion.update({
-            where: { id: latest.id },
-            data: { isApproved: true, status: ArtworkStatus.PROOF_APPROVED },
+
+          const idsToApprove =
+            itemFinalVersions.length > 0
+              ? itemFinalVersions.map((v) => v.id)
+              : [primaryFinal.id];
+
+          await this.prisma.artworkVersion.updateMany({
+            where: { id: { in: idsToApprove } },
+            data: { isApproved: true, status: ArtworkStatus.PROOF_APPROVED, approvedAt: new Date() },
           });
         }
       }
@@ -1802,6 +1976,31 @@ export class ArtworkService {
           completedAt: new Date(),
         },
       });
+
+      // Route order directly to Production Head for operator assignment
+      const existingActiveProd = order.assignments.find(
+        (a) => a.taskType === AssignmentTaskType.PRODUCTION && a.status === AssignmentStatus.ACTIVE,
+      );
+      if (!existingActiveProd) {
+        const prodHead = await this.prisma.user.findFirst({
+          where: { role: UserRole.PRODUCTION_HEAD, isActive: true },
+          orderBy: { createdAt: 'asc' },
+        });
+        if (prodHead) {
+          await this.prisma.orderAssignment.create({
+            data: {
+              orderId: order.id,
+              taskType: AssignmentTaskType.PRODUCTION,
+              assignedUserId: prodHead.id,
+              assignedByUserId: user?.sub || prodHead.id,
+              status: AssignmentStatus.ACTIVE,
+              reason:
+                notes ||
+                'Design completed on Prepress Kanban and moved to Production Head for operator allocation.',
+            },
+          });
+        }
+      }
     }
 
     const updated = await this.prisma.order.update({

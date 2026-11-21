@@ -9,19 +9,14 @@ import { QCColumn, QCColumnDefinitionDto } from './QCColumn';
 import { QCJobCardDto } from './QCJobCard';
 import { QCInspectionDrawer } from './QCInspectionDrawer';
 import { QCHoldModal } from './QCHoldModal';
-import { QCColumnEditModal } from './QCColumnEditModal';
-import { QCColumnManagerModal } from './QCColumnManagerModal';
 import {
   RiRefreshLine,
+  RiShieldCheckLine,
   RiAlertFill,
   RiCheckFill,
-  RiAddLine,
-  RiSettings4Line,
+  RiFlashlightLine,
 } from 'react-icons/ri';
 import { Button } from '@/components/ui';
-
-const STORAGE_KEY_QC_COLUMNS = 'pb_kanban_columns_qc';
-const STORAGE_KEY_QC_OVERRIDES = 'pb_kanban_qc_card_stages';
 
 const FINAL_QC_COLUMNS: QCColumnDefinitionDto[] = [
   {
@@ -31,7 +26,6 @@ const FINAL_QC_COLUMNS: QCColumnDefinitionDto[] = [
     description: 'Color Density & Cut Squareness',
     color: '#06B6D4',
     type: 'SYSTEM',
-    isCustom: false,
   },
   {
     id: 'final-rework',
@@ -40,7 +34,6 @@ const FINAL_QC_COLUMNS: QCColumnDefinitionDto[] = [
     description: 'Rejected / Repress Required',
     color: '#EF4444',
     type: 'HOLD',
-    isCustom: false,
   },
   {
     id: 'final-approved',
@@ -49,7 +42,6 @@ const FINAL_QC_COLUMNS: QCColumnDefinitionDto[] = [
     description: 'Physical 100% Sign-Off',
     color: '#10B981',
     type: 'APPROVED',
-    isCustom: false,
   },
 ];
 
@@ -58,12 +50,6 @@ export function QCBoard() {
 
   // Final QC is the dedicated physical quality workstation
   const activeStage = 'FINAL_QC';
-
-  // Dynamic Columns State
-  const [columns, setColumns] = useState<QCColumnDefinitionDto[]>(FINAL_QC_COLUMNS);
-  const [isManagerModalOpen, setIsManagerModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editingColumn, setEditingColumn] = useState<QCColumnDefinitionDto | null>(null);
 
   // State
   const [finalQueue, setFinalQueue] = useState<any[]>([]);
@@ -91,108 +77,6 @@ export function QCBoard() {
 
   // Auto-polling toggle
   const [autoRefresh, setAutoRefresh] = useState(true);
-
-  // Load columns and overrides from localStorage
-  useEffect(() => {
-    try {
-      const savedCols = localStorage.getItem(STORAGE_KEY_QC_COLUMNS);
-      if (savedCols) {
-        const parsed = JSON.parse(savedCols);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setColumns(parsed);
-        }
-      }
-
-      const savedOverrides = localStorage.getItem(STORAGE_KEY_QC_OVERRIDES);
-      if (savedOverrides) {
-        const parsed = JSON.parse(savedOverrides);
-        if (parsed && typeof parsed === 'object') {
-          setLocalCardOverrides(parsed);
-        }
-      }
-    } catch {}
-  }, []);
-
-  const saveColumnsState = (newCols: QCColumnDefinitionDto[]) => {
-    setColumns(newCols);
-    try {
-      localStorage.setItem(STORAGE_KEY_QC_COLUMNS, JSON.stringify(newCols));
-    } catch {}
-  };
-
-  const updateCardOverride = (orderId: string, override: { status: string; holdReason?: string }) => {
-    setLocalCardOverrides((prev) => {
-      const updated = { ...prev, [orderId]: override };
-      try {
-        localStorage.setItem(STORAGE_KEY_QC_OVERRIDES, JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
-  };
-
-  // Column Management Handlers
-  const handleSaveColumn = (columnData: QCColumnDefinitionDto) => {
-    const existingIndex = columns.findIndex((c) => c.key === columnData.key);
-    let updated: QCColumnDefinitionDto[];
-    if (existingIndex >= 0) {
-      updated = [...columns];
-      updated[existingIndex] = columnData;
-      showNotification('success', `Station "${columnData.name}" updated successfully.`);
-    } else {
-      updated = [...columns, columnData];
-      showNotification('success', `Station "${columnData.name}" created successfully.`);
-    }
-    saveColumnsState(updated);
-  };
-
-  const handleDeleteColumn = (columnKey: string) => {
-    const targetCol = columns.find((c) => c.key === columnKey);
-    const updated = columns.filter((c) => c.key !== columnKey);
-    saveColumnsState(updated);
-
-    // Reassign jobs in deleted column to first remaining column
-    const fallbackKey = updated[0]?.key || 'IN_INSPECTION';
-    setLocalCardOverrides((prev) => {
-      let changed = false;
-      const nextOverrides = { ...prev };
-      Object.keys(nextOverrides).forEach((id) => {
-        if (nextOverrides[id]?.status === columnKey) {
-          nextOverrides[id] = { ...nextOverrides[id], status: fallbackKey };
-          changed = true;
-        }
-      });
-      if (changed) {
-        try {
-          localStorage.setItem(STORAGE_KEY_QC_OVERRIDES, JSON.stringify(nextOverrides));
-        } catch {}
-      }
-      return nextOverrides;
-    });
-
-    showNotification('success', `Station "${targetCol?.name || columnKey}" removed.`);
-  };
-
-  const handleReorderColumns = (newCols: QCColumnDefinitionDto[]) => {
-    saveColumnsState(newCols);
-    showNotification('success', 'Station layout updated.');
-  };
-
-  const handleMoveColumn = (col: QCColumnDefinitionDto, direction: 'left' | 'right') => {
-    const index = columns.findIndex((c) => c.key === col.key);
-    if (index === -1) return;
-    const targetIdx = direction === 'left' ? index - 1 : index + 1;
-    if (targetIdx < 0 || targetIdx >= columns.length) return;
-
-    const copy = [...columns];
-    const [moved] = copy.splice(index, 1);
-    copy.splice(targetIdx, 0, moved);
-    saveColumnsState(copy);
-  };
-
-  const handleResetDefaults = () => {
-    saveColumnsState(FINAL_QC_COLUMNS);
-    showNotification('success', 'Reset to 3 standard QC stations.');
-  };
 
   // Fetch QC queues
   const loadQueues = useCallback(async (isSilent = false) => {
@@ -225,55 +109,45 @@ export function QCBoard() {
   const showNotification = (type: 'success' | 'error', msg: string) => {
     if (type === 'success') {
       setSuccessBanner(msg);
-      setTimeout(() => setSuccessBanner(null), 4000);
+      setTimeout(() => setSuccessBanner(null), 4500);
     } else {
       setErrorBanner(msg);
       setTimeout(() => setErrorBanner(null), 6000);
     }
   };
 
-  // Convert raw order to QC Job Card
-  const convertOrderToQCJobCard = (order: any, type: 'PRE_QC' | 'FINAL_QC'): QCJobCardDto => {
-    const item = order.items?.[0] || {};
-    const specs = (item.specifications as any) || {};
+  // Convert raw API order into typed QCJobCardDto
+  const convertOrderToQCJobCard = (order: any, type: 'FINAL_QC' = 'FINAL_QC'): QCJobCardDto => {
+    const item = order.items?.[0];
+    const specs = (item?.specifications as any) || {};
+    const artworkVersion = item?.artworkVersions?.[0];
+
+    const checklists = order.qcChecklists || [];
+    const latestFinalQc = checklists.find((c: any) => c.type === 'FINAL_QC');
+    const hasPassed = latestFinalQc?.outcome === 'PASS';
+    const isPassedToPacking =
+      order.status !== 'ON_HOLD' &&
+      (hasPassed ||
+        order.status === 'PACKING' ||
+        order.status === 'READY_FOR_DISPATCH' ||
+        order.status === 'OUT_FOR_DELIVERY' ||
+        order.status === 'DELIVERED' ||
+        order.jobCards?.some((j: any) => j.currentStation === 'PACKING' || j.status === 'PASSED'));
 
     const override = localCardOverrides[order.id];
-    let cardStatus = override?.status;
-
-    if (!cardStatus) {
-      if (order.status === 'QUALITY_CHECK') {
-        cardStatus = 'IN_INSPECTION';
-      } else if (order.status === 'ON_HOLD') {
-        cardStatus = 'ON_HOLD';
-      } else if (
-        order.status === 'READY_FOR_PACKING' ||
-        order.status === 'DISPATCH_QUEUE' ||
-        order.status === 'DISPATCHED'
-      ) {
-        cardStatus = 'APPROVED';
-      } else {
-        cardStatus = 'IN_INSPECTION';
-      }
+    let cardStatus = 'IN_INSPECTION';
+    if (override) {
+      cardStatus = override.status === 'QUEUED' ? 'IN_INSPECTION' : override.status;
+    } else if (order.status === 'ON_HOLD' || latestFinalQc?.outcome === 'FAIL') {
+      cardStatus = 'ON_HOLD';
+    } else if (isPassedToPacking) {
+      cardStatus = 'APPROVED';
     }
 
     const artworkFile =
-      order.approvedArtworkVersion?.fileUrl
-        ? {
-          fileUrl: order.approvedArtworkVersion.fileUrl,
-          storageKey: order.approvedArtworkVersion.storageKey,
-          originalFileName: order.approvedArtworkVersion.originalFileName || 'Approved_Artwork.pdf',
-          resolutionDpi: specs.resolutionDpi || 300,
-          actualMegapixels: specs.actualMegapixels || 16,
-        }
-        : (item?.latestArtworkVersion?.fileUrl
-        ? {
-          fileUrl: item.latestArtworkVersion.fileUrl,
-          storageKey: item.latestArtworkVersion.storageKey,
-          originalFileName: item.latestArtworkVersion.originalFileName || 'Latest_Artwork.pdf',
-          resolutionDpi: specs.resolutionDpi || 300,
-          actualMegapixels: specs.actualMegapixels || 16,
-        }
-        : (specs?.artworkUrl
+      specs?.artworkFile ||
+      artworkVersion ||
+      (specs?.artworkUrl
         ? {
           fileUrl: specs.artworkUrl,
           storageKey: specs.artworkStorageKey,
@@ -281,7 +155,7 @@ export function QCBoard() {
           resolutionDpi: specs.resolutionDpi || 300,
           actualMegapixels: specs.actualMegapixels || 12,
         }
-        : null));
+        : null);
 
     return {
       id: order.id,
@@ -331,15 +205,6 @@ export function QCBoard() {
       });
   }, [finalQueue, localCardOverrides, priority, slaStatus]);
 
-  // Card counts by column
-  const cardCountsByColumn = useMemo(() => {
-    const map: Record<string, number> = {};
-    columns.forEach((c) => {
-      map[c.key] = allCards.filter((card) => card.status === c.key).length;
-    });
-    return map;
-  }, [columns, allCards]);
-
   // Metrics
   const calculatedMetrics = useMemo(() => {
     const totalActive = allCards.length;
@@ -382,32 +247,35 @@ export function QCBoard() {
     }
 
     // Set optimistic state
-    updateCardOverride(card.id, { status: columnKey });
+    setLocalCardOverrides((prev) => ({
+      ...prev,
+      [card.id]: { status: columnKey },
+    }));
+
     showNotification('success', `Order #${card.orderNumber} moved to ${columnKey.replace('_', ' ')}.`);
   };
 
   // Card Contextual Actions
   const handleCardAction = async (card: QCJobCardDto, actionType: string) => {
     if (actionType === 'START_INSPECTION') {
+      setLocalCardOverrides((prev) => ({
+        ...prev,
+        [card.id]: { status: 'IN_INSPECTION' },
+      }));
+      showNotification('success', `Inspector active on #${card.orderNumber}.`);
+      return;
+    }
+
+    if (actionType === 'QC_PASS') {
+      // Must follow the 8-point physical QC checklist before passing to packing
       setInspectCard(card);
       setIsInspectOpen(true);
-    } else if (actionType === 'QUICK_PASS') {
-      try {
-        await api.submitQC({
-          orderId: card.orderId,
-          type: card.type,
-          items: [{ code: 'OVERALL_PASS', name: 'Overall Quality Pass', result: 'PASS' }],
-          defects: [],
-          generalNotes: 'Passed via QC One-Click Sign-off',
-        });
-        updateCardOverride(card.id, { status: 'APPROVED' });
-        showNotification('success', `Order #${card.orderNumber} Quality Approved and Released to Packing!`);
-        loadQueues(true);
-      } catch (err: any) {
-        showNotification('error', `QC Release Error: ${err?.message || 'Failed to release order'}`);
-      }
-    } else if (actionType === 'FLAG_HOLD') {
+      return;
+    }
+
+    if (actionType === 'QC_HOLD') {
       setHoldModalCard({ card, targetKey: 'ON_HOLD' });
+      return;
     }
   };
 
@@ -421,32 +289,43 @@ export function QCBoard() {
     try {
       await api.submitQC({
         orderId: card.orderId,
-        type: card.type,
+        type: 'FINAL_QC',
         items: checks,
-        defects: [],
-        generalNotes: notes || 'Physical Verification Complete - Pass',
+        generalNotes: notes,
       });
 
-      updateCardOverride(card.id, { status: 'APPROVED' });
-      showNotification('success', `Order #${card.orderNumber} Certified & Transferred to Shipping.`);
+      setLocalCardOverrides((prev) => ({
+        ...prev,
+        [card.id]: { status: 'APPROVED' },
+      }));
+
+      showNotification(
+        'success',
+        `Order #${card.orderNumber} Final QC Passed! Checked Payment Clearance (Released to Packing / Finance).`,
+      );
+
       loadQueues(true);
     } catch (err: any) {
       showNotification('error', `QC Error: ${err?.message || 'Failed to complete inspection'}`);
     }
   };
 
-  // Submit Fail from Drawer
+  // Submit Fail/Hold from Drawer
   const handleSubmitFailFromDrawer = async (card: QCJobCardDto, defects: string[], notes: string) => {
     try {
       await api.submitQC({
         orderId: card.orderId,
         type: card.type,
-        items: [{ code: 'DEFECT_FOUND', name: 'QC Fail', result: 'FAIL' }],
+        items: [{ code: 'MANUAL_FAIL', name: 'Inspector Flagged', result: 'FAIL' }],
         defects,
         generalNotes: notes,
       });
 
-      updateCardOverride(card.id, { status: 'ON_HOLD', holdReason: notes });
+      setLocalCardOverrides((prev) => ({
+        ...prev,
+        [card.id]: { status: 'ON_HOLD', holdReason: notes },
+      }));
+
       showNotification('error', `Order #${card.orderNumber} placed on Technical Hold.`);
       loadQueues(true);
     } catch (err: any) {
@@ -468,7 +347,11 @@ export function QCBoard() {
         generalNotes: notes ? `${reason} - ${notes}` : reason,
       });
 
-      updateCardOverride(card.id, { status: 'ON_HOLD', holdReason: reason });
+      setLocalCardOverrides((prev) => ({
+        ...prev,
+        [card.id]: { status: 'ON_HOLD', holdReason: reason },
+      }));
+
       showNotification('error', `Order #${card.orderNumber} placed on Technical Hold: ${reason}.`);
       loadQueues(true);
     } catch (err: any) {
@@ -484,6 +367,7 @@ export function QCBoard() {
   };
 
   const hasActiveFilters = Boolean(search || priority !== 'ALL' || slaStatus !== 'ALL');
+  const columns = FINAL_QC_COLUMNS;
 
   return (
     <div className="space-y-4">
@@ -494,8 +378,6 @@ export function QCBoard() {
             <span>PLANT OPERATING SYSTEM</span>
             <span>•</span>
             <span className="text-slate-900">TECHNICAL QUALITY GATES</span>
-            <span>•</span>
-            <span className="text-slate-400 font-medium">{columns.length} Stations</span>
           </div>
           <h1 className="text-[24px] sm:text-[28px] font-bold text-slate-900 tracking-tight leading-[1.2] mt-1">
             Quality Control (QC) & Inspection Operating Board
@@ -505,43 +387,18 @@ export function QCBoard() {
           </p>
         </div>
 
-        {/* Action Buttons: Live sync, Add, Manage & auto refresh */}
+        {/* Action Buttons: Live sync & auto refresh */}
         <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto mt-2 sm:mt-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsManagerModalOpen(true)}
-            className="text-xs text-slate-700 bg-white"
-          >
-            <RiSettings4Line className="h-3.5 w-3.5 mr-1 text-slate-500" />
-            <span>Manage Stations</span>
-          </Button>
-
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => {
-              setEditingColumn(null);
-              setIsEditModalOpen(true);
-            }}
-            className="shadow-brand text-xs"
-          >
-            <RiAddLine className="h-4 w-4 mr-1" />
-            <span>Add Station</span>
-          </Button>
-
           <button
             onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1.5 transition flex-1 sm:flex-initial ${
-              autoRefresh
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1.5 transition flex-1 sm:flex-initial ${autoRefresh
                 ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                 : 'bg-slate-100 text-slate-600 border-slate-200'
-            }`}
+              }`}
           >
             <span
-              className={`h-2 w-2 rounded-full ${
-                autoRefresh ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
-              }`}
+              className={`h-2 w-2 rounded-full ${autoRefresh ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                }`}
             />
             <span>{autoRefresh ? 'Live Auto-Sync (15s)' : 'Auto-Sync Off'}</span>
           </button>
@@ -593,11 +450,11 @@ export function QCBoard() {
 
       {/* Kanban Board Horizontal Columns Container */}
       <div className="flex gap-3.5 overflow-x-auto pb-4 pt-1 custom-scrollbar min-h-[560px] items-start">
-        {columns.map((column, index) => {
+        {columns.map((column) => {
           const columnCards = allCards.filter((c) => c.status === column.key);
           return (
             <QCColumn
-              key={column.id || column.key}
+              key={column.id}
               column={column}
               cards={columnCards}
               onAction={handleCardAction}
@@ -606,14 +463,6 @@ export function QCBoard() {
               draggedCard={draggedCard}
               onCardDragStart={handleCardDragStart}
               onCardDragEnd={handleCardDragEnd}
-              onEditColumn={(c) => {
-                setEditingColumn(c);
-                setIsEditModalOpen(true);
-              }}
-              onDeleteColumn={(c) => handleDeleteColumn(c.key)}
-              onMoveColumn={handleMoveColumn}
-              canMoveLeft={index > 0}
-              canMoveRight={index < columns.length - 1}
             />
           );
         })}
@@ -638,37 +487,6 @@ export function QCBoard() {
         isOpen={Boolean(holdModalCard)}
         onClose={() => setHoldModalCard(null)}
         onSubmit={handleSubmitHoldModal}
-      />
-
-      {/* Station Manager Modal */}
-      <QCColumnManagerModal
-        isOpen={isManagerModalOpen}
-        columns={columns}
-        cardCounts={cardCountsByColumn}
-        onClose={() => setIsManagerModalOpen(false)}
-        onReorder={handleReorderColumns}
-        onEditColumn={(col) => {
-          setEditingColumn(col);
-          setIsEditModalOpen(true);
-        }}
-        onDeleteColumn={handleDeleteColumn}
-        onAddNewColumn={() => {
-          setEditingColumn(null);
-          setIsEditModalOpen(true);
-        }}
-        onResetDefaults={handleResetDefaults}
-      />
-
-      {/* Station Add / Edit Modal */}
-      <QCColumnEditModal
-        isOpen={isEditModalOpen}
-        column={editingColumn}
-        onClose={() => {
-          setIsEditModalOpen(false);
-          setEditingColumn(null);
-        }}
-        onSave={handleSaveColumn}
-        onDelete={handleDeleteColumn}
       />
     </div>
   );

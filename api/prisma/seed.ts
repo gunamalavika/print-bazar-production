@@ -1,4 +1,5 @@
-import { PrismaClient, UserRole, Department, ProductStatus, InventoryCategory, OrderStatus } from '@prisma/client';
+import { PrismaClient, Department, ProductStatus, InventoryCategory, OrderStatus } from '@prisma/client';
+import { UserRole } from '../src/common/types/roles';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -82,6 +83,12 @@ async function main() {
       fullName: 'Priya Nair (Visual & Proofing Designer)',
       role: UserRole.DESIGNER_PREPRESS,
       department: Department.DESIGN_PREPRESS,
+    },
+    {
+      email: 'prodhead@printbazzar.com',
+      fullName: 'Rajesh Sharma (Production Head)',
+      role: UserRole.PRODUCTION_HEAD,
+      department: Department.PRODUCTION,
     },
     {
       email: 'operator@printbazzar.com',

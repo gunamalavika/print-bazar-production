@@ -52,6 +52,8 @@ export function getRoleDestination(role?: string): string {
       return '/admin/dashboard';
     case 'OPERATIONAL_MANAGER':
       return '/operations/orders';
+    case 'PRODUCTION_HEAD':
+      return '/production/assign';
     case 'SALES_OFFICE':
       return '/sales/orders';
     case 'DESIGNER_PREPRESS':

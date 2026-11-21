@@ -28,6 +28,7 @@ import {
   RiDownload2Line,
 } from 'react-icons/ri';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Button, Badge } from '@/components/ui';
 import { Modal } from '@/components/ui/Modal';
@@ -40,6 +41,9 @@ export default function OperationalOrderDetailPage({
   const resolvedParams = use(params);
   const orderId = resolvedParams.id;
   const router = useRouter();
+  const { user: currentUser } = useAuth();
+  const isProductionHead = currentUser?.role === 'PRODUCTION_HEAD';
+  const basePath = isProductionHead ? '/production/assign' : '/operations/orders';
 
   const [order, setOrder] = useState<any | null>(null);
   const [readiness, setReadiness] = useState<any | null>(null);
@@ -90,7 +94,7 @@ export default function OperationalOrderDetailPage({
           customerApproval: { status: 'APPROVED', isApproved: true },
         })),
         api.getOperationsOrderTimeline(orderId).catch(() => []),
-        api.getEligibleDesigners().catch(() => []),
+        isProductionHead ? Promise.resolve([]) : api.getEligibleDesigners().catch(() => []),
         api.getEligibleProductionOperators().catch(() => []),
       ]);
 
@@ -107,7 +111,7 @@ export default function OperationalOrderDetailPage({
     } finally {
       setIsLoading(false);
     }
-  }, [orderId]);
+  }, [orderId, isProductionHead]);
 
   useEffect(() => {
     loadOrderDetail();
@@ -269,7 +273,7 @@ export default function OperationalOrderDetailPage({
         <RiAlertLine className="h-12 w-12 text-rose-500 mx-auto mb-3" />
         <h2 className="text-lg font-bold text-slate-900">Order Not Found</h2>
         <p className="text-xs text-slate-500 mt-1">The requested order does not exist or you lack access.</p>
-        <Link href="/operations/orders" className="mt-4 inline-block">
+        <Link href={basePath} className="mt-4 inline-block">
           <Button variant="primary" size="sm">
             Back to Orders Queue
           </Button>
@@ -289,11 +293,11 @@ export default function OperationalOrderDetailPage({
         <div>
           <div className="flex items-center gap-2 mb-1.5">
             <Link
-              href="/operations/orders"
+              href={basePath}
               className="text-xs font-mono font-semibold text-slate-500 hover:text-slate-900 flex items-center gap-1"
             >
               <RiArrowLeftLine className="h-3.5 w-3.5" />
-              <span>Operations Orders</span>
+              <span>{isProductionHead ? 'Production Assign' : 'Operations Orders'}</span>
             </Link>
             <span className="text-slate-300">•</span>
             <span className="bg-[#FFED00] text-slate-950 text-[10px] font-mono font-bold px-2 py-0.5 rounded border border-[#E3A008]/40">
@@ -320,17 +324,23 @@ export default function OperationalOrderDetailPage({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg">
             <span className="text-[11px] font-mono font-bold text-slate-600">PRIORITY:</span>
-            <select
-              value={selectedPriority}
-              disabled={isUpdatingPriority}
-              onChange={(e) => handlePriorityChange(e.target.value)}
-              className="bg-white border border-slate-300 rounded text-xs font-bold text-slate-900 py-1 px-2 focus:outline-none focus:ring-2 focus:ring-[#FFED00]"
-            >
-              <option value="LOW">LOW</option>
-              <option value="NORMAL">NORMAL</option>
-              <option value="HIGH">HIGH</option>
-              <option value="URGENT">URGENT (Expedited)</option>
-            </select>
+            {isProductionHead ? (
+              <span className="text-xs font-bold text-slate-900 font-mono px-1.5 py-0.5 bg-white border border-slate-200 rounded">
+                {selectedPriority}
+              </span>
+            ) : (
+              <select
+                value={selectedPriority}
+                disabled={isUpdatingPriority}
+                onChange={(e) => handlePriorityChange(e.target.value)}
+                className="bg-white border border-slate-300 rounded text-xs font-bold text-slate-900 py-1 px-2 focus:outline-none focus:ring-2 focus:ring-[#FFED00]"
+              >
+                <option value="LOW">LOW</option>
+                <option value="NORMAL">NORMAL</option>
+                <option value="HIGH">HIGH</option>
+                <option value="URGENT">URGENT (Expedited)</option>
+              </select>
+            )}
           </div>
         </div>
       </div>
@@ -797,6 +807,18 @@ export default function OperationalOrderDetailPage({
                 order.status !== 'DESIGN_REQUIRED' &&
                 order.status !== 'ARTWORK_REVIEW');
 
+            const activeDesignAssignment =
+              order.activeDesignAssignment ||
+              order.assignments?.find((a: any) => a.taskType === 'DESIGN' && a.status === 'ACTIVE');
+            const activeProdAssignment =
+              order.activeProductionAssignment ||
+              order.assignments?.find((a: any) => a.taskType === 'PRODUCTION' && a.status === 'ACTIVE');
+            const isDesignerDisabled = Boolean(
+              (activeProdAssignment && activeProdAssignment.assignedUser?.role === 'PRODUCTION_OPERATOR') ||
+              (order.assignedOperator && (!order.assignedOperator.role || order.assignedOperator.role === 'PRODUCTION_OPERATOR')),
+            );
+            const isOperatorDisabled = Boolean(activeDesignAssignment);
+
             return (
               <div className="bg-white border-2 border-slate-900 rounded-xl p-5 shadow-xs space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
@@ -820,23 +842,45 @@ export default function OperationalOrderDetailPage({
                     </h3>
                   </div>
 
-                  {/* Action Buttons for BOTH options */}
+                  {/* Action Buttons (Production Head strictly assigns Production Operators only) */}
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => setAssignmentModalType('DESIGN')}
-                      className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
-                    >
-                      <RiUserFollowLine className="h-4 w-4 mr-1.5" />
-                      <span>{order.assignedDesigner ? 'Reassign Prepress Designer' : 'Assign Prepress Designer'}</span>
-                    </Button>
+                    {!isProductionHead && (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        disabled={isDesignerDisabled}
+                        onClick={() => !isDesignerDisabled && setAssignmentModalType('DESIGN')}
+                        title={
+                          isDesignerDisabled
+                            ? 'Designer assignment is disabled because a Production Operator is assigned'
+                            : undefined
+                        }
+                        className={
+                          isDesignerDisabled
+                            ? 'bg-slate-200 text-slate-400 font-bold cursor-not-allowed'
+                            : 'bg-amber-600 hover:bg-amber-700 text-white font-bold'
+                        }
+                      >
+                        <RiUserFollowLine className="h-4 w-4 mr-1.5" />
+                        <span>{order.assignedDesigner ? 'Reassign Prepress Designer' : 'Assign Prepress Designer'}</span>
+                      </Button>
+                    )}
 
                     <Button
                       variant="primary"
                       size="sm"
-                      onClick={() => setAssignmentModalType('PRODUCTION')}
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                      disabled={isOperatorDisabled}
+                      onClick={() => !isOperatorDisabled && setAssignmentModalType('PRODUCTION')}
+                      title={
+                        isOperatorDisabled
+                          ? 'Operator assignment is disabled while a Prepress Designer is assigned'
+                          : undefined
+                      }
+                      className={
+                        isOperatorDisabled
+                          ? 'bg-slate-200 text-slate-400 font-bold cursor-not-allowed'
+                          : 'bg-blue-600 hover:bg-blue-700 text-white font-bold'
+                      }
                     >
                       <RiPrinterLine className="h-4 w-4 mr-1.5" />
                       <span>{order.assignedOperator ? 'Reassign Production Operator' : 'Assign Production Operator'}</span>
@@ -846,7 +890,7 @@ export default function OperationalOrderDetailPage({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
                   {/* Prepress Designer Card */}
-                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col justify-between">
+                  <div className={`p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col justify-between ${isDesignerDisabled ? 'opacity-60' : ''}`}>
                     <div>
                       <span className="text-[10px] font-mono text-slate-400 uppercase block font-bold">
                         PREPRESS DESIGNER
@@ -867,17 +911,29 @@ export default function OperationalOrderDetailPage({
                         </div>
                       )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setAssignmentModalType('DESIGN')}
-                      className="mt-2 text-[11px] font-bold text-amber-700 hover:text-amber-900 text-left underline"
-                    >
-                      {order.assignedDesigner ? 'Change Designer' : '+ Assign Designer'}
-                    </button>
+                    {!isProductionHead && (
+                      <button
+                        type="button"
+                        disabled={isDesignerDisabled}
+                        onClick={() => !isDesignerDisabled && setAssignmentModalType('DESIGN')}
+                        title={
+                          isDesignerDisabled
+                            ? 'Designer assignment is disabled because a Production Operator is assigned'
+                            : undefined
+                        }
+                        className={`mt-2 text-[11px] font-bold text-left ${
+                          isDesignerDisabled
+                            ? 'text-slate-400 cursor-not-allowed'
+                            : 'text-amber-700 hover:text-amber-900 underline cursor-pointer'
+                        }`}
+                      >
+                        {order.assignedDesigner ? 'Change Designer' : '+ Assign Designer'}
+                      </button>
+                    )}
                   </div>
 
                   {/* Production Operator Card */}
-                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col justify-between">
+                  <div className={`p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col justify-between ${isOperatorDisabled ? 'opacity-60' : ''}`}>
                     <div>
                       <span className="text-[10px] font-mono text-slate-400 uppercase block font-bold">
                         PRODUCTION OPERATOR
@@ -900,8 +956,18 @@ export default function OperationalOrderDetailPage({
                     </div>
                     <button
                       type="button"
-                      onClick={() => setAssignmentModalType('PRODUCTION')}
-                      className="mt-2 text-[11px] font-bold text-blue-700 hover:text-blue-900 text-left underline"
+                      disabled={isOperatorDisabled}
+                      onClick={() => !isOperatorDisabled && setAssignmentModalType('PRODUCTION')}
+                      title={
+                        isOperatorDisabled
+                          ? 'Operator assignment is disabled while a Prepress Designer is assigned'
+                          : undefined
+                      }
+                      className={`mt-2 text-[11px] font-bold text-left ${
+                        isOperatorDisabled
+                          ? 'text-slate-400 cursor-not-allowed'
+                          : 'text-blue-700 hover:text-blue-900 underline cursor-pointer'
+                      }`}
                     >
                       {order.assignedOperator ? 'Change Operator' : '+ Assign Operator'}
                     </button>
@@ -1023,27 +1089,29 @@ export default function OperationalOrderDetailPage({
               </span>
             </div>
 
-            {/* Add Note Form */}
-            <form onSubmit={handleAddNote} className="space-y-2">
-              <textarea
-                rows={2}
-                value={noteContent}
-                onChange={(e) => setNoteContent(e.target.value)}
-                placeholder="Log internal note, phone call, customer delay, or departmental instruction..."
-                className="w-full p-2.5 border border-slate-300 rounded-lg text-xs bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FFED00]"
-              />
-              <div className="flex justify-end">
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="xs"
-                  isLoading={isAddingNote}
-                  disabled={!noteContent.trim()}
-                >
-                  Add Internal Note
-                </Button>
-              </div>
-            </form>
+            {/* Add Note Form (Restricted from Production Head) */}
+            {!isProductionHead && (
+              <form onSubmit={handleAddNote} className="space-y-2">
+                <textarea
+                  rows={2}
+                  value={noteContent}
+                  onChange={(e) => setNoteContent(e.target.value)}
+                  placeholder="Log internal note, phone call, customer delay, or departmental instruction..."
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-xs bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FFED00]"
+                />
+                <div className="flex justify-end">
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="xs"
+                    isLoading={isAddingNote}
+                    disabled={!noteContent.trim()}
+                  >
+                    Add Internal Note
+                  </Button>
+                </div>
+              </form>
+            )}
 
             {/* Note Feed */}
             <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">

@@ -39,6 +39,14 @@ export function ProductionJobCard({
   isDragging = false,
 }: ProductionJobCardProps) {
   const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadingArtId, setDownloadingArtId] = useState<string | null>(null);
+
+  const artworksList =
+    card.artworks && card.artworks.length > 0
+      ? card.artworks
+      : card.artwork
+      ? [card.artwork]
+      : [];
 
   // Determine Priority color
   const priorityColor =
@@ -56,21 +64,14 @@ export function ProductionJobCard({
       ? 'bg-amber-100 text-amber-900 font-semibold border border-amber-300'
       : 'bg-emerald-50 text-emerald-800 font-medium border border-emerald-200';
 
-  // Direct 1-Click Artwork Blob Download Handler
-  const handleDownloadArtwork = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-
-    const rawUrl = card.artwork?.fileUrl || card.artwork?.storageKey;
-    if (!rawUrl) {
-      alert(`No attached artwork file found for job ${card.jobNumber}. Please check digital job ticket.`);
-      return;
-    }
-
-    setIsDownloading(true);
+  const downloadSingleArtworkFile = async (
+    artItem: NonNullable<KanbanCardDto['artwork']>,
+    fallbackIndex = 1,
+  ) => {
+    const rawUrl = artItem?.fileUrl || artItem?.storageKey;
+    if (!rawUrl) return;
 
     const apiBase = getApiHost();
-    
-    // Resolve absolute URL pointing to backend server on port 4000
     let targetPath = rawUrl;
     if (!targetPath.startsWith('http')) {
       if (targetPath.startsWith('/uploads')) {
@@ -86,7 +87,8 @@ export function ProductionJobCard({
       }
     }
 
-    const fileName = card.artwork?.originalFileName || `${card.jobNumber}_Approved_Artwork.pdf`;
+    const fileName =
+      artItem?.originalFileName || `${card.jobNumber}_Approved_Artwork_${fallbackIndex}.pdf`;
 
     try {
       const response = await fetch(targetPath);
@@ -105,8 +107,42 @@ export function ProductionJobCard({
     } catch (err) {
       console.warn('Direct blob download fallback to window.open:', err);
       window.open(targetPath, '_blank');
+    }
+  };
+
+  // Direct 1-Click Single or All Artworks Download Handler
+  const handleDownloadArtwork = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    if (artworksList.length === 0) {
+      alert(`No attached artwork file found for job ${card.jobNumber}. Please check digital job ticket.`);
+      return;
+    }
+
+    setIsDownloading(true);
+    try {
+      for (let i = 0; i < artworksList.length; i++) {
+        await downloadSingleArtworkFile(artworksList[i], i + 1);
+        if (artworksList.length > 1 && i < artworksList.length - 1) {
+          await new Promise((r) => setTimeout(r, 250));
+        }
+      }
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  const handleDownloadOne = async (
+    e: React.MouseEvent,
+    artItem: NonNullable<KanbanCardDto['artwork']>,
+    idx: number,
+  ) => {
+    e.stopPropagation();
+    setDownloadingArtId(artItem.id || String(idx));
+    try {
+      await downloadSingleArtworkFile(artItem, idx + 1);
+    } finally {
+      setDownloadingArtId(null);
     }
   };
 
@@ -226,42 +262,100 @@ export function ProductionJobCard({
         )}
       </div>
 
-      {/* Approved Job Artwork Download Box */}
-      <div className="bg-amber-50/70 border border-amber-200/80 rounded-lg p-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <div className="p-1 rounded bg-amber-100 text-amber-800 flex-shrink-0">
-            <RiFilePdfLine className="h-3.5 w-3.5" />
+      {/* Approved Job Artwork Download Box (Supports Single & Multiple Artworks) */}
+      <div className="bg-amber-50/70 border border-amber-200/80 rounded-lg p-2 space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="p-1 rounded bg-amber-100 text-amber-800 flex-shrink-0">
+              <RiFilePdfLine className="h-3.5 w-3.5" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[11px] font-bold text-slate-900 block truncate leading-tight">
+                {artworksList.length > 1
+                  ? `${artworksList.length} Approved Artwork Files`
+                  : card.artwork?.originalFileName || 'Production Artwork'}
+              </span>
+              <span className="text-[9px] font-mono text-emerald-800 font-semibold flex items-center gap-1 leading-tight mt-0.5">
+                <RiShieldCheckLine className="h-3 w-3 text-emerald-600" />
+                <span>
+                  {artworksList.length > 1
+                    ? 'Multi-File Print Package Ready'
+                    : 'Approved Production File'}
+                </span>
+              </span>
+            </div>
           </div>
-          <div className="min-w-0">
-            <span className="text-[11px] font-bold text-slate-900 block truncate leading-tight">
-              {card.artwork?.originalFileName || 'Production Artwork'}
-            </span>
-            <span className="text-[9px] font-mono text-emerald-800 font-semibold flex items-center gap-1 leading-tight mt-0.5">
-              <RiShieldCheckLine className="h-3 w-3 text-emerald-600" />
-              <span>Approved Production File</span>
-            </span>
-          </div>
+
+          <button
+            type="button"
+            disabled={isDownloading || artworksList.length === 0}
+            onClick={handleDownloadArtwork}
+            className="inline-flex items-center gap-1 bg-slate-950 hover:bg-slate-800 disabled:bg-slate-700 text-[#FFED00] font-black text-[10px] px-2.5 py-1 rounded shadow-2xs transition active:scale-95 flex-shrink-0 cursor-pointer border border-[#E3A008]/40"
+            title={
+              artworksList.length > 1
+                ? `Download all ${artworksList.length} approved print files`
+                : 'Download Approved Print File'
+            }
+          >
+            {isDownloading ? (
+              <>
+                <RiLoader4Line className="h-3.5 w-3.5 animate-spin" />
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <RiDownload2Line className="h-3.5 w-3.5 stroke-[1.5]" />
+                <span>
+                  {artworksList.length > 1
+                    ? `Download All (${artworksList.length})`
+                    : 'Download'}
+                </span>
+              </>
+            )}
+          </button>
         </div>
 
-        <button
-          type="button"
-          disabled={isDownloading}
-          onClick={handleDownloadArtwork}
-          className="inline-flex items-center gap-1 bg-slate-950 hover:bg-slate-800 disabled:bg-slate-700 text-[#FFED00] font-black text-[10px] px-2.5 py-1 rounded shadow-2xs transition active:scale-95 flex-shrink-0 cursor-pointer border border-[#E3A008]/40"
-          title="Download Approved Print File"
-        >
-          {isDownloading ? (
-            <>
-              <RiLoader4Line className="h-3.5 w-3.5 animate-spin" />
-              <span>Saving...</span>
-            </>
-          ) : (
-            <>
-              <RiDownload2Line className="h-3.5 w-3.5 stroke-[1.5]" />
-              <span>Download</span>
-            </>
-          )}
-        </button>
+        {/* Individual file download rows when multiple artworks exist */}
+        {artworksList.length > 1 && (
+          <div className="pt-1.5 border-t border-amber-200/70 space-y-1 max-h-32 overflow-y-auto pr-0.5">
+            {artworksList.map((artItem, idx) => {
+              const itemId = artItem.id || String(idx);
+              const isItemDownloading = downloadingArtId === itemId;
+              return (
+                <div
+                  key={itemId}
+                  className="flex items-center justify-between gap-2 bg-white/90 px-2 py-1 rounded border border-amber-200/80 text-[10.5px]"
+                >
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="font-mono font-bold text-[9.5px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 shrink-0">
+                      V{artItem.versionNumber || idx + 1}
+                    </span>
+                    <span
+                      className="font-medium text-slate-800 truncate"
+                      title={artItem.originalFileName}
+                    >
+                      {artItem.originalFileName}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isItemDownloading || isDownloading}
+                    onClick={(e) => handleDownloadOne(e, artItem, idx)}
+                    className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-800 hover:text-black bg-amber-100/80 hover:bg-amber-200 px-2 py-0.5 rounded transition shrink-0 cursor-pointer"
+                    title={`Download ${artItem.originalFileName}`}
+                  >
+                    {isItemDownloading ? (
+                      <RiLoader4Line className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <RiDownload2Line className="h-3 w-3" />
+                    )}
+                    <span>Download</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Machine & Operator Badge */}
