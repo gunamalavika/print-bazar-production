@@ -510,7 +510,10 @@ export interface InventoryItemDto {
  * - Automatically ensures /api/v1 is appended if the base URL points only to the domain/origin
  */
 export function normalizeApiBaseUrl(rawBase?: string): string {
-  const fallback = 'http://localhost:4000/api/v1';
+  const fallback =
+    process.env.NODE_ENV === 'production'
+      ? 'https://api-production-d4ed.up.railway.app/api/v1'
+      : 'http://localhost:4000/api/v1';
   let base = (rawBase || process.env.NEXT_PUBLIC_API_URL || fallback).trim().replace(/\/+$/, '');
   
   // If user configured origin without /api/v1 (e.g. https://api-production-d4ed.up.railway.app)
@@ -525,7 +528,10 @@ export function normalizeApiBaseUrl(rawBase?: string): string {
  * Used for static asset URLs (/uploads), downloads, and WebSocket connections.
  */
 export function getApiHost(rawUrl?: string): string {
-  const fallback = 'http://localhost:4000';
+  const fallback =
+    process.env.NODE_ENV === 'production'
+      ? 'https://api-production-d4ed.up.railway.app'
+      : 'http://localhost:4000';
   const url = (rawUrl || process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL || fallback).trim();
   return url.replace(/\/+$/, '').replace(/\/api\/v1\/?$/, '');
 }
@@ -645,10 +651,25 @@ export async function fetchApi<T>(endpoint: string, options?: RequestInit): Prom
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+    });
+  } catch (networkErr) {
+    // Fallback to Next.js same-origin proxy (/api/v1/...) if direct cross-origin fetch fails (e.g. CORS preflight)
+    if (typeof window !== 'undefined' && /^https?:\/\//i.test(url)) {
+      const cleanEndpoint = (endpoint || '').trim().replace(/^\/+/, '').replace(/^api\/v1\//, '');
+      const proxyUrl = `/api/v1/${cleanEndpoint}`;
+      response = await fetch(proxyUrl, {
+        ...options,
+        headers,
+      });
+    } else {
+      throw networkErr;
+    }
+  }
 
   if (!response.ok) {
     let errorDetail = 'API Request Failed';

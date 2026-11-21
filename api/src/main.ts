@@ -12,6 +12,26 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
+  // 0. Unconditional Top-Level CORS & Preflight Handler (Guarantees Vercel & Custom Domains Never Fail Preflight)
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const requestOrigin = req.headers.origin;
+    res.setHeader('Access-Control-Allow-Origin', requestOrigin || '*');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      (req.headers['access-control-request-headers'] as string) ||
+        'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma',
+    );
+    res.setHeader('Access-Control-Max-Age', '86400');
+    res.setHeader('Vary', 'Origin');
+
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
+    next();
+  });
+
   // Ensure uploads directories exist across potential working roots
   const candidateUploadsDirs = [
     path.join(process.cwd(), 'uploads'),
@@ -147,15 +167,18 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api/v1');
 
-  const rawCorsOrigin = process.env.CORS_ORIGIN;
-  const parsedOrigins =
-    rawCorsOrigin && rawCorsOrigin !== '*' && !rawCorsOrigin.includes('yourdomain.com')
-      ? rawCorsOrigin.split(',').map((o) => o.trim()).filter(Boolean)
-      : true;
-
   app.enableCors({
-    origin: parsedOrigins,
+    origin: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: [
+      'Origin',
+      'X-Requested-With',
+      'Content-Type',
+      'Accept',
+      'Authorization',
+      'Cache-Control',
+      'Pragma',
+    ],
     credentials: true,
   });
 

@@ -15,7 +15,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 @Injectable()
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: true,
     credentials: true,
   },
   namespace: '/',

@@ -13,7 +13,8 @@ export interface QCColumnDefinitionDto {
   name: string;
   description?: string;
   color?: string;
-  type?: 'SYSTEM' | 'HOLD' | 'APPROVED';
+  type?: 'SYSTEM' | 'HOLD' | 'APPROVED' | 'CUSTOM';
+  isCustom?: boolean;
 }
 
 interface QCColumnProps {

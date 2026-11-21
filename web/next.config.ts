@@ -40,7 +40,11 @@ const nextConfig: NextConfig = {
     ];
   },
   async rewrites() {
-    const rawApiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+    const defaultBackend =
+      process.env.NODE_ENV === 'production'
+        ? 'https://api-production-d4ed.up.railway.app/api/v1'
+        : 'http://localhost:4000/api/v1';
+    const rawApiUrl = process.env.NEXT_PUBLIC_API_URL || defaultBackend;
     const apiOrigin = rawApiUrl.trim().replace(/\/+$/, '').replace(/\/api\/v1$/, '');
     return [
       {

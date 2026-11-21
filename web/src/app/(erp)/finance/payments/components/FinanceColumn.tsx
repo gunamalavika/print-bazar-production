@@ -15,6 +15,7 @@ export interface FinanceColumnDefinitionDto {
   description?: string;
   color?: string;
   type?: 'SYSTEM' | 'HOLD' | 'APPROVED';
+  isCustom?: boolean;
 }
 
 interface FinanceColumnProps {
