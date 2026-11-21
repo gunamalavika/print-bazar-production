@@ -492,7 +492,11 @@ export default function WalkInOrdersPage() {
       setIsCalculating(true);
       try {
         const optionPayload = Object.entries(fieldValues)
-          .filter(([, valueCode]) => valueCode !== undefined && valueCode !== null && valueCode !== '')
+          .filter(([optionCode, valueCode]) => {
+            if (valueCode === undefined || valueCode === null || valueCode === '') return false;
+            if (evaluatedConfig.groupStatus?.[optionCode]?.isHiddenByRule === true) return false;
+            return true;
+          })
           .map(([optionCode, valueCode]) => ({
             optionCode,
             valueCode: String(valueCode),
