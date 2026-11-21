@@ -92,6 +92,10 @@ export interface DesignQueueItem {
   assignedDesignerName?: string | null;
   assignedDesigner?: any;
   assignedOperator?: any;
+  assignmentNotes?: string | null;
+  assignmentReason?: string | null;
+  assignedBy?: string | null;
+  assignedAt?: string | null;
   customerNotes?: string | null;
   slaDueDate?: string;
   dueAt?: string;
@@ -1413,6 +1417,21 @@ export default function ArtworkPrepressPage() {
                         )}
                       </div>
 
+                      {/* Assignment Notes from Operations Coordinator */}
+                      {order.assignmentNotes && (
+                        <div className="p-2.5 rounded-xl bg-amber-50/90 border border-amber-200/90 text-[11px] text-amber-950 space-y-1 shadow-2xs">
+                          <div className="flex items-center gap-1.5 text-amber-800">
+                            <MessageSquare className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                            <span className="font-bold uppercase tracking-wider text-[10px] font-mono">
+                              Assignment Notes{order.assignedBy ? ` (${order.assignedBy})` : ''}:
+                            </span>
+                          </div>
+                          <p className="line-clamp-2 text-amber-950 font-medium whitespace-pre-wrap leading-relaxed">
+                            {order.assignmentNotes}
+                          </p>
+                        </div>
+                      )}
+
                       {/* Alert banner if revision directives exist */}
                       {isRevision && (
                         <div className="p-2 rounded-lg bg-rose-50 border border-rose-200 text-[11px] text-rose-900 font-semibold space-y-0.5">
@@ -1577,7 +1596,14 @@ export default function ArtworkPrepressPage() {
                             </div>
                           </td>
                           <td className="py-3 px-4 font-mono text-slate-600">
-                            {order.assignedDesignerName || order.assignedDesigner?.fullName || 'Unassigned'}
+                            <div>
+                              <span>{order.assignedDesignerName || order.assignedDesigner?.fullName || 'Unassigned'}</span>
+                              {order.assignmentNotes && (
+                                <div className="text-[10px] text-amber-950 bg-amber-50 border border-amber-200/90 rounded px-1.5 py-0.5 mt-1 truncate max-w-[200px]" title={`Assignment Note: ${order.assignmentNotes}`}>
+                                  <span className="font-bold text-amber-800">Note:</span> {order.assignmentNotes}
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="py-3 px-4 text-right">
                             <button
@@ -1985,6 +2011,19 @@ export default function ArtworkPrepressPage() {
                       ) : (
                         <div className="text-xs text-slate-500 italic p-3 bg-white rounded-xl border border-slate-200">
                           Standard commercial specifications configured.
+                        </div>
+                      )}
+
+                      {/* Operations Coordinator Assignment Notes */}
+                      {inspectedOrder.assignmentNotes && (
+                        <div className="p-3.5 bg-amber-50/95 rounded-xl border border-amber-300 text-xs space-y-1.5 shadow-2xs">
+                          <div className="flex items-center gap-1.5 font-bold text-amber-950 text-[11px] uppercase tracking-wider font-mono">
+                            <MessageSquare className="h-3.5 w-3.5 text-amber-600" />
+                            <span>Operations Assignment Notes{inspectedOrder.assignedBy ? ` (by ${inspectedOrder.assignedBy})` : ''}:</span>
+                          </div>
+                          <p className="text-slate-900 text-xs leading-relaxed whitespace-pre-wrap font-medium bg-white/90 p-2.5 rounded-lg border border-amber-200/80">
+                            {inspectedOrder.assignmentNotes}
+                          </p>
                         </div>
                       )}
 

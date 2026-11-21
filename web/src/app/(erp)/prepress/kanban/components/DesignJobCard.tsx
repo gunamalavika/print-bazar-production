@@ -21,6 +21,7 @@ import {
   RiFileCopyLine,
   RiCheckDoubleLine,
   RiUploadCloudLine,
+  RiChat3Line,
 } from 'react-icons/ri';
 import { getApiHost } from '@/lib/api';
 
@@ -43,6 +44,9 @@ export interface DesignCardItem {
   specifications: Record<string, any>;
   customerNotes?: string | null;
   designNotes?: string | null;
+  assignmentNotes?: string | null;
+  assignedBy?: string | null;
+  assignedAt?: string | null;
   revisionDirectives?: string | null;
   returnedBy?: string | null;
   returnedAt?: string | null;
@@ -372,6 +376,19 @@ export function DesignJobCard({
         {card.customerNotes && (
           <div className="pt-1 border-t border-slate-200/60 text-[10px] text-slate-600 line-clamp-2">
             <span className="font-bold text-slate-700">Client Note:</span> {card.customerNotes}
+          </div>
+        )}
+
+        {/* Assignment Notes from Operations Coordinator */}
+        {card.assignmentNotes && (
+          <div className="pt-1.5 border-t border-amber-200/80 bg-amber-50/80 -mx-3 -mb-3 p-2.5 rounded-b-xl space-y-0.5 text-[10.5px]">
+            <div className="flex items-center gap-1 font-bold text-amber-800 text-[10px] font-mono uppercase tracking-wider">
+              <RiChat3Line className="h-3 w-3 text-amber-600 shrink-0" />
+              <span>Assignment Note{card.assignedBy ? ` (${card.assignedBy})` : ''}:</span>
+            </div>
+            <p className="line-clamp-2 text-amber-950 font-medium whitespace-pre-wrap leading-tight">
+              {card.assignmentNotes}
+            </p>
           </div>
         )}
       </div>

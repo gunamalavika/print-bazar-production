@@ -788,6 +788,10 @@ export class ArtworkService {
         ].includes(o.status as any);
 
       const assignedDesigner = activeDesignAssignment?.assignedUser || completedDesignAssignment?.assignedUser || null;
+      const relevantDesignAssignment = activeDesignAssignment || completedDesignAssignment || null;
+      const assignmentNotes = relevantDesignAssignment?.reason || o.internalNotes || null;
+      const assignedBy = relevantDesignAssignment?.assignedByUser?.fullName || null;
+      const assignedAt = relevantDesignAssignment?.assignedAt || null;
       const jobCardOperator = o.items.flatMap((it) => it.jobCards || []).find((j) => j.operator)?.operator || null;
       const assignedOperator =
         activeProdAssignment?.assignedUser ||
@@ -981,6 +985,10 @@ export class ArtworkService {
         assignedDesignerName: assignedDesigner?.fullName || null,
         assignedDesigner,
         assignedOperator,
+        assignmentNotes,
+        assignmentReason: assignmentNotes,
+        assignedBy,
+        assignedAt,
         isPassedToProduction,
         passedToStation,
         passedToStageBadge,

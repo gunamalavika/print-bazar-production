@@ -855,9 +855,12 @@ export default function OrderAssignmentCenterPage() {
 
     try {
       if (drawerType === 'DESIGN') {
+        const cleanNotes = assignmentNotes && assignmentNotes.trim() ? assignmentNotes.trim() : undefined;
         await api.assignDesigner(drawerOrder.id, {
           designerId: selectedStaffId,
-          reason: assignmentNotes || `Prepress Designer assignment by Operations Coordinator`,
+          reason: cleanNotes || `Prepress Designer assignment by Operations Coordinator`,
+          assignmentNotes: cleanNotes,
+          notes: cleanNotes,
         });
       } else {
         await api.assignProductionOperator(drawerOrder.id, {

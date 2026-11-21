@@ -236,6 +236,18 @@ export function DesignJobInspectModal({
           </div>
         )}
 
+        {/* Operations Assignment Notes */}
+        {card.assignmentNotes && (
+          <div className="p-3 bg-amber-50/90 border border-amber-300 rounded-xl text-xs space-y-1 shadow-2xs">
+            <span className="font-bold text-amber-950 block font-mono uppercase text-[10.5px]">
+              Operations Assignment Notes{card.assignedBy ? ` (by ${card.assignedBy})` : ''}:
+            </span>
+            <p className="text-amber-950 font-medium whitespace-pre-wrap bg-white/80 p-2.5 rounded-lg border border-amber-200/80">
+              {card.assignmentNotes}
+            </p>
+          </div>
+        )}
+
         {/* Customer Notes / Brief */}
         {card.customerNotes && (
           <div className="p-3 bg-amber-50/60 border border-amber-200 rounded-xl text-xs space-y-1">

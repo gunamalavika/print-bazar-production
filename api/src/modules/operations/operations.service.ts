@@ -43,6 +43,8 @@ export interface AssignDesignerDto {
   designerUserId?: string;
   designerId?: string;
   reason?: string;
+  assignmentNotes?: string;
+  notes?: string;
 }
 
 export interface AssignProductionOperatorDto {
@@ -856,6 +858,8 @@ export class OperationsService {
       });
 
       // Create new active DESIGN assignment with exact assignee user ID
+      const assignmentNoteText = dto.assignmentNotes || dto.notes || dto.reason || null;
+
       const createdAssignment = await tx.orderAssignment.create({
         data: {
           orderId: order.id,
@@ -863,13 +867,21 @@ export class OperationsService {
           assignedUserId: targetUserId,
           assignedByUserId: user.sub,
           status: AssignmentStatus.ACTIVE,
-          reason: dto.reason,
+          reason: assignmentNoteText,
         },
         include: {
           assignedUser: { select: { id: true, fullName: true, email: true, role: true } },
           assignedByUser: { select: { id: true, fullName: true, role: true } },
         },
       });
+
+      // Persist assignment note directly to order internalNotes so all downstream modules have access
+      if (assignmentNoteText) {
+        await tx.order.update({
+          where: { id: order.id },
+          data: { internalNotes: assignmentNoteText },
+        });
+      }
 
       // Determine whether the order already has customer-uploaded artwork
       const hasExistingArtwork = (order.items || []).some((it: any) => {

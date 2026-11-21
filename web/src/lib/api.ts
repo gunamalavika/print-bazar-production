@@ -1340,7 +1340,7 @@ export const api = {
     fetchApi<any>(`/operations/orders/${orderId}`),
   getOperationsOrderTimeline: (orderId: string) =>
     fetchApi<any[]>(`/operations/orders/${orderId}/timeline`),
-  assignDesigner: (orderId: string, data: { designerId: string; reason?: string }) =>
+  assignDesigner: (orderId: string, data: { designerId: string; reason?: string; assignmentNotes?: string; notes?: string }) =>
     fetchApi<any>(`/operations/orders/${orderId}/design-assignment`, {
       method: 'POST',
       body: JSON.stringify(data),
