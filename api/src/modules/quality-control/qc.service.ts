@@ -196,11 +196,17 @@ export class QualityControlService {
         }
       } else {
         // Final QC FAIL: Create Rework Path, Block Packing
+        const defectSummary = normalizedDefects.length > 0 ? normalizedDefects.join(', ') : 'DEFECT';
+        const qcNoteText = dto.generalNotes
+          ? `QC Rejected: [${defectSummary}] - ${dto.generalNotes}`
+          : `QC Rejected: [${defectSummary}] Rework required.`;
+
         await tx.order.update({
           where: { id: order.id },
           data: {
             status: OrderStatus.ON_HOLD,
             customerStatus: 'ON_HOLD',
+            internalNotes: qcNoteText,
           },
         });
 
@@ -210,13 +216,21 @@ export class QualityControlService {
             fromStatus: order.status,
             toStatus: OrderStatus.ON_HOLD,
             changedById: inspectorId,
-            reason: `Final QC REJECTED: Defects [${dto.defects?.join(', ')}]. Rework required.`,
+            reason: `Final QC REJECTED: Defects [${defectSummary}]. Rework required.`,
+            notes: dto.generalNotes,
           },
         });
 
-        if (dto.jobCardId) {
+        const targetJobCards = dto.jobCardId
+          ? [{ id: dto.jobCardId }]
+          : await tx.jobCard.findMany({
+              where: { orderId: order.id },
+              select: { id: true },
+            });
+
+        for (const jc of targetJobCards) {
           await tx.jobCard.update({
-            where: { id: dto.jobCardId },
+            where: { id: jc.id },
             data: {
               status: JobCardStatus.FAILED_REWORK,
               currentStation: 'REWORK',
@@ -226,8 +240,8 @@ export class QualityControlService {
           // Create structured JobIssue
           await tx.jobIssue.create({
             data: {
-              jobCardId: dto.jobCardId,
-              reasonCode: dto.defects?.[0] || 'FINAL_QC_DEFECT',
+              jobCardId: jc.id,
+              reasonCode: normalizedDefects[0] || 'FINAL_QC_DEFECT',
               description: dto.generalNotes || 'Defect detected in Final QC inspection',
               reportedBy: inspectorId,
             },

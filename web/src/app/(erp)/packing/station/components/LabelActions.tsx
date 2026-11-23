@@ -7,6 +7,7 @@ import {
   RiCheckboxCircleFill,
   RiArrowRightLine,
   RiTruckLine,
+  RiStore2Line,
   RiCheckDoubleLine,
 } from 'react-icons/ri';
 import { Button } from '@/components/ui';
@@ -21,6 +22,7 @@ interface LabelActionsProps {
   canComplete: boolean;
   isCompleted: boolean;
   printerName: string;
+  isStorePickup?: boolean;
 }
 
 export function LabelActions({
@@ -33,6 +35,7 @@ export function LabelActions({
   canComplete,
   isCompleted,
   printerName,
+  isStorePickup = false,
 }: LabelActionsProps) {
   return (
     <div className="space-y-3">
@@ -68,19 +71,33 @@ export function LabelActions({
         </div>
       )}
 
-      {/* Main Action: Complete Packing & Move to Dispatch */}
+      {/* Main Action: Complete Packing & Move to Dispatch / Storage */}
       <button
         type="button"
         disabled={!canComplete || isCompleting || isCompleted}
         onClick={onCompletePacking}
-        className="w-full flex items-center justify-center gap-2 bg-[#FFED00] hover:bg-[#FDD835] disabled:bg-slate-200 disabled:text-slate-400 text-slate-950 font-black text-[13px] py-3.5 rounded-xl shadow-sm border border-[#E3A008]/50 transition active:scale-[0.98]"
+        className={`w-full flex items-center justify-center gap-2 font-black text-[13px] py-3.5 rounded-xl shadow-sm border transition active:scale-[0.98] ${
+          isStorePickup
+            ? 'bg-purple-600 hover:bg-purple-700 disabled:bg-slate-200 disabled:text-slate-400 text-white border-purple-700/50 shadow-purple-500/10'
+            : 'bg-[#FFED00] hover:bg-[#FDD835] disabled:bg-slate-200 disabled:text-slate-400 text-slate-950 border-[#E3A008]/50'
+        }`}
       >
-        <RiTruckLine className="h-4 w-4" />
+        {isStorePickup ? (
+          <RiStore2Line className="h-4 w-4" />
+        ) : (
+          <RiTruckLine className="h-4 w-4" />
+        )}
         <span>
           {isCompleted
-            ? '✓ PACKING COMPLETED (MOVED TO DISPATCH)'
+            ? isStorePickup
+              ? '✓ MOVED TO STORAGE FOR PICKUP'
+              : '✓ PACKING COMPLETED (MOVED TO DISPATCH)'
             : isCompleting
-            ? 'FINALIZING PACKING & DISPATCH HANDOFF...'
+            ? isStorePickup
+              ? 'MOVING TO STORAGE...'
+              : 'FINALIZING PACKING & DISPATCH HANDOFF...'
+            : isStorePickup
+            ? 'Move to storage'
             : 'COMPLETE PACKING & MOVE TO DISPATCH'}
         </span>
       </button>

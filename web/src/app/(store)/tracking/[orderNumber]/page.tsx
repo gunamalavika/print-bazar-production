@@ -243,6 +243,38 @@ export default function OrderTrackingPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* Left Column: Live Courier Card, Milestone Stepper & Activity Log */}
           <div className="lg:col-span-8 space-y-6">
+            {/* CELEBRATORY DELIVERED BANNER */}
+            {effectiveStatus === 'DELIVERED' && (
+              <div className="rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-6 shadow-md border border-emerald-500 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="h-7 w-7 text-white" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-100 block">
+                      ORDER FULFILLMENT COMPLETED
+                    </span>
+                    <h2 className="text-lg font-black mt-0.5">
+                      Delivered to Customer
+                    </h2>
+                    <p className="text-xs text-emerald-100 mt-1">
+                      {shipment?.receiverName
+                        ? `Received by ${shipment.receiverName} via ${shipment.courierName || 'Courier Partner'}`
+                        : order.deliveryMethod === 'STORE_PICKUP'
+                        ? 'Collected directly from factory storage counter.'
+                        : `Delivered via ${shipment?.courierName || 'Courier Partner'}.`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-right shrink-0">
+                  <span className="inline-block px-3 py-1.5 rounded-xl bg-white text-emerald-800 font-mono font-black text-xs shadow-xs">
+                    STATUS: DELIVERED
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* LIVE COURIER & SHIPMENT TRACKING BANNER (Populated by /dispatch/manifest) */}
             {(shipment ||
               effectiveStatus === 'READY_FOR_DISPATCH' ||
@@ -272,9 +304,15 @@ export default function OrderTrackingPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono font-black uppercase px-2.5 py-1 rounded bg-[#FFED00] text-slate-950">
+                    <span
+                      className={`text-[10px] font-mono font-black uppercase px-2.5 py-1 rounded ${
+                        effectiveStatus === 'DELIVERED'
+                          ? 'bg-emerald-500 text-white'
+                          : 'bg-[#FFED00] text-slate-950'
+                      }`}
+                    >
                       {effectiveStatus === 'DELIVERED'
-                        ? '✓ DELIVERED'
+                        ? '✓ DELIVERED TO CUSTOMER'
                         : effectiveStatus === 'OUT_FOR_DELIVERY'
                         ? '● IN TRANSIT / OUT FOR DELIVERY'
                         : 'MANIFESTED & READY'}
@@ -466,6 +504,12 @@ export default function OrderTrackingPage() {
                           {isCurrent && (
                             <span className="font-mono text-[9px] font-black uppercase bg-[#FFED00] text-slate-950 px-1.5 py-0.5 rounded border border-[#E3A008]/40">
                               CURRENT STAGE
+                            </span>
+                          )}
+                          {effectiveStatus === 'DELIVERED' && idx === milestones.length - 1 && (
+                            <span className="font-mono text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.5 rounded flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                              DELIVERED TO CUSTOMER
                             </span>
                           )}
                           {isDone && (

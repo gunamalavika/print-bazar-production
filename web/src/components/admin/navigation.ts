@@ -85,6 +85,19 @@ export const CANONICAL_ADMIN_NAV: AdminNavItem[] = [
     order: 14,
     description: 'Production-pending orders queue & operator assignment',
   },
+  {
+    id: 'operations-storage',
+    label: 'Plant Storage & Pickup',
+    href: '/operations/storage',
+    icon: RiStore2Line,
+    requiredPermissions: ['operations.read'],
+    matchMode: 'all',
+    section: 'OPERATIONS_COORDINATION',
+    order: 15,
+    badge: 'STORAGE',
+    badgeVariant: 'yellow',
+    description: 'Factory plant pickup counter, pending payment settlement & delivery handover',
+  },
 
   // SECTION: CATALOGUE & INVENTORY (ADMIN-CONTROLLED)
   {

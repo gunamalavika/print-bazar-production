@@ -182,35 +182,48 @@ export function PackingStation() {
     }
   };
 
-  // Complete Packing action - opens tracking number popup modal
+  // Complete Packing action - for Store Pickup directly moves to Storage; for Courier opens tracking popup
   const handleCompletePacking = () => {
     if (!selectedJob) return;
+    const isStorePickup = selectedJob.deliveryMethod === 'STORE_PICKUP';
+
     // Auto-provision standard Carton #1 if not manually added yet
     if (cartons.length === 0) {
-      const def = materials[1] || materials[0] || DEFAULT_MATERIALS[0];
+      const def = isStorePickup
+        ? { code: 'STORE-PARCEL', innerLengthCm: 25, innerWidthCm: 18, innerHeightCm: 10, tareWeightKg: 0 }
+        : materials[1] || materials[0] || DEFAULT_MATERIALS[0];
       const item = selectedJob.items?.[0];
       const qty = item?.quantity || 100;
-      const calculatedWeight = Math.max(0.5, parseFloat(((qty * 2.8) / 1000 + def.tareWeightKg).toFixed(2)));
+      const calculatedWeight = isStorePickup ? 0 : Math.max(0.5, parseFloat(((qty * 2.8) / 1000 + def.tareWeightKg).toFixed(2)));
       const autoCarton: PackagingCartonItem = {
         id: `carton-${Date.now()}-1`,
         sequenceNumber: 1,
         cartonType: def.code,
-        lengthCm: def.innerLengthCm,
-        widthCm: def.innerWidthCm,
-        heightCm: def.innerHeightCm,
-        tareWeightKg: def.tareWeightKg,
+        lengthCm: def.innerLengthCm || 25,
+        widthCm: def.innerWidthCm || 18,
+        heightCm: def.innerHeightCm || 10,
+        tareWeightKg: def.tareWeightKg || 0,
         grossWeightKg: calculatedWeight,
         isWeightVerified: true,
       };
       setCartons([autoCarton]);
     }
-    setIsTrackingModalOpen(true);
+
+    if (isStorePickup) {
+      // Direct move to storage without requiring courier tracking number
+      handleConfirmDispatch('STORE-PICKUP', 'Factory Store Pickup Counter');
+    } else {
+      setIsTrackingModalOpen(true);
+    }
   };
 
-  // Confirm Dispatch with tracking number from popup
+  // Confirm Dispatch / Move to Storage with tracking number
   const handleConfirmDispatch = async (trackingNumber: string, courierName: string) => {
     if (!selectedJob) return;
-    const def = materials[1] || materials[0] || DEFAULT_MATERIALS[0];
+    const isStorePickup = selectedJob.deliveryMethod === 'STORE_PICKUP';
+    const def = isStorePickup
+      ? { code: 'STORE-PARCEL', innerLengthCm: 25, innerWidthCm: 18, innerHeightCm: 10, tareWeightKg: 0 }
+      : materials[1] || materials[0] || DEFAULT_MATERIALS[0];
     const activeCartons = cartons.length > 0 ? cartons : [
       {
         id: `carton-${Date.now()}-1`,
@@ -219,8 +232,8 @@ export function PackingStation() {
         lengthCm: def.innerLengthCm || 25,
         widthCm: def.innerWidthCm || 18,
         heightCm: def.innerHeightCm || 12,
-        tareWeightKg: def.tareWeightKg || 0.18,
-        grossWeightKg: 0.85,
+        tareWeightKg: def.tareWeightKg || 0,
+        grossWeightKg: isStorePickup ? 0 : 0.85,
         isWeightVerified: true,
       },
     ];
@@ -237,7 +250,7 @@ export function PackingStation() {
           widthCm: c.widthCm,
           heightCm: c.heightCm,
         })),
-        courierName: courierName || (selectedJob.deliveryMethod === 'STORE_PICKUP' ? 'Store Pickup Counter' : 'Delhivery Surface Express'),
+        courierName: courierName || (isStorePickup ? 'Factory Store Pickup Counter' : 'Delhivery Surface Express'),
         trackingNumber: trackingNumber.trim(),
         stationPrinter: printerName,
       });
@@ -246,7 +259,9 @@ export function PackingStation() {
       setIsCompleted(true);
       setBanner({
         type: 'success',
-        message: `Order #${selectedJob.orderNumber} packing completed (Tracking: ${trackingNumber})! Successfully moved to Dispatch Manifest.`,
+        message: isStorePickup
+          ? `Order #${selectedJob.orderNumber} successfully moved to Storage for Customer Pickup!`
+          : `Order #${selectedJob.orderNumber} packing completed (Tracking: ${trackingNumber})! Successfully moved to Dispatch Manifest.`,
       });
 
       // Refresh queue to remove completed job
@@ -305,10 +320,10 @@ export function PackingStation() {
             <span>{banner.message}</span>
             {banner.type === 'success' && (
               <Link
-                href="/dispatch/manifest"
+                href={selectedJob?.deliveryMethod === 'STORE_PICKUP' ? '/operations/storage' : '/dispatch/manifest'}
                 className="ml-2 font-bold underline text-emerald-950 hover:text-emerald-700 inline-flex items-center gap-1"
               >
-                Go to Dispatch Manifest →
+                {selectedJob?.deliveryMethod === 'STORE_PICKUP' ? 'Go to Storage Counter →' : 'Go to Dispatch Manifest →'}
               </Link>
             )}
           </div>
@@ -389,6 +404,7 @@ export function PackingStation() {
                 canComplete={canComplete}
                 isCompleted={isCompleted}
                 printerName={printerName}
+                isStorePickup={selectedJob?.deliveryMethod === 'STORE_PICKUP'}
               />
             </>
           ) : (

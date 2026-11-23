@@ -52,17 +52,29 @@ export function CartonPackingForm({
   const item = job.items?.[0];
   const qty = item?.quantity || 100;
 
-  // Calculate realistic expected weight (e.g. 350 GSM card = ~2.5g per card + tare)
-  const baseCalculatedWeightKg = Math.max(0.3, parseFloat(((qty * 2.8) / 1000).toFixed(2)));
+  const isStorePickup = job.deliveryMethod === 'STORE_PICKUP';
+  // If store pickup, shipping weight configuration is 0 and weight per printed piece is 0
+  const baseCalculatedWeightKg = isStorePickup ? 0 : Math.max(0.3, parseFloat(((qty * 2.8) / 1000).toFixed(2)));
 
-  const defaultMaterial = packagingMaterials[1] || packagingMaterials[0] || {
-    code: 'PB-BOX-02',
-    name: 'PB-BOX-02: Double-Wall Corrugated (Standard)',
-    innerLengthCm: 25,
-    innerWidthCm: 18,
-    innerHeightCm: 12,
-    tareWeightKg: 0.18,
-  };
+  const defaultMaterial = isStorePickup
+    ? {
+        code: 'STORE-PARCEL',
+        name: 'Factory Store Pickup Parcel (0 KG Courier Weight)',
+        innerLengthCm: 25,
+        innerWidthCm: 18,
+        innerHeightCm: 10,
+        tareWeightKg: 0,
+        maxWeightKg: 50,
+      }
+    : packagingMaterials[1] || packagingMaterials[0] || {
+        code: 'PB-BOX-02',
+        name: 'PB-BOX-02: Double-Wall Corrugated (Standard)',
+        innerLengthCm: 25,
+        innerWidthCm: 18,
+        innerHeightCm: 12,
+        tareWeightKg: 0.18,
+        maxWeightKg: 10,
+      };
 
   const [selectedBoxCode, setSelectedBoxCode] = useState(defaultMaterial.code);
   const [lengthCm, setLengthCm] = useState(String(defaultMaterial.innerLengthCm));
@@ -94,11 +106,11 @@ export function CartonPackingForm({
     }
   };
 
-  const expectedTotalWeight = parseFloat((baseCalculatedWeightKg + parseFloat(tareWeightKg || '0.18')).toFixed(2));
+  const expectedTotalWeight = isStorePickup ? 0 : parseFloat((baseCalculatedWeightKg + parseFloat(tareWeightKg || '0.18')).toFixed(2));
   const currentGross = parseFloat(grossWeightKg || '0');
   const tolerance = 0.25; // 250 grams tolerance
   const weightDiff = Math.abs(currentGross - expectedTotalWeight);
-  const isWeightValid = weightDiff <= tolerance && currentGross > 0;
+  const isWeightValid = isStorePickup ? true : (weightDiff <= tolerance && currentGross > 0);
 
   const handleCaptureFromScale = () => {
     // Read calibrated scale value (or realistic reading if manual)
@@ -206,11 +218,15 @@ export function CartonPackingForm({
       <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-3">
         <div className="flex items-center justify-between text-[11px]">
           <div>
-            <span className="text-slate-400 text-[10px] font-bold uppercase block">Expected Target Weight</span>
-            <span className="font-mono font-bold text-slate-900 text-sm">
-              {expectedTotalWeight.toFixed(2)} KG
+            <span className="text-slate-400 text-[10px] font-bold uppercase block">
+              {isStorePickup ? 'Plant Pickup Weight Config' : 'Expected Target Weight'}
             </span>
-            <span className="text-[10px] text-slate-400 ml-1 font-medium">(±0.25 kg tolerance)</span>
+            <span className="font-mono font-bold text-slate-900 text-sm">
+              {isStorePickup ? '0.00 KG' : `${expectedTotalWeight.toFixed(2)} KG`}
+            </span>
+            <span className={`text-[10px] ml-1 font-semibold ${isStorePickup ? 'text-emerald-700' : 'text-slate-400'}`}>
+              {isStorePickup ? '(Weight per Piece: 0g / Self Pickup)' : '(±0.25 kg tolerance)'}
+            </span>
           </div>
 
           <button

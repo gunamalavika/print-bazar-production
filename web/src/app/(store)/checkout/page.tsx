@@ -776,9 +776,17 @@ export default function CheckoutPage() {
                     <div className="text-[11px] text-slate-500 mt-0.5">
                       Collect directly from Lower Parel, Mumbai press facility.
                     </div>
-                    <span className="inline-block mt-2 font-mono text-[10px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
-                      SAME-DAY READY
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <span className="font-mono text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                        FREE PICKUP (₹0)
+                      </span>
+                      <span className="font-mono text-[10px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
+                        WEIGHT: 0 KG
+                      </span>
+                      <span className="font-mono text-[10px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
+                        SAME-DAY READY
+                      </span>
+                    </div>
                   </div>
                 </button>
               </div>
@@ -1259,9 +1267,17 @@ export default function CheckoutPage() {
                       </div>
                     )}
                     {deliveryMethod === 'STORE_PICKUP' && (
-                      <span className="text-[10px] text-slate-500 block mt-0.5">
-                        Direct Plant Pickup (₹0.00)
-                      </span>
+                      <div className="space-y-0.5 mt-1">
+                        <span className="text-[10px] text-emerald-700 font-bold block">
+                          Direct Factory Plant Pickup (₹0.00)
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono block">
+                          Shipping & Logistics Weight Configuration: 0 kg (0 g)
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono block">
+                          Weight per Printed Piece: 0 g (Self Pickup)
+                        </span>
+                      </div>
                     )}
                   </div>
                   <span className={`font-mono font-bold text-sm shrink-0 ${shipping === 0 ? 'text-emerald-700' : 'text-slate-900'}`}>

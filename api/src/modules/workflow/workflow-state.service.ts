@@ -144,8 +144,8 @@ export class WorkflowStateService {
     {
       from: [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.READY_FOR_DISPATCH],
       to: OrderStatus.DELIVERED,
-      allowedRoles: [UserRole.DISPATCH_LOGISTICS, UserRole.SALES_OFFICE, UserRole.ADMIN_MANAGER],
-      allowedDepartments: [Department.LOGISTICS, Department.SALES, Department.MANAGEMENT],
+      allowedRoles: [UserRole.DISPATCH_LOGISTICS, UserRole.SALES_OFFICE, UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER],
+      allowedDepartments: [Department.LOGISTICS, Department.SALES, Department.MANAGEMENT, Department.OPERATIONS],
     },
     // Pre-Production Order Cancellation (Forbidden once moved to PRODUCTION_QUEUE or beyond)
     {

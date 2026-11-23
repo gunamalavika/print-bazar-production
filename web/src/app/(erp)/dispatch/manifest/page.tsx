@@ -38,7 +38,7 @@ import { api } from '@/lib/api';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { StatusBadge } from '@/components/ui';
 
-type QueueTab = 'ALL' | 'READY_FOR_DISPATCH' | 'IN_TRANSIT' | 'STORE_PICKUP' | 'DELIVERED';
+type QueueTab = 'ALL' | 'READY_FOR_DISPATCH' | 'IN_TRANSIT' | 'DELIVERED';
 
 interface ManualChecksState {
   packageSealedAndLabeled: boolean;
@@ -137,12 +137,8 @@ export default function DispatchStationPage() {
     podOrReceiverVerified: false,
   });
 
-  // Modal 2: Store Pickup Modal State
-  const [storePickupOrder, setStorePickupOrder] = useState<any | null>(null);
-  const [collectorName, setCollectorName] = useState('');
-  const [collectorPhone, setCollectorPhone] = useState('');
-  const [pickupVerifiedCheck, setPickupVerifiedCheck] = useState(false);
-  const [pickupNotes, setPickupNotes] = useState('');
+  // Quick Delivery State
+  const [isSubmittingDelivery, setIsSubmittingDelivery] = useState<string | null>(null);
 
   // Modal 3: Print Thermal Label / Manifest Slip Modal
   const [labelOrder, setLabelOrder] = useState<any | null>(null);
@@ -357,56 +353,27 @@ export default function DispatchStationPage() {
     }
   };
 
-  // Store Pickup Modal Handler
-  const openStorePickupModal = (order: any) => {
-    setStorePickupOrder(order);
-    setCollectorName(order.customer?.fullName || order.shippingAddress?.recipientName || '');
-    setCollectorPhone(order.customer?.phone || order.shippingAddress?.phone || '');
-    setPickupVerifiedCheck(Number(order.balanceAmount || 0) <= 0);
-    setPickupNotes('');
-    setErrorMessage('');
-  };
+  // Quick Courier Mark Delivered Handler
+  const handleMarkDelivered = async (order: any) => {
+    const defaultReceiver = order.shippingAddress?.recipientName || order.customer?.fullName || 'Customer';
+    const receiver = prompt(
+      `Confirm courier delivery for Order #${order.orderNumber}.\n\nEnter recipient / receiver name who received the parcel:`,
+      defaultReceiver,
+    );
+    if (receiver === null) return; // User cancelled
 
-  const handleConfirmStorePickup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!storePickupOrder) return;
-    if (!collectorName.trim()) {
-      setErrorMessage('Please enter the collector name for store counter handover.');
-      return;
-    }
-    if (!pickupVerifiedCheck) {
-      setErrorMessage('Please check the manual verification box confirming collector identity and zero balance.');
-      return;
-    }
-
-    setIsSubmitting(true);
+    setIsSubmittingDelivery(order.id);
     setErrorMessage('');
     try {
-      await api.manualCourierUpdate(storePickupOrder.orderNumber, {
-        deliveryMethod: 'STORE_PICKUP',
-        courierName: 'Store Counter Pickup',
-        targetStatus: 'DELIVERED',
-        receiverName: collectorName.trim(),
-        receiverPhone: collectorPhone.trim(),
-        dispatchNotes:
-          pickupNotes.trim() ||
-          `Counter pickup completed. Handed over to ${collectorName.trim()} (${collectorPhone.trim() || 'Phone verified'}).`,
-        manualChecks: {
-          packageSealedAndLabeled: true,
-          addressAndPincodeVerified: true,
-          paymentClearanceVerified: true,
-          podOrReceiverVerified: true,
-        },
-      });
+      await api.confirmDelivery(order.id, receiver.trim() || defaultReceiver);
       setFeedbackSuccess(
-        `Store Counter Pickup confirmed for Order #${storePickupOrder.orderNumber}. Marked as DELIVERED to ${collectorName.trim()}.`,
+        `Order #${order.orderNumber} successfully marked as DELIVERED to ${receiver.trim() || defaultReceiver}! Customer tracking updated.`,
       );
-      setStorePickupOrder(null);
       await loadDispatchQueue();
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Store pickup failed. Please ensure all balance payments are cleared.');
+      setErrorMessage(err?.message || 'Failed to update order status to DELIVERED.');
     } finally {
-      setIsSubmitting(false);
+      setIsSubmittingDelivery(null);
     }
   };
 
@@ -548,25 +515,6 @@ export default function DispatchStationPage() {
 
         <button
           type="button"
-          onClick={() => setActiveTab('STORE_PICKUP')}
-          className={`text-left p-4 rounded-xl border transition-all ${
-            activeTab === 'STORE_PICKUP'
-              ? 'bg-purple-50/90 border-purple-400 ring-2 ring-purple-200'
-              : 'bg-white border-slate-200 hover:border-slate-300'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-mono font-bold uppercase text-slate-500">Counter Store Pickup</span>
-            <div className="p-2 rounded-lg bg-purple-100 text-purple-800">
-              <Store className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-slate-900 mt-2 tabular-nums">{kpis.storePickupReady}</div>
-          <p className="text-[11px] text-slate-500 mt-0.5">Ready for customer counter collection</p>
-        </button>
-
-        <button
-          type="button"
           onClick={() => setActiveTab('DELIVERED')}
           className={`text-left p-4 rounded-xl border transition-all ${
             activeTab === 'DELIVERED'
@@ -581,7 +529,26 @@ export default function DispatchStationPage() {
             </div>
           </div>
           <div className="text-2xl font-black text-slate-900 mt-2 tabular-nums">{kpis.delivered}</div>
-          <p className="text-[11px] text-slate-500 mt-0.5">POD & customer delivery confirmed</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">POD & courier delivery confirmed</p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('ALL')}
+          className={`text-left p-4 rounded-xl border transition-all ${
+            activeTab === 'ALL'
+              ? 'bg-slate-900 text-white border-slate-900 ring-2 ring-slate-900/30'
+              : 'bg-white border-slate-200 hover:border-slate-300'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className={`text-[11px] font-mono font-bold uppercase ${activeTab === 'ALL' ? 'text-slate-300' : 'text-slate-500'}`}>Total Courier Shipments</span>
+            <div className={`p-2 rounded-lg ${activeTab === 'ALL' ? 'bg-slate-800 text-[#FFED00]' : 'bg-slate-100 text-slate-800'}`}>
+              <Truck className="h-4 w-4" />
+            </div>
+          </div>
+          <div className={`text-2xl font-black mt-2 tabular-nums ${activeTab === 'ALL' ? 'text-[#FFED00]' : 'text-slate-900'}`}>{kpis.readyForDispatch + kpis.inTransit + kpis.delivered}</div>
+          <p className={`text-[11px] mt-0.5 ${activeTab === 'ALL' ? 'text-slate-300' : 'text-slate-500'}`}>All active courier parcels</p>
         </button>
       </div>
 
@@ -590,10 +557,9 @@ export default function DispatchStationPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
             {[
-              { id: 'ALL', label: 'All Dispatch Queue' },
+              { id: 'ALL', label: 'All Courier Manifests' },
               { id: 'READY_FOR_DISPATCH', label: `Ready to Dispatch (${kpis.readyForDispatch})` },
               { id: 'IN_TRANSIT', label: `Dispatched / In Transit (${kpis.inTransit})` },
-              { id: 'STORE_PICKUP', label: `Store Pickup (${kpis.storePickupReady})` },
               { id: 'DELIVERED', label: `Delivered (${kpis.delivered})` },
             ].map((tab) => (
               <button
@@ -650,11 +616,11 @@ export default function DispatchStationPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {orders.map((order) => {
+            {orders.filter((o) => o.deliveryMethod !== 'STORE_PICKUP').map((order) => {
               const pkg = order.packages?.[0];
               const shipment = order.shipment || pkg?.shipment;
               const isPaid = Number(order.balanceAmount || 0) <= 0;
-              const isStorePickup = order.deliveryMethod === 'STORE_PICKUP';
+              const isStorePickup = false;
               const latestHistory = order.statusHistory?.[0];
 
               return (
@@ -816,16 +782,18 @@ export default function DispatchStationPage() {
                       </button>
 
                       <div className="flex items-center gap-2">
-                        {isStorePickup || order.status !== 'DELIVERED' ? (
+                        {order.status !== 'DELIVERED' && (
                           <button
                             type="button"
-                            onClick={() => openStorePickupModal(order)}
-                            className="flex-1 px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold text-[11px] flex items-center justify-center gap-1 transition"
+                            onClick={() => handleMarkDelivered(order)}
+                            disabled={isSubmittingDelivery === order.id}
+                            className="flex-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center justify-center gap-1 shadow-2xs transition active:scale-95"
+                            title="Confirm courier delivery to customer"
                           >
-                            <Store className="h-3.5 w-3.5" />
-                            <span>Counter Handover</span>
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span>{isSubmittingDelivery === order.id ? 'Updating...' : 'Mark Delivered'}</span>
                           </button>
-                        ) : null}
+                        )}
 
                         <button
                           type="button"
@@ -1045,11 +1013,10 @@ export default function DispatchStationPage() {
                 </h3>
 
                 {/* Delivery Mode Selector */}
-                <div className="grid grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-2 gap-2.5">
                   {[
-                    { id: 'COURIER', label: 'Courier Partner', icon: Truck },
-                    { id: 'LOCAL_EXPRESS_BIKE', label: 'Local Bike / Porter', icon: Bike },
-                    { id: 'STORE_PICKUP', label: 'Store Counter Pickup', icon: Store },
+                    { id: 'COURIER', label: 'National / Regional Courier', icon: Truck },
+                    { id: 'LOCAL_EXPRESS_BIKE', label: 'Local Bike / Porter Express', icon: Bike },
                   ].map((mode) => {
                     const Icon = mode.icon;
                     const active = deliveryMethod === mode.id;
@@ -1378,113 +1345,6 @@ export default function DispatchStationPage() {
                       ? 'Updating Courier & Tracking...'
                       : `Verify & Publish ${targetStatus.replace(/_/g, ' ')}`}
                   </span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================================
-          MODAL 2: STORE COUNTER PICKUP HANDOVER MODAL
-         ============================================================================ */}
-      {storePickupOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden">
-            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-[#FFED00] text-slate-950 font-black">
-                  COUNTER STORE PICKUP
-                </span>
-                <h3 className="text-base font-bold mt-1">
-                  Handover Order #{storePickupOrder.orderNumber}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setStorePickupOrder(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleConfirmStorePickup} className="p-6 space-y-4">
-              {Number(storePickupOrder.balanceAmount || 0) <= 0 ? (
-                <div className="rounded-lg bg-emerald-50 border border-emerald-300 p-3 text-xs font-semibold text-emerald-900">
-                  ✓ Financial Check Passed: ₹0.00 Outstanding Balance. Safe to release parcel.
-                </div>
-              ) : (
-                <div className="rounded-lg bg-rose-50 border border-rose-300 p-3 text-xs font-semibold text-rose-900">
-                  ⚠ Outstanding Balance: {formatCurrency(Number(storePickupOrder.balanceAmount || 0))}. Ensure payment is collected before handover.
-                </div>
-              )}
-
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Collector Full Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={collectorName}
-                  onChange={(e) => setCollectorName(e.target.value)}
-                  className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs text-slate-900"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Collector Mobile Phone
-                </label>
-                <input
-                  type="tel"
-                  value={collectorPhone}
-                  onChange={(e) => setCollectorPhone(e.target.value)}
-                  className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs font-mono text-slate-900"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Handover Remarks (Visible on Customer Tracking)
-                </label>
-                <input
-                  type="text"
-                  value={pickupNotes}
-                  onChange={(e) => setPickupNotes(e.target.value)}
-                  placeholder="Collected at counter after ID & invoice verification"
-                  className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs text-slate-900"
-                />
-              </div>
-
-              <label className="flex items-start gap-2.5 p-3 rounded-lg bg-slate-50 border border-slate-200 cursor-pointer text-xs">
-                <input
-                  type="checkbox"
-                  checked={pickupVerifiedCheck}
-                  onChange={(e) => setPickupVerifiedCheck(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900"
-                />
-                <span className="text-slate-700 font-medium">
-                  I have manually verified the collector&apos;s identity, order invoice, and package count before releasing the order.
-                </span>
-              </label>
-
-              <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setStorePickupOrder(null)}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-[#FFED00] text-xs font-bold flex items-center gap-1.5"
-                >
-                  <Store className="h-4 w-4" />
-                  <span>{isSubmitting ? 'Confirming...' : 'Confirm Handover & Mark Delivered'}</span>
                 </button>
               </div>
             </form>

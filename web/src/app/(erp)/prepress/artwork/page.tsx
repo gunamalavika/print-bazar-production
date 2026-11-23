@@ -361,7 +361,7 @@ export default function ArtworkPrepressPage() {
 
   // Navigation tabs
   const [activeTab, setActiveTab] = useState<'DESIGN_STUDIO' | 'PASSED_TO_PRODUCTION' | 'PREFLIGHT'>('DESIGN_STUDIO');
-  
+
   // Rich Filters
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'REVISION_NEEDED' | 'NEEDS_OE_CONFIRMATION' | 'PASSED'>('ALL');
   const [scopeFilter, setScopeFilter] = useState<'ALL' | 'MINE' | 'UNASSIGNED'>('ALL');
@@ -694,8 +694,8 @@ export default function ArtworkPrepressPage() {
         stagedFiles.length > 0
           ? stagedFiles
           : uploadFile
-          ? [{ id: 'single_file', file: uploadFile, label: 'Print-Ready Design' }]
-          : [];
+            ? [{ id: 'single_file', file: uploadFile, label: 'Print-Ready Design' }]
+            : [];
 
       const uploadedFilesPayload: Array<{
         storageKey: string;
@@ -907,11 +907,10 @@ export default function ArtworkPrepressPage() {
               setActiveTab('DESIGN_STUDIO');
               setStatusFilter('ALL');
             }}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
-              activeTab === 'DESIGN_STUDIO'
-                ? 'bg-amber-400 text-slate-950 shadow-xs border border-amber-500/30'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${activeTab === 'DESIGN_STUDIO'
+              ? 'bg-amber-400 text-slate-950 shadow-xs border border-amber-500/30'
+              : 'text-slate-600 hover:text-slate-900'
+              }`}
           >
             <Paintbrush className="h-4 w-4" />
             <span>Assigned Works ({designQueue.length})</span>
@@ -921,22 +920,20 @@ export default function ArtworkPrepressPage() {
               setActiveTab('PASSED_TO_PRODUCTION');
               setStatusFilter('PASSED');
             }}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
-              activeTab === 'PASSED_TO_PRODUCTION'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${activeTab === 'PASSED_TO_PRODUCTION'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+              }`}
           >
             <CheckCircle className="h-4 w-4" />
             <span>In Production ({passedOrders.length})</span>
           </button>
           <button
             onClick={() => setActiveTab('PREFLIGHT')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
-              activeTab === 'PREFLIGHT'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${activeTab === 'PREFLIGHT'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+              }`}
           >
             <FileCheck2 className="h-4 w-4" />
             <span>Route A Preflight</span>
@@ -980,11 +977,10 @@ export default function ArtworkPrepressPage() {
                 setActiveTab('DESIGN_STUDIO');
                 setStatusFilter('ALL');
               }}
-              className={`p-4 rounded-xl border transition-all cursor-pointer select-none ${
-                statusFilter === 'ALL' && activeTab === 'DESIGN_STUDIO'
-                  ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-slate-900/20'
-                  : 'bg-white text-slate-800 border-slate-200 hover:border-slate-300 hover:shadow-xs'
-              }`}
+              className={`p-4 rounded-xl border transition-all cursor-pointer select-none ${statusFilter === 'ALL' && activeTab === 'DESIGN_STUDIO'
+                ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-slate-900/20'
+                : 'bg-white text-slate-800 border-slate-200 hover:border-slate-300 hover:shadow-xs'
+                }`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-mono font-bold uppercase tracking-wider opacity-80">
@@ -1002,11 +998,10 @@ export default function ArtworkPrepressPage() {
                 setActiveTab('DESIGN_STUDIO');
                 setStatusFilter('ACTIVE');
               }}
-              className={`p-4 rounded-xl border transition-all cursor-pointer select-none ${
-                statusFilter === 'ACTIVE' && activeTab === 'DESIGN_STUDIO'
-                  ? 'bg-amber-400 text-slate-950 border-amber-500 shadow-md ring-2 ring-amber-400/30'
-                  : 'bg-amber-50/60 text-amber-950 border-amber-200 hover:border-amber-300 hover:shadow-xs'
-              }`}
+              className={`p-4 rounded-xl border transition-all cursor-pointer select-none ${statusFilter === 'ACTIVE' && activeTab === 'DESIGN_STUDIO'
+                ? 'bg-amber-400 text-slate-950 border-amber-500 shadow-md ring-2 ring-amber-400/30'
+                : 'bg-amber-50/60 text-amber-950 border-amber-200 hover:border-amber-300 hover:shadow-xs'
+                }`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-mono font-bold uppercase tracking-wider opacity-90">
@@ -1024,11 +1019,10 @@ export default function ArtworkPrepressPage() {
                 setActiveTab('DESIGN_STUDIO');
                 setStatusFilter('REVISION_NEEDED');
               }}
-              className={`p-4 rounded-xl border transition-all cursor-pointer select-none ${
-                statusFilter === 'REVISION_NEEDED' && activeTab === 'DESIGN_STUDIO'
-                  ? 'bg-rose-600 text-white border-rose-700 shadow-md ring-2 ring-rose-600/30'
-                  : 'bg-rose-50/60 text-rose-950 border-rose-200 hover:border-rose-300 hover:shadow-xs'
-              }`}
+              className={`p-4 rounded-xl border transition-all cursor-pointer select-none ${statusFilter === 'REVISION_NEEDED' && activeTab === 'DESIGN_STUDIO'
+                ? 'bg-rose-600 text-white border-rose-700 shadow-md ring-2 ring-rose-600/30'
+                : 'bg-rose-50/60 text-rose-950 border-rose-200 hover:border-rose-300 hover:shadow-xs'
+                }`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-mono font-bold uppercase tracking-wider opacity-90">
@@ -1040,28 +1034,27 @@ export default function ArtworkPrepressPage() {
               <p className="text-[11px] text-rose-800/80 mt-0.5 truncate">Returned by OE Coordinator</p>
             </div>
 
-            {/* Card 4: Awaiting OE Confirmation */}
+            {/* Card 4: Waiting for Approval */}
             <div
               onClick={() => {
                 setActiveTab('DESIGN_STUDIO');
                 setStatusFilter('NEEDS_OE_CONFIRMATION');
               }}
-              className={`p-4 rounded-xl border transition-all cursor-pointer select-none ${
-                statusFilter === 'NEEDS_OE_CONFIRMATION' && activeTab === 'DESIGN_STUDIO'
-                  ? 'bg-blue-600 text-white border-blue-700 shadow-md ring-2 ring-blue-600/30'
-                  : 'bg-blue-50/60 text-blue-950 border-blue-200 hover:border-blue-300 hover:shadow-xs'
-              }`}
+              className={`p-4 rounded-xl border transition-all cursor-pointer select-none ${statusFilter === 'NEEDS_OE_CONFIRMATION' && activeTab === 'DESIGN_STUDIO'
+                ? 'bg-blue-600 text-white border-blue-700 shadow-md ring-2 ring-blue-600/30'
+                : 'bg-blue-50/60 text-blue-950 border-blue-200 hover:border-blue-300 hover:shadow-xs'
+                }`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-mono font-bold uppercase tracking-wider opacity-90">
-                  AWAITING OE REVIEW
+                  WAITING FOR APPROVAL
                 </span>
                 <Clock className="h-4 w-4 text-blue-600" />
               </div>
               <div className="text-2xl font-black mt-2 font-mono text-blue-700">
                 {needsConfirmationOrders.length}
               </div>
-              <p className="text-[11px] text-blue-800/80 mt-0.5 truncate">Candidate designs submitted</p>
+              <p className="text-[11px] text-blue-800/80 mt-0.5 truncate">Proof sign-off & customer review</p>
             </div>
 
             {/* Card 5: In Production */}
@@ -1070,11 +1063,10 @@ export default function ArtworkPrepressPage() {
                 setActiveTab('PASSED_TO_PRODUCTION');
                 setStatusFilter('PASSED');
               }}
-              className={`p-4 rounded-xl border transition-all cursor-pointer select-none col-span-2 sm:col-span-1 ${
-                activeTab === 'PASSED_TO_PRODUCTION' || statusFilter === 'PASSED'
-                  ? 'bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-600/30'
-                  : 'bg-emerald-50/60 text-emerald-950 border-emerald-200 hover:border-emerald-300 hover:shadow-xs'
-              }`}
+              className={`p-4 rounded-xl border transition-all cursor-pointer select-none col-span-2 sm:col-span-1 ${activeTab === 'PASSED_TO_PRODUCTION' || statusFilter === 'PASSED'
+                ? 'bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-600/30'
+                : 'bg-emerald-50/60 text-emerald-950 border-emerald-200 hover:border-emerald-300 hover:shadow-xs'
+                }`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-mono font-bold uppercase tracking-wider opacity-90">
@@ -1154,9 +1146,8 @@ export default function ArtworkPrepressPage() {
                   <button
                     type="button"
                     onClick={() => setViewLayout('GRID')}
-                    className={`p-1.5 rounded-md transition ${
-                      viewLayout === 'GRID' ? 'bg-white shadow-2xs text-slate-900' : 'text-slate-500 hover:text-slate-800'
-                    }`}
+                    className={`p-1.5 rounded-md transition ${viewLayout === 'GRID' ? 'bg-white shadow-2xs text-slate-900' : 'text-slate-500 hover:text-slate-800'
+                      }`}
                     title="Grid View"
                   >
                     <LayoutGrid className="h-4 w-4" />
@@ -1164,9 +1155,8 @@ export default function ArtworkPrepressPage() {
                   <button
                     type="button"
                     onClick={() => setViewLayout('TABLE')}
-                    className={`p-1.5 rounded-md transition ${
-                      viewLayout === 'TABLE' ? 'bg-white shadow-2xs text-slate-900' : 'text-slate-500 hover:text-slate-800'
-                    }`}
+                    className={`p-1.5 rounded-md transition ${viewLayout === 'TABLE' ? 'bg-white shadow-2xs text-slate-900' : 'text-slate-500 hover:text-slate-800'
+                      }`}
                     title="Table / List View"
                   >
                     <List className="h-4 w-4" />
@@ -1200,51 +1190,46 @@ export default function ArtworkPrepressPage() {
               <span className="text-slate-400 font-mono text-[11px] uppercase mr-1">Status:</span>
               <button
                 onClick={() => setStatusFilter('ALL')}
-                className={`px-2.5 py-1 rounded-full font-semibold transition ${
-                  statusFilter === 'ALL'
-                    ? 'bg-slate-900 text-white shadow-2xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
+                className={`px-2.5 py-1 rounded-full font-semibold transition ${statusFilter === 'ALL'
+                  ? 'bg-slate-900 text-white shadow-2xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
               >
                 All ({designQueue.length})
               </button>
               <button
                 onClick={() => setStatusFilter('ACTIVE')}
-                className={`px-2.5 py-1 rounded-full font-semibold transition ${
-                  statusFilter === 'ACTIVE'
-                    ? 'bg-amber-400 text-slate-950 shadow-2xs'
-                    : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
-                }`}
+                className={`px-2.5 py-1 rounded-full font-semibold transition ${statusFilter === 'ACTIVE'
+                  ? 'bg-amber-400 text-slate-950 shadow-2xs'
+                  : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
+                  }`}
               >
                 Needs Design ({activeOrders.length})
               </button>
               <button
                 onClick={() => setStatusFilter('REVISION_NEEDED')}
-                className={`px-2.5 py-1 rounded-full font-semibold transition ${
-                  statusFilter === 'REVISION_NEEDED'
-                    ? 'bg-rose-600 text-white shadow-2xs'
-                    : 'bg-rose-50 text-rose-900 border border-rose-200 hover:bg-rose-100'
-                }`}
+                className={`px-2.5 py-1 rounded-full font-semibold transition ${statusFilter === 'REVISION_NEEDED'
+                  ? 'bg-rose-600 text-white shadow-2xs'
+                  : 'bg-rose-50 text-rose-900 border border-rose-200 hover:bg-rose-100'
+                  }`}
               >
                 Revisions Needed ({revisionNeededOrders.length})
               </button>
               <button
                 onClick={() => setStatusFilter('NEEDS_OE_CONFIRMATION')}
-                className={`px-2.5 py-1 rounded-full font-semibold transition ${
-                  statusFilter === 'NEEDS_OE_CONFIRMATION'
-                    ? 'bg-blue-600 text-white shadow-2xs'
-                    : 'bg-blue-50 text-blue-900 border border-blue-200 hover:bg-blue-100'
-                }`}
+                className={`px-2.5 py-1 rounded-full font-semibold transition ${statusFilter === 'NEEDS_OE_CONFIRMATION'
+                  ? 'bg-blue-600 text-white shadow-2xs'
+                  : 'bg-blue-50 text-blue-900 border border-blue-200 hover:bg-blue-100'
+                  }`}
               >
-                Awaiting OE Review ({needsConfirmationOrders.length})
+                Waiting for Approval ({needsConfirmationOrders.length})
               </button>
               <button
                 onClick={() => setStatusFilter('PASSED')}
-                className={`px-2.5 py-1 rounded-full font-semibold transition ${
-                  statusFilter === 'PASSED'
-                    ? 'bg-emerald-600 text-white shadow-2xs'
-                    : 'bg-emerald-50 text-emerald-900 border border-emerald-200 hover:bg-emerald-100'
-                }`}
+                className={`px-2.5 py-1 rounded-full font-semibold transition ${statusFilter === 'PASSED'
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : 'bg-emerald-50 text-emerald-900 border border-emerald-200 hover:bg-emerald-100'
+                  }`}
               >
                 In Production ({passedOrders.length})
               </button>
@@ -1336,7 +1321,7 @@ export default function ArtworkPrepressPage() {
                         ) : isAwaiting ? (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-300 flex items-center gap-1">
                             <Clock className="h-3 w-3 text-blue-600" />
-                            AWAITING OE
+                            WAITING FOR APPROVAL
                           </span>
                         ) : (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
@@ -1573,7 +1558,7 @@ export default function ArtworkPrepressPage() {
                               </span>
                             ) : isAwaiting ? (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-300">
-                                AWAITING OE
+                                WAITING FOR APPROVAL
                               </span>
                             ) : (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
@@ -1650,9 +1635,8 @@ export default function ArtworkPrepressPage() {
                   <div
                     key={job.orderId}
                     onClick={() => setSelectedPreflightJob(job)}
-                    className={`p-4 cursor-pointer transition-colors ${
-                      isSelected ? 'bg-amber-50/60 border-l-4 border-l-amber-400' : 'hover:bg-slate-50'
-                    }`}
+                    className={`p-4 cursor-pointer transition-colors ${isSelected ? 'bg-amber-50/60 border-l-4 border-l-amber-400' : 'hover:bg-slate-50'
+                      }`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
@@ -1662,13 +1646,12 @@ export default function ArtworkPrepressPage() {
                           </span>
                           <span className="text-xs font-semibold text-slate-800">{job.customer}</span>
                           <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                              job.stage === 'PROOF_DISPATCHED'
-                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                                : job.stage === 'DEFECT_FLAGGED'
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${job.stage === 'PROOF_DISPATCHED'
+                              ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                              : job.stage === 'DEFECT_FLAGGED'
                                 ? 'bg-rose-50 text-rose-700 border border-rose-200'
                                 : 'bg-slate-100 text-slate-700'
-                            }`}
+                              }`}
                           >
                             {job.stage}
                           </span>
@@ -1681,11 +1664,10 @@ export default function ArtworkPrepressPage() {
 
                       <div className="text-right">
                         <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            job.bleedStatus === 'PASS'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-rose-50 text-rose-700 border border-rose-200'
-                          }`}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${job.bleedStatus === 'PASS'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-rose-50 text-rose-700 border border-rose-200'
+                            }`}
                         >
                           BLEED: {job.bleedStatus}
                         </span>
@@ -1718,9 +1700,8 @@ export default function ArtworkPrepressPage() {
                 <div className="flex justify-between items-center p-2.5 bg-slate-50 rounded-lg border border-slate-200">
                   <span className="text-slate-500 font-medium">Output Resolution:</span>
                   <span
-                    className={`font-bold tabular-nums ${
-                      selectedPreflightJob.dpi >= 300 ? 'text-emerald-700' : 'text-amber-700'
-                    }`}
+                    className={`font-bold tabular-nums ${selectedPreflightJob.dpi >= 300 ? 'text-emerald-700' : 'text-amber-700'
+                      }`}
                   >
                     {selectedPreflightJob.dpi} DPI {selectedPreflightJob.dpi >= 300 ? '✓ (Optimal)' : '⚠ (Under 300)'}
                   </span>
@@ -1729,9 +1710,8 @@ export default function ArtworkPrepressPage() {
                 <div className="flex justify-between items-center p-2.5 bg-slate-50 rounded-lg border border-slate-200">
                   <span className="text-slate-500 font-medium">Color Mode:</span>
                   <span
-                    className={`font-bold ${
-                      selectedPreflightJob.colorSpace.includes('CMYK') ? 'text-emerald-700' : 'text-rose-700'
-                    }`}
+                    className={`font-bold ${selectedPreflightJob.colorSpace.includes('CMYK') ? 'text-emerald-700' : 'text-rose-700'
+                      }`}
                   >
                     {selectedPreflightJob.colorSpace}
                   </span>
@@ -1740,9 +1720,8 @@ export default function ArtworkPrepressPage() {
                 <div className="flex justify-between items-center p-2.5 bg-slate-50 rounded-lg border border-slate-200">
                   <span className="text-slate-500 font-medium">Bleed (3mm Required):</span>
                   <span
-                    className={`font-bold ${
-                      selectedPreflightJob.bleedStatus === 'PASS' ? 'text-emerald-700' : 'text-rose-700'
-                    }`}
+                    className={`font-bold ${selectedPreflightJob.bleedStatus === 'PASS' ? 'text-emerald-700' : 'text-rose-700'
+                      }`}
                   >
                     {selectedPreflightJob.bleedStatus === 'PASS' ? '3.0mm Detected ✓' : 'NO BLEED DETECTED ✕'}
                   </span>
@@ -1751,9 +1730,8 @@ export default function ArtworkPrepressPage() {
                 <div className="flex justify-between items-center p-2.5 bg-slate-50 rounded-lg border border-slate-200">
                   <span className="text-slate-500 font-medium">Fonts &amp; Text Glyphs:</span>
                   <span
-                    className={`font-bold ${
-                      selectedPreflightJob.fontStatus === 'OUTLINED' ? 'text-emerald-700' : 'text-rose-700'
-                    }`}
+                    className={`font-bold ${selectedPreflightJob.fontStatus === 'OUTLINED' ? 'text-emerald-700' : 'text-rose-700'
+                      }`}
                   >
                     {selectedPreflightJob.fontStatus}
                   </span>
@@ -1762,9 +1740,8 @@ export default function ArtworkPrepressPage() {
                 <div className="flex justify-between items-center p-2.5 bg-slate-50 rounded-lg border border-slate-200">
                   <span className="text-slate-500 font-medium">Total Area Coverage (TAC):</span>
                   <span
-                    className={`font-bold tabular-nums ${
-                      selectedPreflightJob.inkCoverage <= 320 ? 'text-emerald-700' : 'text-rose-700'
-                    }`}
+                    className={`font-bold tabular-nums ${selectedPreflightJob.inkCoverage <= 320 ? 'text-emerald-700' : 'text-rose-700'
+                      }`}
                   >
                     {selectedPreflightJob.inkCoverage}% {selectedPreflightJob.inkCoverage <= 320 ? '(Optimal)' : '(SMUDGE RISK)'}
                   </span>
@@ -1826,7 +1803,7 @@ export default function ArtworkPrepressPage() {
                   ) : isAwaitingOE(inspectedOrder) ? (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-300 flex items-center gap-1">
                       <Clock className="h-3 w-3 text-blue-600" />
-                      AWAITING OE
+                      WAITING FOR APPROVAL
                     </span>
                   ) : (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
@@ -1918,748 +1895,746 @@ export default function ArtworkPrepressPage() {
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 {/* Left Column (7 cols): Requirements, Specs, Assets, Personalization */}
                 <div className="lg:col-span-7 space-y-5">
-              {/* OE Correction Directives Banner if Returned */}
-              {inspectedOrder.revisionDirectives && (
-                <div className="p-4 bg-gradient-to-r from-rose-50 via-rose-50/80 to-amber-50 rounded-2xl border-2 border-rose-300 space-y-2 shadow-xs">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-lg bg-rose-600 text-white shadow-xs">
-                        <AlertTriangle className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black uppercase tracking-wider text-rose-950 font-mono">
-                          OE CORRECTION DIRECTIVES — REVISIONS REQUIRED
-                        </h4>
-                        <span className="text-[11px] font-mono text-rose-800 font-bold block">
-                          Returned by: {inspectedOrder.returnedBy || 'Operations Coordinator'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="bg-white/95 p-3 rounded-xl border border-rose-200 shadow-2xs">
-                    <p className="text-xs md:text-sm text-slate-900 font-semibold whitespace-pre-wrap leading-relaxed">
-                      &quot;{inspectedOrder.revisionDirectives}&quot;
-                    </p>
-                  </div>
-                  <p className="text-xs text-rose-900 font-medium">
-                    ⚠️ Please update the artwork according to the instructions above and upload the updated file below.
-                  </p>
-                </div>
-              )}
-
-              {/* Product Specifications & Order Run */}
-              {(() => {
-                const firstItem = inspectedOrder.items?.[0];
-                const specs = firstItem?.specifications || {};
-                const parsedSpecs = parseSpecifications(specs);
-                const designNotes =
-                  firstItem?.designNotes ||
-                  specs?.designNotes ||
-                  specs?.customerNotes ||
-                  (inspectedOrder as any)?.customerNotes;
-
-                return (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono flex items-center gap-1.5">
-                        <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                        <span>Product Specifications &amp; Requirements</span>
-                      </h4>
-                      <span className="text-[11px] font-mono font-bold bg-slate-100 text-slate-800 px-2.5 py-0.5 rounded border border-slate-200">
-                        RUN: {firstItem?.quantity || 1} PCS
-                      </span>
-                    </div>
-
-                    <div className="bg-slate-50/80 rounded-2xl border border-slate-200 p-4 space-y-3 shadow-2xs">
-                      {/* Product Name Title */}
-                      <div className="flex items-center justify-between pb-2 border-b border-slate-200/70">
-                        <div>
-                          <span className="text-[10px] font-mono text-slate-400 font-bold uppercase block">
-                            PRODUCT ITEM
-                          </span>
-                          <strong className="text-base font-bold text-slate-950 block">
-                            {firstItem?.productName || 'Custom Print Job'}
-                          </strong>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[10px] font-mono text-slate-400 font-bold uppercase block">
-                            ORDER QUANTITY
-                          </span>
-                          <span className="font-mono font-black text-slate-950 text-sm">
-                            {firstItem?.quantity || 1} pcs
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Key-Value Specifications Grid */}
-                      {parsedSpecs.length > 0 ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                          {parsedSpecs.map((spec, idx) => (
-                            <div
-                              key={idx}
-                              className="bg-white p-2.5 rounded-xl border border-slate-200/90 shadow-2xs space-y-0.5"
-                            >
-                              <span className="text-[10px] font-mono uppercase font-bold text-slate-400 block tracking-wider">
-                                {spec.label}
-                              </span>
-                              <span className="text-xs font-bold text-slate-900 block break-words">
-                                {spec.value}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-xs text-slate-500 italic p-3 bg-white rounded-xl border border-slate-200">
-                          Standard commercial specifications configured.
-                        </div>
-                      )}
-
-                      {/* Operations Coordinator Assignment Notes */}
-                      {inspectedOrder.assignmentNotes && (
-                        <div className="p-3.5 bg-amber-50/95 rounded-xl border border-amber-300 text-xs space-y-1.5 shadow-2xs">
-                          <div className="flex items-center gap-1.5 font-bold text-amber-950 text-[11px] uppercase tracking-wider font-mono">
-                            <MessageSquare className="h-3.5 w-3.5 text-amber-600" />
-                            <span>Operations Assignment Notes{inspectedOrder.assignedBy ? ` (by ${inspectedOrder.assignedBy})` : ''}:</span>
+                  {/* OE Correction Directives Banner if Returned */}
+                  {inspectedOrder.revisionDirectives && (
+                    <div className="p-4 bg-gradient-to-r from-rose-50 via-rose-50/80 to-amber-50 rounded-2xl border-2 border-rose-300 space-y-2 shadow-xs">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1.5 rounded-lg bg-rose-600 text-white shadow-xs">
+                            <AlertTriangle className="h-4 w-4" />
                           </div>
-                          <p className="text-slate-900 text-xs leading-relaxed whitespace-pre-wrap font-medium bg-white/90 p-2.5 rounded-lg border border-amber-200/80">
-                            {inspectedOrder.assignmentNotes}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Customer Custom Design Notes / Instructions */}
-                      {designNotes && (
-                        <div className="p-3.5 bg-amber-50/95 rounded-xl border border-amber-300/80 text-xs space-y-1.5 shadow-2xs">
-                          <div className="flex items-center gap-1.5 font-bold text-amber-950 text-[11px] uppercase tracking-wider font-mono">
-                            <MessageSquare className="h-3.5 w-3.5 text-amber-600" />
-                            <span>Customer Design Instructions &amp; Brief:</span>
+                          <div>
+                            <h4 className="text-xs font-black uppercase tracking-wider text-rose-950 font-mono">
+                              OE CORRECTION DIRECTIVES — REVISIONS REQUIRED
+                            </h4>
+                            <span className="text-[11px] font-mono text-rose-800 font-bold block">
+                              Returned by: {inspectedOrder.returnedBy || 'Operations Coordinator'}
+                            </span>
                           </div>
-                          <p className="text-slate-900 text-xs leading-relaxed whitespace-pre-wrap font-medium bg-white/80 p-2.5 rounded-lg border border-amber-200/80">
-                            {designNotes}
-                          </p>
                         </div>
-                      )}
-
-                      {/* Technical JSON Toggle */}
-                      {firstItem?.specifications && (
-                        <div className="pt-1 border-t border-slate-200/60">
-                          <button
-                            type="button"
-                            onClick={() => setShowRawJson((prev) => !prev)}
-                            className="text-[11px] font-mono font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition"
-                          >
-                            <FileCode className="h-3.5 w-3.5 text-slate-400" />
-                            <span>{showRawJson ? 'Hide Technical Metadata' : 'Show Technical Metadata (JSON)'}</span>
-                          </button>
-                          {showRawJson && (
-                            <pre className="mt-2 text-[11px] font-mono bg-white p-3 rounded-xl border border-slate-200 max-h-40 overflow-auto text-slate-700">
-                              {JSON.stringify(
-                                Object.fromEntries(
-                                  Object.entries(firstItem.specifications || {}).filter(([k]) => !isExcluded(k)),
-                                ),
-                                null,
-                                2,
-                              )}
-                            </pre>
-                          )}
-                        </div>
-                      )}
+                      </div>
+                      <div className="bg-white/95 p-3 rounded-xl border border-rose-200 shadow-2xs">
+                        <p className="text-xs md:text-sm text-slate-900 font-semibold whitespace-pre-wrap leading-relaxed">
+                          &quot;{inspectedOrder.revisionDirectives}&quot;
+                        </p>
+                      </div>
+                      <p className="text-xs text-rose-900 font-medium">
+                        ⚠️ Please update the artwork according to the instructions above and upload the updated file below.
+                      </p>
                     </div>
-                  </div>
-                );
-              })()}
+                  )}
 
-              {/* Client Personalization Template Details */}
-              {(() => {
-                const firstItem = inspectedOrder.items?.[0];
-                const pDetails = getPersonalizationDetails(firstItem);
-                if (!pDetails) return null;
+                  {/* Product Specifications & Order Run */}
+                  {(() => {
+                    const firstItem = inspectedOrder.items?.[0];
+                    const specs = firstItem?.specifications || {};
+                    const parsedSpecs = parseSpecifications(specs);
+                    const designNotes =
+                      firstItem?.designNotes ||
+                      specs?.designNotes ||
+                      specs?.customerNotes ||
+                      (inspectedOrder as any)?.customerNotes;
 
-                return (
-                  <div className="p-4 bg-gradient-to-br from-purple-50/90 via-white to-purple-50/50 rounded-2xl border-2 border-purple-300 shadow-xs space-y-3.5">
-                    <div className="flex items-center justify-between border-b border-purple-200/80 pb-2.5">
-                      <div className="flex items-center gap-2">
-                        <span className="p-1.5 rounded-lg bg-purple-700 text-white shadow-xs">
-                          <Sparkles className="h-4 w-4" />
-                        </span>
-                        <div>
-                          <h5 className="text-xs font-black uppercase tracking-wider text-purple-950 font-mono">
-                            Client Personalization Template Fields
-                          </h5>
-                          <span className="text-[11px] font-mono text-purple-700 font-bold block">
-                            Template: {pDetails.templateCode}
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono flex items-center gap-1.5">
+                            <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                            <span>Product Specifications &amp; Requirements</span>
+                          </h4>
+                          <span className="text-[11px] font-mono font-bold bg-slate-100 text-slate-800 px-2.5 py-0.5 rounded border border-slate-200">
+                            RUN: {firstItem?.quantity || 1} PCS
                           </span>
                         </div>
-                      </div>
-                      <span className="text-[10px] font-mono font-bold bg-purple-100 text-purple-900 px-2.5 py-1 rounded-full border border-purple-300">
-                        CLIENT DATA
-                      </span>
-                    </div>
 
-                    {/* Shared Values */}
-                    {Object.keys(pDetails.sharedValues).length > 0 && (
-                      <div className="space-y-1.5">
-                        <span className="text-[10px] font-mono font-bold uppercase text-purple-900 block tracking-wider">
-                          Shared Inscription Values:
-                        </span>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                          {Object.entries(pDetails.sharedValues).map(([k, v]) => (
-                            <div key={k} className="bg-white p-2.5 rounded-xl border border-purple-200 shadow-2xs">
-                              <span className="text-[10px] font-mono uppercase font-bold text-slate-400 block tracking-wider">
-                                {formatFieldLabel(k)}
+                        <div className="bg-slate-50/80 rounded-2xl border border-slate-200 p-4 space-y-3 shadow-2xs">
+                          {/* Product Name Title */}
+                          <div className="flex items-center justify-between pb-2 border-b border-slate-200/70">
+                            <div>
+                              <span className="text-[10px] font-mono text-slate-400 font-bold uppercase block">
+                                PRODUCT ITEM
                               </span>
-                              <span className="text-xs font-bold text-slate-950 block break-words mt-0.5">
-                                {String(v)}
+                              <strong className="text-base font-bold text-slate-950 block">
+                                {firstItem?.productName || 'Custom Print Job'}
+                              </strong>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] font-mono text-slate-400 font-bold uppercase block">
+                                ORDER QUANTITY
+                              </span>
+                              <span className="font-mono font-black text-slate-950 text-sm">
+                                {firstItem?.quantity || 1} pcs
                               </span>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                          </div>
 
-                    {/* Per-item entries */}
-                    {pDetails.entries.length > 0 && (
-                      <div className="space-y-2">
-                        <span className="text-[10px] font-mono font-bold uppercase text-purple-900 block tracking-wider">
-                          Per-Unit Entries ({pDetails.entries.length} items):
-                        </span>
-                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                          {pDetails.entries.map((entry, eIdx) => (
-                            <div
-                              key={eIdx}
-                              className="bg-white rounded-xl border border-purple-200 p-2.5 shadow-2xs space-y-1.5"
-                            >
-                              <span className="text-[10px] font-mono font-bold text-purple-900 block">
-                                Unit #{entry.itemIndex || eIdx + 1}
-                              </span>
-                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {Object.entries(entry.values || {}).map(([k, v]) => (
-                                  <div key={k} className="bg-purple-50/60 p-2 rounded-lg border border-purple-200/80">
-                                    <span className="text-[9.5px] font-mono uppercase font-bold text-purple-800 block">
-                                      {formatFieldLabel(k)}
-                                    </span>
-                                    <span className="text-xs font-bold text-slate-950 block break-words">
-                                      {String(v)}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* Customer Uploaded Artwork Assets */}
-              {(() => {
-                const firstItem = inspectedOrder.items?.[0];
-                const afs = firstItem?.artworkFiles || firstItem?.specifications?.artworkFiles || null;
-                const rawArtworkUrl =
-                  firstItem?.artworkUrl ||
-                  firstItem?.specifications?.artworkUrl ||
-                  firstItem?.specifications?.artworkFile?.fileUrl ||
-                  (inspectedOrder as any)?.artworkUrl;
-
-                const slotEntries = afs && typeof afs === 'object' ? Object.entries(afs) : [];
-
-                if (slotEntries.length > 0) {
-                  return (
-                    <div className="p-4 bg-amber-50/70 rounded-2xl border border-amber-200 shadow-2xs space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5 uppercase tracking-wider font-mono">
-                          <ImageIcon className="h-4 w-4 text-amber-600" />
-                          <span>Customer Artwork Files ({slotEntries.length} Slots Uploaded)</span>
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {slotEntries.map(([slotKey, fileObj]: [string, any], sIdx: number) => {
-                          const fileUrl = fileObj?.fileUrl || (typeof fileObj === 'string' ? fileObj : '');
-                          if (!fileUrl) return null;
-                          const label =
-                            fileObj?.slotLabel || `Slot ${sIdx + 1}: ${slotKey.replace(/^slot_\d+_?/, '').replace(/_/g, ' ')}`;
-                          const fileName = fileObj?.originalFileName || fileUrl.split('/').pop() || 'Artwork File';
-                          const isDocOrVector =
-                            fileUrl.toLowerCase().endsWith('.pdf') ||
-                            fileUrl.toLowerCase().endsWith('.ai') ||
-                            fileUrl.toLowerCase().endsWith('.eps') ||
-                            fileUrl.toLowerCase().endsWith('.psd') ||
-                            fileUrl.toLowerCase().endsWith('.cdr');
-
-                          return (
-                            <div key={slotKey} className="bg-white rounded-xl border border-amber-200 p-3 space-y-2 shadow-2xs">
-                              <div className="flex items-center justify-between pb-1.5 border-b border-amber-100">
-                                <span className="text-xs font-bold text-amber-950 truncate max-w-[180px]">
-                                  {label}
-                                </span>
-                                <div className="flex items-center gap-1.5">
-                                  <a
-                                    href={resolveImageUrl(fileUrl)}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-[11px] text-blue-700 font-semibold hover:underline flex items-center gap-0.5"
-                                  >
-                                    <ExternalLink className="h-3 w-3" />
-                                    Open
-                                  </a>
-                                  <button
-                                    type="button"
-                                    onClick={() => downloadFile(fileUrl, fileName || `${label}.png`)}
-                                    className="text-[11px] text-amber-900 bg-amber-200 hover:bg-amber-300 font-semibold px-2 py-0.5 rounded flex items-center gap-0.5 transition cursor-pointer"
-                                  >
-                                    <Download className="h-3 w-3" />
-                                    Get
-                                  </button>
-                                </div>
-                              </div>
-
-                              {!isDocOrVector ? (
-                                <div className="relative rounded-lg overflow-hidden border border-slate-100 bg-slate-50">
-                                  <img
-                                    src={resolveImageUrl(fileUrl)}
-                                    alt={label}
-                                    className="w-full h-36 object-contain p-1"
-                                  />
-                                </div>
-                              ) : (
-                                <div className="p-3 bg-amber-50/50 rounded-lg border border-amber-100 flex items-center justify-between">
-                                  <div className="flex items-center gap-2 text-xs text-slate-800 font-medium truncate">
-                                    <FileCode className="h-4 w-4 text-amber-600 shrink-0" />
-                                    <span className="truncate">{fileName}</span>
-                                  </div>
-                                  <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded shrink-0">
-                                    VECTOR / DOC
+                          {/* Key-Value Specifications Grid */}
+                          {parsedSpecs.length > 0 ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                              {parsedSpecs.map((spec, idx) => (
+                                <div
+                                  key={idx}
+                                  className="bg-white p-2.5 rounded-xl border border-slate-200/90 shadow-2xs space-y-0.5"
+                                >
+                                  <span className="text-[10px] font-mono uppercase font-bold text-slate-400 block tracking-wider">
+                                    {spec.label}
+                                  </span>
+                                  <span className="text-xs font-bold text-slate-900 block break-words">
+                                    {spec.value}
                                   </span>
                                 </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-slate-500 italic p-3 bg-white rounded-xl border border-slate-200">
+                              Standard commercial specifications configured.
+                            </div>
+                          )}
+
+                          {/* Operations Coordinator Assignment Notes */}
+                          {inspectedOrder.assignmentNotes && (
+                            <div className="p-3.5 bg-amber-50/95 rounded-xl border border-amber-300 text-xs space-y-1.5 shadow-2xs">
+                              <div className="flex items-center gap-1.5 font-bold text-amber-950 text-[11px] uppercase tracking-wider font-mono">
+                                <MessageSquare className="h-3.5 w-3.5 text-amber-600" />
+                                <span>Operations Assignment Notes{inspectedOrder.assignedBy ? ` (by ${inspectedOrder.assignedBy})` : ''}:</span>
+                              </div>
+                              <p className="text-slate-900 text-xs leading-relaxed whitespace-pre-wrap font-medium bg-white/90 p-2.5 rounded-lg border border-amber-200/80">
+                                {inspectedOrder.assignmentNotes}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Customer Custom Design Notes / Instructions */}
+                          {designNotes && (
+                            <div className="p-3.5 bg-amber-50/95 rounded-xl border border-amber-300/80 text-xs space-y-1.5 shadow-2xs">
+                              <div className="flex items-center gap-1.5 font-bold text-amber-950 text-[11px] uppercase tracking-wider font-mono">
+                                <MessageSquare className="h-3.5 w-3.5 text-amber-600" />
+                                <span>Customer Design Instructions &amp; Brief:</span>
+                              </div>
+                              <p className="text-slate-900 text-xs leading-relaxed whitespace-pre-wrap font-medium bg-white/80 p-2.5 rounded-lg border border-amber-200/80">
+                                {designNotes}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Technical JSON Toggle */}
+                          {firstItem?.specifications && (
+                            <div className="pt-1 border-t border-slate-200/60">
+                              <button
+                                type="button"
+                                onClick={() => setShowRawJson((prev) => !prev)}
+                                className="text-[11px] font-mono font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition"
+                              >
+                                <FileCode className="h-3.5 w-3.5 text-slate-400" />
+                                <span>{showRawJson ? 'Hide Technical Metadata' : 'Show Technical Metadata (JSON)'}</span>
+                              </button>
+                              {showRawJson && (
+                                <pre className="mt-2 text-[11px] font-mono bg-white p-3 rounded-xl border border-slate-200 max-h-40 overflow-auto text-slate-700">
+                                  {JSON.stringify(
+                                    Object.fromEntries(
+                                      Object.entries(firstItem.specifications || {}).filter(([k]) => !isExcluded(k)),
+                                    ),
+                                    null,
+                                    2,
+                                  )}
+                                </pre>
                               )}
-                              <span className="text-[10px] text-slate-500 font-mono block truncate" title={fileName}>
-                                {fileName}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Client Personalization Template Details */}
+                  {(() => {
+                    const firstItem = inspectedOrder.items?.[0];
+                    const pDetails = getPersonalizationDetails(firstItem);
+                    if (!pDetails) return null;
+
+                    return (
+                      <div className="p-4 bg-gradient-to-br from-purple-50/90 via-white to-purple-50/50 rounded-2xl border-2 border-purple-300 shadow-xs space-y-3.5">
+                        <div className="flex items-center justify-between border-b border-purple-200/80 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="p-1.5 rounded-lg bg-purple-700 text-white shadow-xs">
+                              <Sparkles className="h-4 w-4" />
+                            </span>
+                            <div>
+                              <h5 className="text-xs font-black uppercase tracking-wider text-purple-950 font-mono">
+                                Client Personalization Template Fields
+                              </h5>
+                              <span className="text-[11px] font-mono text-purple-700 font-bold block">
+                                Template: {pDetails.templateCode}
                               </span>
                             </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                }
-
-                if (!rawArtworkUrl) return null;
-                const isDocOrVector =
-                  rawArtworkUrl.toLowerCase().endsWith('.pdf') ||
-                  rawArtworkUrl.toLowerCase().endsWith('.ai') ||
-                  rawArtworkUrl.toLowerCase().endsWith('.eps') ||
-                  rawArtworkUrl.toLowerCase().endsWith('.psd') ||
-                  rawArtworkUrl.toLowerCase().endsWith('.cdr');
-
-                return (
-                  <div className="p-4 bg-amber-50/70 rounded-2xl border border-amber-200 shadow-2xs space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5 uppercase tracking-wider font-mono">
-                        <ImageIcon className="h-4 w-4 text-amber-600" />
-                        <span>Customer Uploaded Artwork</span>
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <a
-                          href={resolveImageUrl(rawArtworkUrl)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs text-blue-700 font-semibold flex items-center gap-1 hover:underline"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                          Open Full
-                        </a>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            downloadFile(
-                              rawArtworkUrl,
-                              rawArtworkUrl.split('/').pop() || 'customer_artwork.png',
-                            )
-                          }
-                          className="text-xs text-amber-900 bg-amber-200/80 hover:bg-amber-300 font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1 transition cursor-pointer"
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                          Download
-                        </button>
-                      </div>
-                    </div>
-
-                    {!isDocOrVector ? (
-                      <div className="relative rounded-xl overflow-hidden border border-amber-200 bg-white">
-                        <img
-                          src={resolveImageUrl(rawArtworkUrl)}
-                          alt="Customer Uploaded Artwork"
-                          className="w-full max-h-56 object-contain bg-slate-50 p-2"
-                        />
-                      </div>
-                    ) : (
-                      <div className="p-3 bg-white rounded-xl border border-amber-200 flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-xs text-slate-800 font-medium">
-                          <FileCode className="h-5 w-5 text-amber-600" />
-                          <span>File: {rawArtworkUrl.split('/').pop()}</span>
+                          </div>
+                          <span className="text-[10px] font-mono font-bold bg-purple-100 text-purple-900 px-2.5 py-1 rounded-full border border-purple-300">
+                            CLIENT DATA
+                          </span>
                         </div>
-                        <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
-                          VECTOR / DOC
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
 
-              {/* Customer Reference Image */}
-              {inspectedOrder.items?.[0]?.referenceImageUrl && (
-                <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-200 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-blue-900 flex items-center gap-1.5 uppercase tracking-wider font-mono">
-                      <ImageIcon className="h-4 w-4 text-blue-600" />
-                      Customer Reference Image
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={resolveImageUrl(inspectedOrder.items[0].referenceImageUrl)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs text-blue-700 font-semibold flex items-center gap-1 hover:underline"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                        Open Full
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          downloadFile(
-                            inspectedOrder.items[0].referenceImageUrl,
-                            `${inspectedOrder.orderNumber}_Reference.png`,
-                          )
-                        }
-                        className="text-xs text-blue-900 bg-blue-100 hover:bg-blue-200 font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1 transition cursor-pointer"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        Download
-                      </button>
+                        {/* Shared Values */}
+                        {Object.keys(pDetails.sharedValues).length > 0 && (
+                          <div className="space-y-1.5">
+                            <span className="text-[10px] font-mono font-bold uppercase text-purple-900 block tracking-wider">
+                              Shared Inscription Values:
+                            </span>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                              {Object.entries(pDetails.sharedValues).map(([k, v]) => (
+                                <div key={k} className="bg-white p-2.5 rounded-xl border border-purple-200 shadow-2xs">
+                                  <span className="text-[10px] font-mono uppercase font-bold text-slate-400 block tracking-wider">
+                                    {formatFieldLabel(k)}
+                                  </span>
+                                  <span className="text-xs font-bold text-slate-950 block break-words mt-0.5">
+                                    {String(v)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Per-item entries */}
+                        {pDetails.entries.length > 0 && (
+                          <div className="space-y-2">
+                            <span className="text-[10px] font-mono font-bold uppercase text-purple-900 block tracking-wider">
+                              Per-Unit Entries ({pDetails.entries.length} items):
+                            </span>
+                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                              {pDetails.entries.map((entry, eIdx) => (
+                                <div
+                                  key={eIdx}
+                                  className="bg-white rounded-xl border border-purple-200 p-2.5 shadow-2xs space-y-1.5"
+                                >
+                                  <span className="text-[10px] font-mono font-bold text-purple-900 block">
+                                    Unit #{entry.itemIndex || eIdx + 1}
+                                  </span>
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                    {Object.entries(entry.values || {}).map(([k, v]) => (
+                                      <div key={k} className="bg-purple-50/60 p-2 rounded-lg border border-purple-200/80">
+                                        <span className="text-[9.5px] font-mono uppercase font-bold text-purple-800 block">
+                                          {formatFieldLabel(k)}
+                                        </span>
+                                        <span className="text-xs font-bold text-slate-950 block break-words">
+                                          {String(v)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Customer Uploaded Artwork Assets */}
+                  {(() => {
+                    const firstItem = inspectedOrder.items?.[0];
+                    const afs = firstItem?.artworkFiles || firstItem?.specifications?.artworkFiles || null;
+                    const rawArtworkUrl =
+                      firstItem?.artworkUrl ||
+                      firstItem?.specifications?.artworkUrl ||
+                      firstItem?.specifications?.artworkFile?.fileUrl ||
+                      (inspectedOrder as any)?.artworkUrl;
+
+                    const slotEntries = afs && typeof afs === 'object' ? Object.entries(afs) : [];
+
+                    if (slotEntries.length > 0) {
+                      return (
+                        <div className="p-4 bg-amber-50/70 rounded-2xl border border-amber-200 shadow-2xs space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5 uppercase tracking-wider font-mono">
+                              <ImageIcon className="h-4 w-4 text-amber-600" />
+                              <span>Customer Artwork Files ({slotEntries.length} Slots Uploaded)</span>
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {slotEntries.map(([slotKey, fileObj]: [string, any], sIdx: number) => {
+                              const fileUrl = fileObj?.fileUrl || (typeof fileObj === 'string' ? fileObj : '');
+                              if (!fileUrl) return null;
+                              const label =
+                                fileObj?.slotLabel || `Slot ${sIdx + 1}: ${slotKey.replace(/^slot_\d+_?/, '').replace(/_/g, ' ')}`;
+                              const fileName = fileObj?.originalFileName || fileUrl.split('/').pop() || 'Artwork File';
+                              const isDocOrVector =
+                                fileUrl.toLowerCase().endsWith('.pdf') ||
+                                fileUrl.toLowerCase().endsWith('.ai') ||
+                                fileUrl.toLowerCase().endsWith('.eps') ||
+                                fileUrl.toLowerCase().endsWith('.psd') ||
+                                fileUrl.toLowerCase().endsWith('.cdr');
+
+                              return (
+                                <div key={slotKey} className="bg-white rounded-xl border border-amber-200 p-3 space-y-2 shadow-2xs">
+                                  <div className="flex items-center justify-between pb-1.5 border-b border-amber-100">
+                                    <span className="text-xs font-bold text-amber-950 truncate max-w-[180px]">
+                                      {label}
+                                    </span>
+                                    <div className="flex items-center gap-1.5">
+                                      <a
+                                        href={resolveImageUrl(fileUrl)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-[11px] text-blue-700 font-semibold hover:underline flex items-center gap-0.5"
+                                      >
+                                        <ExternalLink className="h-3 w-3" />
+                                        Open
+                                      </a>
+                                      <button
+                                        type="button"
+                                        onClick={() => downloadFile(fileUrl, fileName || `${label}.png`)}
+                                        className="text-[11px] text-amber-900 bg-amber-200 hover:bg-amber-300 font-semibold px-2 py-0.5 rounded flex items-center gap-0.5 transition cursor-pointer"
+                                      >
+                                        <Download className="h-3 w-3" />
+                                        Get
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {!isDocOrVector ? (
+                                    <div className="relative rounded-lg overflow-hidden border border-slate-100 bg-slate-50">
+                                      <img
+                                        src={resolveImageUrl(fileUrl)}
+                                        alt={label}
+                                        className="w-full h-36 object-contain p-1"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="p-3 bg-amber-50/50 rounded-lg border border-amber-100 flex items-center justify-between">
+                                      <div className="flex items-center gap-2 text-xs text-slate-800 font-medium truncate">
+                                        <FileCode className="h-4 w-4 text-amber-600 shrink-0" />
+                                        <span className="truncate">{fileName}</span>
+                                      </div>
+                                      <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded shrink-0">
+                                        VECTOR / DOC
+                                      </span>
+                                    </div>
+                                  )}
+                                  <span className="text-[10px] text-slate-500 font-mono block truncate" title={fileName}>
+                                    {fileName}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (!rawArtworkUrl) return null;
+                    const isDocOrVector =
+                      rawArtworkUrl.toLowerCase().endsWith('.pdf') ||
+                      rawArtworkUrl.toLowerCase().endsWith('.ai') ||
+                      rawArtworkUrl.toLowerCase().endsWith('.eps') ||
+                      rawArtworkUrl.toLowerCase().endsWith('.psd') ||
+                      rawArtworkUrl.toLowerCase().endsWith('.cdr');
+
+                    return (
+                      <div className="p-4 bg-amber-50/70 rounded-2xl border border-amber-200 shadow-2xs space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5 uppercase tracking-wider font-mono">
+                            <ImageIcon className="h-4 w-4 text-amber-600" />
+                            <span>Customer Uploaded Artwork</span>
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={resolveImageUrl(rawArtworkUrl)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-blue-700 font-semibold flex items-center gap-1 hover:underline"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Open Full
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                downloadFile(
+                                  rawArtworkUrl,
+                                  rawArtworkUrl.split('/').pop() || 'customer_artwork.png',
+                                )
+                              }
+                              className="text-xs text-amber-900 bg-amber-200/80 hover:bg-amber-300 font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1 transition cursor-pointer"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              Download
+                            </button>
+                          </div>
+                        </div>
+
+                        {!isDocOrVector ? (
+                          <div className="relative rounded-xl overflow-hidden border border-amber-200 bg-white">
+                            <img
+                              src={resolveImageUrl(rawArtworkUrl)}
+                              alt="Customer Uploaded Artwork"
+                              className="w-full max-h-56 object-contain bg-slate-50 p-2"
+                            />
+                          </div>
+                        ) : (
+                          <div className="p-3 bg-white rounded-xl border border-amber-200 flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-xs text-slate-800 font-medium">
+                              <FileCode className="h-5 w-5 text-amber-600" />
+                              <span>File: {rawArtworkUrl.split('/').pop()}</span>
+                            </div>
+                            <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                              VECTOR / DOC
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Customer Reference Image */}
+                  {inspectedOrder.items?.[0]?.referenceImageUrl && (
+                    <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-200 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-blue-900 flex items-center gap-1.5 uppercase tracking-wider font-mono">
+                          <ImageIcon className="h-4 w-4 text-blue-600" />
+                          Customer Reference Image
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={resolveImageUrl(inspectedOrder.items[0].referenceImageUrl)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-blue-700 font-semibold flex items-center gap-1 hover:underline"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Open Full
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              downloadFile(
+                                inspectedOrder.items[0].referenceImageUrl,
+                                `${inspectedOrder.orderNumber}_Reference.png`,
+                              )
+                            }
+                            className="text-xs text-blue-900 bg-blue-100 hover:bg-blue-200 font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1 transition cursor-pointer"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            Download
+                          </button>
+                        </div>
+                      </div>
+                      <img
+                        src={resolveImageUrl(inspectedOrder.items[0].referenceImageUrl)}
+                        alt="Reference"
+                        className="w-full max-h-52 object-contain rounded-xl border border-blue-200 bg-white p-1"
+                      />
                     </div>
-                  </div>
-                  <img
-                    src={resolveImageUrl(inspectedOrder.items[0].referenceImageUrl)}
-                    alt="Reference"
-                    className="w-full max-h-52 object-contain rounded-xl border border-blue-200 bg-white p-1"
-                  />
-                </div>
-              )}
+                  )}
                 </div>
 
                 {/* Right Column (5 cols): Candidate Versions History & Artwork Submission Form */}
                 <div className="lg:col-span-5 space-y-5">
-              {/* Existing Candidate Artworks & Version History */}
-              {(() => {
-                const firstItem = inspectedOrder.items?.[0];
-                const itemVersions: any[] = firstItem?.artworkVersions || [];
-                const allVersions: any[] = inspectedOrder.allArtworkVersions || [];
-                const approvedArt: any =
-                  inspectedOrder.approvedArtworkVersion || firstItem?.approvedArtworkVersion || null;
-                const latestArt: any = inspectedOrder.latestArtworkVersion || null;
+                  {/* Existing Candidate Artworks & Version History */}
+                  {(() => {
+                    const firstItem = inspectedOrder.items?.[0];
+                    const itemVersions: any[] = firstItem?.artworkVersions || [];
+                    const allVersions: any[] = inspectedOrder.allArtworkVersions || [];
+                    const approvedArt: any =
+                      inspectedOrder.approvedArtworkVersion || firstItem?.approvedArtworkVersion || null;
+                    const latestArt: any = inspectedOrder.latestArtworkVersion || null;
 
-                const rawVersions = [...allVersions, ...itemVersions];
-                if (approvedArt) rawVersions.push(approvedArt);
-                if (latestArt) rawVersions.push(latestArt);
+                    const rawVersions = [...allVersions, ...itemVersions];
+                    if (approvedArt) rawVersions.push(approvedArt);
+                    if (latestArt) rawVersions.push(latestArt);
 
-                const uniqueVersions = rawVersions
-                  .filter((v, idx, arr) => v?.id && arr.findIndex((x) => x?.id === v?.id) === idx)
-                  .sort((a, b) => (b.versionNumber || 0) - (a.versionNumber || 0));
+                    const uniqueVersions = rawVersions
+                      .filter((v, idx, arr) => v?.id && arr.findIndex((x) => x?.id === v?.id) === idx)
+                      .sort((a, b) => (b.versionNumber || 0) - (a.versionNumber || 0));
 
-                if (uniqueVersions.length === 0) return null;
+                    if (uniqueVersions.length === 0) return null;
 
-                return (
-                  <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                      <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5 uppercase tracking-wider font-mono">
-                        <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                        <span>Artwork Version History ({uniqueVersions.length} versions)</span>
-                      </span>
-                      {isPassedOrder(inspectedOrder) && (
-                        <span className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded-full border border-emerald-300">
-                          RELEASED TO PRODUCTION
-                        </span>
-                      )}
+                    return (
+                      <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                          <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5 uppercase tracking-wider font-mono">
+                            <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                            <span>Artwork Version History ({uniqueVersions.length} versions)</span>
+                          </span>
+                          {isPassedOrder(inspectedOrder) && (
+                            <span className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded-full border border-emerald-300">
+                              RELEASED TO PRODUCTION
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="space-y-2.5">
+                          {uniqueVersions.map((art, vIdx) => {
+                            const fileUrl = art.fileUrl || art.storageKey;
+                            const fileName =
+                              art.originalFileName ||
+                              (fileUrl ? fileUrl.split('/').pop() : `Artwork_V${art.versionNumber || vIdx + 1}`);
+                            const isThisConfirmed = Boolean(art.isApproved);
+                            const isProcessingThis = isConfirmingWork && confirmingVersionId === art.id;
+
+                            return (
+                              <div
+                                key={art.id || vIdx}
+                                className={`p-3 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isThisConfirmed
+                                  ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300'
+                                  : 'bg-slate-50/70 border-slate-200'
+                                  }`}
+                              >
+                                <div className="min-w-0 space-y-0.5">
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${isThisConfirmed ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
+                                        }`}
+                                    >
+                                      V{art.versionNumber || vIdx + 1}
+                                    </span>
+                                    <span className="text-xs font-bold text-slate-900 truncate max-w-xs" title={fileName}>
+                                      {fileName}
+                                    </span>
+                                    {isThisConfirmed && (
+                                      <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300 flex items-center gap-1">
+                                        <Check className="h-3 w-3 text-emerald-600" />
+                                        CONFIRMED WORK
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 text-[11px] font-mono text-slate-500">
+                                    <span>{art.resolutionDpi || 300} DPI</span>
+                                    {art.fileSize && (
+                                      <span>• {(art.fileSize / (1024 * 1024)).toFixed(2)} MB</span>
+                                    )}
+                                    {art.uploadedBy && <span>• By: {art.uploadedBy}</span>}
+                                  </div>
+                                  {art.prepressNotes && (
+                                    <p className="text-[11px] text-slate-600 italic mt-1">
+                                      &quot;{art.prepressNotes}&quot;
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Version Actions */}
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {fileUrl && (
+                                    <>
+                                      <a
+                                        href={resolveImageUrl(fileUrl)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-xs font-bold px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 transition"
+                                      >
+                                        View Proof
+                                      </a>
+                                      <button
+                                        type="button"
+                                        onClick={() => downloadFile(fileUrl, fileName)}
+                                        className="text-xs font-bold px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 transition cursor-pointer"
+                                      >
+                                        Download
+                                      </button>
+                                    </>
+                                  )}
+
+                                  {isOE && !isThisConfirmed && (
+                                    <button
+                                      type="button"
+                                      disabled={isConfirmingWork}
+                                      onClick={() =>
+                                        handleConfirmArtworkWork(firstItem?.id || inspectedOrder.id, art.id)
+                                      }
+                                      className="text-xs font-bold px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-xs cursor-pointer active:scale-95"
+                                    >
+                                      {isProcessingThis ? 'Confirming...' : 'Set Confirmed Work'}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* ========================================================== */}
+                  {/* UPLOAD UPDATED ARTWORK & SUBMIT SECTION */}
+                  {/* ========================================================== */}
+                  <div className="p-4 bg-slate-50/90 rounded-2xl border border-slate-200 shadow-xs space-y-3.5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono flex items-center gap-2">
+                          <UploadCloud className="h-4 w-4 text-slate-800" />
+                          <span>Upload Artwork &amp; Submit Direct to Production</span>
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Upload candidate designs, variations, or production proofs (.PDF, .AI, .EPS, .PSD, .TIFF, .PNG, .JPG).
+                        </p>
+                      </div>
                     </div>
 
-                    <div className="space-y-2.5">
-                      {uniqueVersions.map((art, vIdx) => {
-                        const fileUrl = art.fileUrl || art.storageKey;
-                        const fileName =
-                          art.originalFileName ||
-                          (fileUrl ? fileUrl.split('/').pop() : `Artwork_V${art.versionNumber || vIdx + 1}`);
-                        const isThisConfirmed = Boolean(art.isApproved);
-                        const isProcessingThis = isConfirmingWork && confirmingVersionId === art.id;
+                    {/* Drag-and-drop upload zone */}
+                    <div className="border-2 border-dashed border-slate-300 hover:border-amber-400 bg-slate-50/70 hover:bg-amber-50/30 rounded-2xl p-5 text-center transition cursor-pointer relative">
+                      <input
+                        type="file"
+                        multiple
+                        accept=".pdf,.ai,.eps,.psd,.tiff,.png,.jpg,.jpeg"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files.length > 0) {
+                            handleFilesSelected(e.target.files);
+                            setUploadFile(e.target.files[0]);
+                          }
+                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      <div className="flex flex-col items-center justify-center pointer-events-none">
+                        <UploadCloud className="h-8 w-8 text-slate-400 mb-1.5" />
+                        <span className="text-xs md:text-sm font-bold text-slate-800">
+                          Click or drag &amp; drop artwork file(s) here
+                        </span>
+                        <span className="text-[11px] text-slate-400 mt-0.5">
+                          Supports multiple files: .pdf, .ai, .eps, .psd, .tiff, images (300 DPI CMYK recommended)
+                        </span>
+                      </div>
+                    </div>
 
-                        return (
-                          <div
-                            key={art.id || vIdx}
-                            className={`p-3 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                              isThisConfirmed
-                                ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300'
-                                : 'bg-slate-50/70 border-slate-200'
-                            }`}
-                          >
-                            <div className="min-w-0 space-y-0.5">
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${
-                                    isThisConfirmed ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
-                                  }`}
-                                >
-                                  V{art.versionNumber || vIdx + 1}
-                                </span>
-                                <span className="text-xs font-bold text-slate-900 truncate max-w-xs" title={fileName}>
-                                  {fileName}
-                                </span>
-                                {isThisConfirmed && (
-                                  <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300 flex items-center gap-1">
-                                    <Check className="h-3 w-3 text-emerald-600" />
-                                    CONFIRMED WORK
+                    {/* Staged files list with editable labels */}
+                    {stagedFiles.length > 0 && (
+                      <div className="space-y-2">
+                        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block font-mono">
+                          Staged Files for Submission ({stagedFiles.length}):
+                        </span>
+                        <div className="space-y-2">
+                          {stagedFiles.map((sf, sfIdx) => (
+                            <div
+                              key={sf.id}
+                              className="p-3 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-3 shadow-2xs"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                {sf.previewUrl ? (
+                                  <img
+                                    src={sf.previewUrl}
+                                    alt="Preview"
+                                    className="h-10 w-10 object-cover rounded-lg border border-slate-200 shrink-0"
+                                  />
+                                ) : (
+                                  <FileCode className="h-8 w-8 text-amber-600 shrink-0" />
+                                )}
+                                <div className="min-w-0">
+                                  <span className="text-xs font-bold text-slate-900 block truncate max-w-xs">
+                                    {sf.file.name}
                                   </span>
-                                )}
+                                  <span className="text-[10px] font-mono text-slate-400 block">
+                                    {(sf.file.size / (1024 * 1024)).toFixed(2)} MB
+                                  </span>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2 text-[11px] font-mono text-slate-500">
-                                <span>{art.resolutionDpi || 300} DPI</span>
-                                {art.fileSize && (
-                                  <span>• {(art.fileSize / (1024 * 1024)).toFixed(2)} MB</span>
-                                )}
-                                {art.uploadedBy && <span>• By: {art.uploadedBy}</span>}
-                              </div>
-                              {art.prepressNotes && (
-                                <p className="text-[11px] text-slate-600 italic mt-1">
-                                  &quot;{art.prepressNotes}&quot;
-                                </p>
-                              )}
-                            </div>
 
-                            {/* Version Actions */}
-                            <div className="flex items-center gap-2 shrink-0">
-                              {fileUrl && (
-                                <>
-                                  <a
-                                    href={resolveImageUrl(fileUrl)}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-xs font-bold px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 transition"
-                                  >
-                                    View Proof
-                                  </a>
-                                  <button
-                                    type="button"
-                                    onClick={() => downloadFile(fileUrl, fileName)}
-                                    className="text-xs font-bold px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 transition cursor-pointer"
-                                  >
-                                    Download
-                                  </button>
-                                </>
-                              )}
-
-                              {isOE && !isThisConfirmed && (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={sf.label}
+                                  onChange={(e) => handleUpdateFileLabel(sf.id, e.target.value)}
+                                  placeholder={`Option ${sfIdx + 1}`}
+                                  className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 w-36 text-slate-800 focus:bg-white focus:border-amber-400"
+                                  title="Custom label (e.g., Front Side, Back Side, Spot UV)"
+                                />
                                 <button
                                   type="button"
-                                  disabled={isConfirmingWork}
-                                  onClick={() =>
-                                    handleConfirmArtworkWork(firstItem?.id || inspectedOrder.id, art.id)
-                                  }
-                                  className="text-xs font-bold px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-xs cursor-pointer active:scale-95"
+                                  onClick={() => handleRemoveStagedFile(sf.id)}
+                                  className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition cursor-pointer"
+                                  title="Remove file"
                                 >
-                                  {isProcessingThis ? 'Confirming...' : 'Set Confirmed Work'}
+                                  <Trash2 className="h-4 w-4" />
                                 </button>
-                              )}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* ========================================================== */}
-              {/* UPLOAD UPDATED ARTWORK & SUBMIT SECTION */}
-              {/* ========================================================== */}
-              <div className="p-4 bg-slate-50/90 rounded-2xl border border-slate-200 shadow-xs space-y-3.5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono flex items-center gap-2">
-                      <UploadCloud className="h-4 w-4 text-slate-800" />
-                      <span>Upload Artwork &amp; Submit Direct to Production</span>
-                    </h4>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Upload candidate designs, variations, or production proofs (.PDF, .AI, .EPS, .PSD, .TIFF, .PNG, .JPG).
-                    </p>
-                  </div>
-                </div>
-
-                {/* Drag-and-drop upload zone */}
-                <div className="border-2 border-dashed border-slate-300 hover:border-amber-400 bg-slate-50/70 hover:bg-amber-50/30 rounded-2xl p-5 text-center transition cursor-pointer relative">
-                  <input
-                    type="file"
-                    multiple
-                    accept=".pdf,.ai,.eps,.psd,.tiff,.png,.jpg,.jpeg"
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files.length > 0) {
-                        handleFilesSelected(e.target.files);
-                        setUploadFile(e.target.files[0]);
-                      }
-                    }}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                  <div className="flex flex-col items-center justify-center pointer-events-none">
-                    <UploadCloud className="h-8 w-8 text-slate-400 mb-1.5" />
-                    <span className="text-xs md:text-sm font-bold text-slate-800">
-                      Click or drag &amp; drop artwork file(s) here
-                    </span>
-                    <span className="text-[11px] text-slate-400 mt-0.5">
-                      Supports multiple files: .pdf, .ai, .eps, .psd, .tiff, images (300 DPI CMYK recommended)
-                    </span>
-                  </div>
-                </div>
-
-                {/* Staged files list with editable labels */}
-                {stagedFiles.length > 0 && (
-                  <div className="space-y-2">
-                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block font-mono">
-                      Staged Files for Submission ({stagedFiles.length}):
-                    </span>
-                    <div className="space-y-2">
-                      {stagedFiles.map((sf, sfIdx) => (
-                        <div
-                          key={sf.id}
-                          className="p-3 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-3 shadow-2xs"
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            {sf.previewUrl ? (
-                              <img
-                                src={sf.previewUrl}
-                                alt="Preview"
-                                className="h-10 w-10 object-cover rounded-lg border border-slate-200 shrink-0"
-                              />
-                            ) : (
-                              <FileCode className="h-8 w-8 text-amber-600 shrink-0" />
-                            )}
-                            <div className="min-w-0">
-                              <span className="text-xs font-bold text-slate-900 block truncate max-w-xs">
-                                {sf.file.name}
-                              </span>
-                              <span className="text-[10px] font-mono text-slate-400 block">
-                                {(sf.file.size / (1024 * 1024)).toFixed(2)} MB
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={sf.label}
-                              onChange={(e) => handleUpdateFileLabel(sf.id, e.target.value)}
-                              placeholder={`Option ${sfIdx + 1}`}
-                              className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 w-36 text-slate-800 focus:bg-white focus:border-amber-400"
-                              title="Custom label (e.g., Front Side, Back Side, Spot UV)"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveStagedFile(sf.id)}
-                              className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition cursor-pointer"
-                              title="Remove file"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
+                          ))}
                         </div>
-                      ))}
+                      </div>
+                    )}
+
+                    {/* Technical Configuration */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 uppercase font-mono block mb-1">
+                          Output Resolution (DPI)
+                        </label>
+                        <input
+                          type="number"
+                          value={resolutionDpi}
+                          onChange={(e) => setResolutionDpi(e.target.value)}
+                          className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white"
+                          placeholder="300"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 uppercase font-mono block mb-1">
+                          Color Mode
+                        </label>
+                        <input
+                          type="text"
+                          disabled
+                          value="CMYK (FOGRA39 / Commercial Standard)"
+                          className="w-full text-xs px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-500 font-mono"
+                        />
+                      </div>
                     </div>
-                  </div>
-                )}
 
-                {/* Technical Configuration */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 uppercase font-mono block mb-1">
-                      Output Resolution (DPI)
+                    {/* Prepress Notes for Production */}
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 uppercase font-mono block mb-1">
+                        Prepress Notes &amp; Directives for Production
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={prepressNotes}
+                        onChange={(e) => setPrepressNotes(e.target.value)}
+                        placeholder="Enter instructions for production operators (e.g. 3mm bleed added, cut marks on Page 1, foil plate layer)..."
+                        className="w-full text-xs p-3 rounded-xl border border-slate-300 bg-white placeholder:text-slate-400 leading-relaxed"
+                      />
+                    </div>
+
+                    {/* Verification Confirmation Checkbox */}
+                    <label className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50/80 border border-amber-300/80 cursor-pointer text-xs text-amber-950 font-medium select-none shadow-2xs">
+                      <input
+                        type="checkbox"
+                        checked={isSpecsConfirmed}
+                        onChange={(e) => setIsSpecsConfirmed(e.target.checked)}
+                        className="mt-0.5 rounded text-amber-600 focus:ring-amber-500 h-4 w-4 border-amber-300"
+                      />
+                      <div>
+                        <span className="font-bold block">
+                          I have reviewed and verified customer specifications for this artwork
+                        </span>
+                        <span className="text-[11px] text-amber-800 block mt-0.5">
+                          Confirming that candidate artworks strictly adhere to customer specifications and are ready for direct release to the shop-floor Production Queue.
+                        </span>
+                      </div>
                     </label>
-                    <input
-                      type="number"
-                      value={resolutionDpi}
-                      onChange={(e) => setResolutionDpi(e.target.value)}
-                      className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white"
-                      placeholder="300"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 uppercase font-mono block mb-1">
-                      Color Mode
-                    </label>
-                    <input
-                      type="text"
-                      disabled
-                      value="CMYK (FOGRA39 / Commercial Standard)"
-                      className="w-full text-xs px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-500 font-mono"
-                    />
+
+                    {/* Main Submit Button */}
+                    <button
+                      type="button"
+                      onClick={handleSubmitDesignWork}
+                      disabled={isSubmittingDesign || (stagedFiles.length === 0 && !uploadFile) || !isSpecsConfirmed}
+                      className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-bold text-xs md:text-sm py-3.5 rounded-xl shadow-md transition active:scale-[0.99] cursor-pointer"
+                    >
+                      <UploadCloud className="h-4 w-4" />
+                      <span>
+                        {isSubmittingDesign
+                          ? 'Uploading & Releasing Directly to Production...'
+                          : stagedFiles.length > 1
+                            ? `UPLOAD ${stagedFiles.length} ARTWORK FILES & MOVE DIRECT TO PRODUCTION`
+                            : 'UPLOAD ARTWORK & MOVE DIRECT TO PRODUCTION'}
+                      </span>
+                    </button>
                   </div>
                 </div>
-
-                {/* Prepress Notes for Production */}
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 uppercase font-mono block mb-1">
-                    Prepress Notes &amp; Directives for Production
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={prepressNotes}
-                    onChange={(e) => setPrepressNotes(e.target.value)}
-                    placeholder="Enter instructions for production operators (e.g. 3mm bleed added, cut marks on Page 1, foil plate layer)..."
-                    className="w-full text-xs p-3 rounded-xl border border-slate-300 bg-white placeholder:text-slate-400 leading-relaxed"
-                  />
-                </div>
-
-                {/* Verification Confirmation Checkbox */}
-                <label className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50/80 border border-amber-300/80 cursor-pointer text-xs text-amber-950 font-medium select-none shadow-2xs">
-                  <input
-                    type="checkbox"
-                    checked={isSpecsConfirmed}
-                    onChange={(e) => setIsSpecsConfirmed(e.target.checked)}
-                    className="mt-0.5 rounded text-amber-600 focus:ring-amber-500 h-4 w-4 border-amber-300"
-                  />
-                  <div>
-                    <span className="font-bold block">
-                      I have reviewed and verified customer specifications for this artwork
-                    </span>
-                    <span className="text-[11px] text-amber-800 block mt-0.5">
-                      Confirming that candidate artworks strictly adhere to customer specifications and are ready for direct release to the shop-floor Production Queue.
-                    </span>
-                  </div>
-                </label>
-
-                {/* Main Submit Button */}
-                <button
-                  type="button"
-                  onClick={handleSubmitDesignWork}
-                  disabled={isSubmittingDesign || (stagedFiles.length === 0 && !uploadFile) || !isSpecsConfirmed}
-                  className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-bold text-xs md:text-sm py-3.5 rounded-xl shadow-md transition active:scale-[0.99] cursor-pointer"
-                >
-                  <UploadCloud className="h-4 w-4" />
-                  <span>
-                    {isSubmittingDesign
-                      ? 'Uploading & Releasing Directly to Production...'
-                      : stagedFiles.length > 1
-                      ? `UPLOAD ${stagedFiles.length} ARTWORK FILES & MOVE DIRECT TO PRODUCTION`
-                      : 'UPLOAD ARTWORK & MOVE DIRECT TO PRODUCTION'}
-                  </span>
-                </button>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
-  )}
+      )}
 
       {/* ========================================================================= */}
       {/* 3. RETURN TO DESIGNER MODAL (For Operations Coordinator / OE) */}

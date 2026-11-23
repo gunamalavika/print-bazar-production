@@ -850,18 +850,6 @@ export default function CustomerOrdersPage() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
-                        {isApprovalRequired && !isCancelled && (
-                          <Link href={`/tracking/${order.orderNumber}`}>
-                            <Button
-                              size="sm"
-                              className="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs h-9 px-3.5 shadow-sm flex items-center gap-1.5"
-                            >
-                              <FileCheck className="w-3.5 h-3.5" />
-                              Approve Proof
-                            </Button>
-                          </Link>
-                        )}
-
                         {/* CANCEL ORDER OPTION: Appears until moved to production */}
                         {canCancel && (
                           <Button

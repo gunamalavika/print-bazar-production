@@ -486,7 +486,15 @@ export class PaymentsService {
       let transitionReason = `Manual payment recorded: ₹${dto.amount} via ${dto.method}. Ref: ${dto.referenceNumber}`;
 
       if (isFull) {
-        if (finalQcPass) {
+        if (
+          order.status === OrderStatus.READY_FOR_DISPATCH ||
+          order.status === OrderStatus.OUT_FOR_DELIVERY ||
+          order.status === OrderStatus.DELIVERED
+        ) {
+          // Already in post-production storage or dispatch: preserve status
+          nextOrderStatus = order.status;
+          nextCustomerStatus = order.customerStatus;
+        } else if (finalQcPass) {
           // BOTH GATES SATISFIED: Final QC Passed + Payment 100% Cleared -> AUTOMATIC TRANSITION TO PACKING
           nextOrderStatus = OrderStatus.PACKING;
           nextCustomerStatus = CustomerVisibleStatus.QUALITY_CHECK_AND_PACKING;

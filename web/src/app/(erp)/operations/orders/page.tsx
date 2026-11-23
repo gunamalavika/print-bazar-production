@@ -371,6 +371,22 @@ export default function OrderAssignmentCenterPage() {
             createdAt: v.createdAt,
           }));
 
+          const latestQc = bo.latestQcChecklist || bo.qcChecklists?.[0] || null;
+          const qcDefectsList = Array.isArray(latestQc?.defects) ? latestQc.defects : [];
+          const hasQcDefect = Boolean(
+            bo.hasQcDefects ||
+            latestQc?.outcome === 'FAIL' ||
+            qcDefectsList.length > 0 ||
+            bo.jobCards?.some((j: any) => j.status === 'FAILED_REWORK' || j.currentStation === 'REWORK') ||
+            (bo.status === 'ON_HOLD' &&
+              (bo.internalNotes?.toLowerCase().includes('qc') ||
+                bo.internalNotes?.toLowerCase().includes('defect') ||
+                bo.internalNotes?.toLowerCase().includes('rework')))
+          );
+          const qcDefectReason =
+            latestQc?.notes ||
+            (qcDefectsList.length > 0 ? qcDefectsList.join(', ') : bo.internalNotes || 'Quality defect detected in QC inspection');
+
           return {
             id: bo.id,
             orderNumber: bo.orderNumber,
@@ -425,6 +441,10 @@ export default function OrderAssignmentCenterPage() {
             hasActiveOperator,
             hasCompletedDesign,
             isDesignCompleted,
+            hasQcDefect,
+            qcDefectReason,
+            qcDefectsList,
+            qcInspectorName: latestQc?.inspector?.fullName || null,
             status: bo.status,
           };
         });
@@ -511,8 +531,8 @@ export default function OrderAssignmentCenterPage() {
 
   const kpiMetrics = useMemo(() => {
     const total = orders.length;
-    // Needs Action: orders where NEITHER Designer NOR Production Operator has been assigned yet
-    const needsAction = orders.filter((o) => !o.assignedDesigner && !o.assignedOperator).length;
+    // Needs Action: orders where NEITHER Designer NOR Operator is assigned, OR orders flagged for QC rework/defect needing OE triage
+    const needsAction = orders.filter((o) => (!o.assignedDesigner && !o.assignedOperator) || o.hasQcDefect).length;
     // Design Required: orders without designer or with design required artwork state
     const designReq = orders.filter((o) => !o.assignedDesigner && (o.artworkState === 'DESIGN_REQUIRED' || o.artworkState === 'NOT_READY')).length;
     // Ready for Production: artwork ready, not routed through design, and operator not assigned
@@ -523,8 +543,8 @@ export default function OrderAssignmentCenterPage() {
     const inProgress = isProductionHead
       ? orders.filter((o) => Boolean(o.assignedOperator) && !['DELIVERED', 'CANCELLED', 'ON_HOLD'].includes(o.status)).length
       : orders.filter((o) => (o.assignedDesigner || o.assignedOperator) && !['DELIVERED', 'CANCELLED', 'ON_HOLD'].includes(o.status)).length;
-    // Blocked: ON_HOLD or blocked
-    const blocked = orders.filter((o) => o.artworkState === 'BLOCKED' || o.status === 'ON_HOLD').length;
+    // Blocked: ON_HOLD, QC defect or blocked
+    const blocked = orders.filter((o) => o.artworkState === 'BLOCKED' || o.status === 'ON_HOLD' || o.hasQcDefect).length;
 
     return {
       needsAction,
@@ -548,7 +568,7 @@ export default function OrderAssignmentCenterPage() {
           if (!o.assignedOperator) return false;
         }
       } else if (activeTab === 'NEEDS_ACTION') {
-        if (o.assignedDesigner || o.assignedOperator) return false;
+        if (!o.hasQcDefect && (o.assignedDesigner || o.assignedOperator)) return false;
       } else if (activeTab === 'DESIGN_REQUIRED') {
         if (o.artworkState !== 'DESIGN_REQUIRED' && o.artworkState !== 'NOT_READY' && o.assignedDesigner) return false;
       } else if (activeTab === 'READY_FOR_PRODUCTION') {
@@ -556,7 +576,7 @@ export default function OrderAssignmentCenterPage() {
       } else if (activeTab === 'IN_PROGRESS') {
         if (!o.assignedDesigner && !o.assignedOperator && !['PRINTING', 'FINISHING', 'QUALITY_CHECK'].includes(o.status)) return false;
       } else if (activeTab === 'BLOCKED') {
-        if (o.artworkState !== 'BLOCKED' && o.status !== 'ON_HOLD') return false;
+        if (o.artworkState !== 'BLOCKED' && o.status !== 'ON_HOLD' && !o.hasQcDefect) return false;
       }
 
       // Search Query
@@ -591,22 +611,25 @@ export default function OrderAssignmentCenterPage() {
       return;
     }
 
-    // Once assigned to Design, OE cannot assign Production — the Designer moves the order to Production Head
-    if (type === 'PRODUCTION' && (order.hasActiveDesigner || (!isProductionHead && order.assignedDesigner))) {
-      setLiveToast('⚠️ Operator assignment is disabled: this order is assigned to a Designer, who will move it to Production Head.');
-      return;
-    }
+    // Normal orders: enforce mutual exclusion. QC Defect orders: OE can freely reassign either Designer (artwork defect) or Operator (print defect)
+    if (!order.hasQcDefect) {
+      // Once assigned to Design, OE cannot assign Production — the Designer moves the order to Production Head
+      if (type === 'PRODUCTION' && (order.hasActiveDesigner || (!isProductionHead && order.assignedDesigner))) {
+        setLiveToast('⚠️ Operator assignment is disabled: this order is assigned to a Designer, who will move it to Production Head.');
+        return;
+      }
 
-    // Mutual exclusion: if a Production Operator is already assigned, disable Designer assignment
-    if (type === 'DESIGN' && order.hasActiveOperator) {
-      setLiveToast('⚠️ Designer assignment is disabled because a Production Operator is already assigned to this order.');
-      return;
-    }
+      // Mutual exclusion: if a Production Operator is already assigned, disable Designer assignment
+      if (type === 'DESIGN' && order.hasActiveOperator) {
+        setLiveToast('⚠️ Designer assignment is disabled because a Production Operator is already assigned to this order.');
+        return;
+      }
 
-    // Immediate Step Validation: If artwork is not approved, force DESIGN assignment
-    if (type === 'PRODUCTION' && order.artworkState !== 'READY') {
-      setLiveToast('⚠️ Artwork is not approved yet. Assign a Prepress Designer first.');
-      type = 'DESIGN';
+      // Immediate Step Validation: If artwork is not approved, force DESIGN assignment
+      if (type === 'PRODUCTION' && order.artworkState !== 'READY') {
+        setLiveToast('⚠️ Artwork is not approved yet. Assign a Prepress Designer first.');
+        type = 'DESIGN';
+      }
     }
 
     setDrawerOrder(order);
@@ -819,19 +842,21 @@ export default function OrderAssignmentCenterPage() {
   const handleConfirmAssignment = async () => {
     if (!drawerOrder || !selectedStaffId) return;
 
-    if (drawerType === 'PRODUCTION' && drawerOrder.hasActiveDesigner) {
-      setLiveToast('⚠️ Operator assignment is disabled while a Prepress Designer is assigned to this order.');
-      return;
-    }
+    if (!drawerOrder.hasQcDefect) {
+      if (drawerType === 'PRODUCTION' && drawerOrder.hasActiveDesigner) {
+        setLiveToast('⚠️ Operator assignment is disabled while a Prepress Designer is assigned to this order.');
+        return;
+      }
 
-    if (drawerType === 'DESIGN' && drawerOrder.hasActiveOperator) {
-      setLiveToast('⚠️ Designer assignment is disabled because a Production Operator is already assigned to this order.');
-      return;
-    }
+      if (drawerType === 'DESIGN' && drawerOrder.hasActiveOperator) {
+        setLiveToast('⚠️ Designer assignment is disabled because a Production Operator is already assigned to this order.');
+        return;
+      }
 
-    if (drawerType === 'PRODUCTION' && drawerOrder.artworkState !== 'READY') {
-      alert('Cannot assign Production Operator: Artwork is still pending approval. The immediate next task is Prepress Design.');
-      return;
+      if (drawerType === 'PRODUCTION' && drawerOrder.artworkState !== 'READY') {
+        alert('Cannot assign Production Operator: Artwork is still pending approval. The immediate next task is Prepress Design.');
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -1511,8 +1536,10 @@ export default function OrderAssignmentCenterPage() {
                 const isArtReady = order.artworkState === 'READY';
                 const isAssignedToDesignOnOE =
                   !isProductionHead && Boolean(order.hasActiveDesigner || order.assignedDesigner);
-                const isDesignerDisabled = Boolean(order.hasActiveOperator);
-                const isOperatorDisabled = isProductionHead
+                const isDesignerDisabled = !order.hasQcDefect && Boolean(order.hasActiveOperator);
+                const isOperatorDisabled = order.hasQcDefect
+                  ? false
+                  : isProductionHead
                   ? Boolean(order.hasActiveDesigner)
                   : Boolean(order.hasActiveDesigner || order.assignedDesigner);
 
@@ -1547,6 +1574,11 @@ export default function OrderAssignmentCenterPage() {
                               URGENT
                             </span>
                           )}
+                          {order.hasQcDefect && (
+                            <span className="bg-rose-100 text-rose-800 text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border border-rose-300 uppercase">
+                              REWORK
+                            </span>
+                          )}
                         </div>
                         <div className="font-semibold text-[13px] text-slate-800 leading-tight mt-0.5">
                           {order.customerName}
@@ -1562,6 +1594,14 @@ export default function OrderAssignmentCenterPage() {
                           <span>•</span>
                           <span>{order.specs.substrate}</span>
                         </div>
+                        {order.hasQcDefect && (
+                          <div className="mt-1.5 px-2 py-0.5 rounded bg-rose-50 border border-rose-200 text-[11px] text-rose-800 flex items-center gap-1.5">
+                            <RiAlertLine className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+                            <span className="truncate max-w-[220px]" title={order.qcDefectReason}>
+                              {order.qcDefectReason}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1889,8 +1929,10 @@ export default function OrderAssignmentCenterPage() {
                   const isArtReady = order.artworkState === 'READY';
                   const isAssignedToDesignOnOE =
                     !isProductionHead && Boolean(order.hasActiveDesigner || order.assignedDesigner);
-                  const isDesignerDisabled = Boolean(order.hasActiveOperator);
-                  const isOperatorDisabled = isProductionHead
+                  const isDesignerDisabled = !order.hasQcDefect && Boolean(order.hasActiveOperator);
+                  const isOperatorDisabled = order.hasQcDefect
+                    ? false
+                    : isProductionHead
                     ? Boolean(order.hasActiveDesigner)
                     : Boolean(order.hasActiveDesigner || order.assignedDesigner);
 
@@ -1905,13 +1947,25 @@ export default function OrderAssignmentCenterPage() {
                         />
                       </td>
                       <td className="py-3 px-3">
-                        <Link
-                          href={`${basePath}/${order.id}`}
-                          className="font-bold text-slate-900 hover:text-blue-600 hover:underline font-mono"
-                        >
-                          #{order.orderNumber}
-                        </Link>
+                        <div className="flex items-center gap-1.5">
+                          <Link
+                            href={`${basePath}/${order.id}`}
+                            className="font-bold text-slate-900 hover:text-blue-600 hover:underline font-mono"
+                          >
+                            #{order.orderNumber}
+                          </Link>
+                          {order.hasQcDefect && (
+                            <span className="bg-rose-100 text-rose-800 text-[9px] font-mono font-bold px-1 py-0.2 rounded border border-rose-300">
+                              REWORK
+                            </span>
+                          )}
+                        </div>
                         <div className="font-semibold text-slate-800 text-[11px]">{order.customerName}</div>
+                        {order.hasQcDefect && (
+                          <div className="text-[10px] text-rose-700 font-medium truncate max-w-[150px]" title={order.qcDefectReason}>
+                            {order.qcDefectReason}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-3">
                         <div className="font-medium text-slate-900">{order.productName}</div>
@@ -2020,6 +2074,16 @@ export default function OrderAssignmentCenterPage() {
                           >
                             + Assign Designer
                           </Button>
+                        ) : order.hasQcDefect ? (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            onClick={() => handleOpenDrawer(order, 'DESIGN')}
+                            className="bg-amber-100 hover:bg-amber-200 text-amber-950 border-amber-300 text-[10px] font-bold cursor-pointer"
+                            title="Reassign Prepress Designer for QC Rework"
+                          >
+                            + Reassign Designer
+                          </Button>
                         ) : order.hasCompletedDesign || order.artworkState === 'NEEDS_OE_CONFIRMATION' || order.status === 'ARTWORK_REVIEW' ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-semibold">
                             <RiPaletteLine className="h-3 w-3 text-emerald-600" />
@@ -2058,11 +2122,26 @@ export default function OrderAssignmentCenterPage() {
                             <button
                               type="button"
                               onClick={() => handleOpenDrawer(order, 'PRODUCTION')}
-                              className="text-[10px] font-bold text-slate-500 hover:text-slate-900 underline cursor-pointer"
+                              className={`text-[10px] font-bold cursor-pointer ${
+                                order.hasQcDefect
+                                  ? 'text-blue-700 hover:text-blue-900 font-bold underline'
+                                  : 'text-slate-500 hover:text-slate-900 underline'
+                              }`}
+                              title={order.hasQcDefect ? 'Reassign Production Operator for Repress' : 'Edit Operator'}
                             >
-                              Edit
+                              {order.hasQcDefect ? 'Reassign' : 'Edit'}
                             </button>
                           </div>
+                        ) : order.hasQcDefect ? (
+                          <Button
+                            variant="primary"
+                            size="xs"
+                            onClick={() => handleOpenDrawer(order, 'PRODUCTION')}
+                            className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold cursor-pointer"
+                            title="Assign Production Operator for Repress Run"
+                          >
+                            + Reassign Operator
+                          </Button>
                         ) : order.artworkState === 'READY' ? (
                           <div className="inline-flex items-center gap-1.5 flex-wrap">
                             {order.assignedProductionHead && (
@@ -2211,6 +2290,24 @@ export default function OrderAssignmentCenterPage() {
                   </div>
                 </div>
               </div>
+
+              {/* QC Defect / Rework Notice */}
+              {drawerOrder.hasQcDefect && (
+                <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs space-y-1.5">
+                  <div className="flex items-center gap-2 font-bold text-rose-900">
+                    <RiAlertLine className="h-4 w-4 text-rose-600 shrink-0" />
+                    <span>QC Rework & Defect Reassignment</span>
+                  </div>
+                  <p className="text-[11px] text-rose-800 leading-relaxed">
+                    {drawerType === 'DESIGN'
+                      ? 'Reassigning a Prepress Designer will route this order back to Prepress for artwork revision, resolving the QC hold.'
+                      : 'Reassigning a Production Operator will route this order directly to the Press for a repress run, resolving the QC hold.'}
+                  </p>
+                  <div className="font-mono text-[10px] text-rose-700 bg-rose-100/70 p-1.5 rounded border border-rose-200">
+                    <strong>Defect Details:</strong> {drawerOrder.qcDefectReason}
+                  </div>
+                </div>
+              )}
 
               {/* Current Status Overview Card (Role-Specific Only) */}
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">

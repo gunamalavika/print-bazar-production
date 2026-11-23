@@ -813,14 +813,51 @@ export default function OperationalOrderDetailPage({
             const activeProdAssignment =
               order.activeProductionAssignment ||
               order.assignments?.find((a: any) => a.taskType === 'PRODUCTION' && a.status === 'ACTIVE');
-            const isDesignerDisabled = Boolean(
+
+            const latestQc = order.latestQcChecklist || order.qcChecklists?.[0] || null;
+            const qcDefectsList = Array.isArray(latestQc?.defects) ? latestQc.defects : [];
+            const hasQcDefect = Boolean(
+              order.hasQcDefects ||
+              latestQc?.outcome === 'FAIL' ||
+              qcDefectsList.length > 0 ||
+              order.jobCards?.some((j: any) => j.status === 'FAILED_REWORK' || j.currentStation === 'REWORK') ||
+              (order.status === 'ON_HOLD' &&
+                (order.internalNotes?.toLowerCase().includes('qc') ||
+                  order.internalNotes?.toLowerCase().includes('defect') ||
+                  order.internalNotes?.toLowerCase().includes('rework')))
+            );
+            const qcDefectReason =
+              latestQc?.notes ||
+              (qcDefectsList.length > 0 ? qcDefectsList.join(', ') : order.internalNotes || 'Quality defect detected in QC inspection');
+
+            const isDesignerDisabled = !hasQcDefect && Boolean(
               (activeProdAssignment && activeProdAssignment.assignedUser?.role === 'PRODUCTION_OPERATOR') ||
               (order.assignedOperator && (!order.assignedOperator.role || order.assignedOperator.role === 'PRODUCTION_OPERATOR')),
             );
-            const isOperatorDisabled = Boolean(activeDesignAssignment);
+            const isOperatorDisabled = !hasQcDefect && Boolean(activeDesignAssignment);
 
             return (
               <div className="bg-white border-2 border-slate-900 rounded-xl p-5 shadow-xs space-y-4">
+                {hasQcDefect && (
+                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 flex items-start gap-3">
+                    <RiAlertLine className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-rose-200 text-rose-900 border border-rose-300">
+                          QC REWORK & DEFECT FLAGGED
+                        </span>
+                        <span className="text-xs text-rose-800 font-bold">Action Required: Reassign Designer or Operator</span>
+                      </div>
+                      <p className="text-xs text-rose-950 font-semibold mt-1">
+                        Defect Details: {qcDefectReason}
+                      </p>
+                      <p className="text-[11px] text-slate-600 mt-0.5">
+                        Choose <strong>Prepress Designer</strong> if the defect requires artwork revision, or <strong>Production Operator</strong> if print needs a repress run.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
                   <div>
                     <div className="flex items-center gap-2">

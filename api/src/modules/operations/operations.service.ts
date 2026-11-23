@@ -15,6 +15,7 @@ import {
   Prisma,
   QCOutcome,
   Priority,
+  JobCardStatus,
 } from '@prisma/client';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { JobCardEngineService } from '../job-cards/job-card-engine.service';
@@ -473,6 +474,7 @@ export class OperationsService {
           orderNumber: true,
           status: true,
           customerStatus: true,
+          internalNotes: true,
           priority: true,
           slaStatus: true,
           paymentStatus: true,
@@ -527,11 +529,26 @@ export class OperationsService {
             orderBy: { createdAt: 'desc' },
           },
           jobCards: {
-            select: { id: true, jobNumber: true, status: true, operatorId: true, currentStation: true },
-            take: 1,
+            select: {
+              id: true,
+              jobNumber: true,
+              status: true,
+              operatorId: true,
+              currentStation: true,
+              issues: { select: { id: true, reasonCode: true, description: true } },
+            },
+            take: 5,
           },
           qcChecklists: {
-            select: { id: true, type: true, outcome: true },
+            select: {
+              id: true,
+              type: true,
+              outcome: true,
+              defects: true,
+              notes: true,
+              createdAt: true,
+              inspector: { select: { id: true, fullName: true, role: true } },
+            },
             orderBy: { createdAt: 'desc' },
           },
           packages: {
@@ -560,6 +577,17 @@ export class OperationsService {
           (a) => a.taskType === AssignmentTaskType.PRODUCTION && a.status === AssignmentStatus.COMPLETED,
         ) ||
         null;
+
+      const latestQc = order.qcChecklists?.[0] || null;
+      const hasQcDefects =
+        latestQc?.outcome === QCOutcome.FAIL ||
+        Boolean(latestQc?.defects && latestQc.defects.length > 0) ||
+        order.jobCards?.some((jc) => jc.status === JobCardStatus.FAILED_REWORK || jc.currentStation === 'REWORK') ||
+        (order.status === OrderStatus.ON_HOLD &&
+          (order.internalNotes?.toLowerCase().includes('qc') ||
+            order.internalNotes?.toLowerCase().includes('defect') ||
+            order.internalNotes?.toLowerCase().includes('rework')));
+
       return {
         ...order,
         nextAction: this.getOperationalNextAction(order as any),
@@ -568,6 +596,8 @@ export class OperationsService {
         productionAssignment,
         assignedDesigner: designAssignment?.assignedUser || null,
         assignedOperator: productionAssignment?.assignedUser || null,
+        hasQcDefects: Boolean(hasQcDefects),
+        latestQcChecklist: latestQc,
       };
     });
 
@@ -787,6 +817,14 @@ export class OperationsService {
         assignments: {
           where: { status: AssignmentStatus.ACTIVE },
         },
+        jobCards: {
+          select: { id: true, status: true, currentStation: true },
+        },
+        qcChecklists: {
+          select: { id: true, outcome: true, defects: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
       },
     });
 
@@ -796,20 +834,21 @@ export class OperationsService {
       throw new BadRequestException('Cannot assign designer to completed or cancelled order');
     }
 
-    if (order.status === OrderStatus.ON_HOLD) {
-      throw new BadRequestException('Cannot assign designer while order is ON HOLD');
-    }
+    const isReworkOrHold =
+      order.status === OrderStatus.ON_HOLD ||
+      order.status === OrderStatus.QUALITY_CHECK ||
+      order.jobCards?.some((j: any) => j.status === JobCardStatus.FAILED_REWORK || j.currentStation === 'REWORK') ||
+      order.qcChecklists?.some((q: any) => q.outcome === QCOutcome.FAIL);
 
-    // Workflow rule: if order is already in post-approval production stages, block designer assignment unless artwork rework was requested
+    // Workflow rule: if order is already in post-approval production stages and NOT in rework/hold, block designer assignment
     const postApprovalProductionStatuses: OrderStatus[] = [
       OrderStatus.PRINTING,
       OrderStatus.FINISHING,
-      OrderStatus.QUALITY_CHECK,
       OrderStatus.PACKING,
       OrderStatus.READY_FOR_DISPATCH,
       OrderStatus.OUT_FOR_DELIVERY,
     ];
-    if (postApprovalProductionStatuses.includes(order.status)) {
+    if (postApprovalProductionStatuses.includes(order.status) && !isReworkOrHold) {
       throw new BadRequestException(
         `Cannot assign designer: Order is currently in ${order.status}. Send order to rework/hold before reassigning design.`,
       );
@@ -918,6 +957,20 @@ export class OperationsService {
         }
       }
 
+      // If order has existing job cards, put active/rework job cards on hold for prepress revision
+      if (order.jobCards && order.jobCards.length > 0) {
+        await tx.jobCard.updateMany({
+          where: {
+            orderId: order.id,
+            status: { in: [JobCardStatus.FAILED_REWORK, JobCardStatus.PRINTING, JobCardStatus.ASSIGNED, JobCardStatus.QUEUED] },
+          },
+          data: {
+            status: JobCardStatus.ON_HOLD,
+            currentStation: 'PREPRESS',
+          },
+        });
+      }
+
       const eligibleDesignTransitionStatuses: OrderStatus[] = [
         OrderStatus.ORDER_CREATED,
         OrderStatus.PAYMENT_PENDING,
@@ -928,6 +981,10 @@ export class OperationsService {
         OrderStatus.ARTWORK_APPROVED,
         OrderStatus.PRE_PRODUCTION_QC,
         OrderStatus.PRODUCTION_QUEUE,
+        OrderStatus.PRINTING,
+        OrderStatus.FINISHING,
+        OrderStatus.QUALITY_CHECK,
+        OrderStatus.ON_HOLD,
       ];
 
       if (
@@ -948,7 +1005,9 @@ export class OperationsService {
             fromStatus: order.status,
             toStatus: targetDesignStatus,
             changedById: user.sub,
-            reason: hasExistingArtwork
+            reason: isReworkOrHold
+              ? `Assigned to Designer ${designer.fullName} by OE for QC Rework & Artwork Correction: ${assignmentNoteText || 'Artwork correction'}`
+              : hasExistingArtwork
               ? `Assigned to Designer ${designer.fullName} by OE for Artwork Check (customer artwork uploaded)`
               : `Assigned to Designer ${designer.fullName} by OE for Designing (no customer artwork)`,
             notes: dto.reason,
@@ -1021,6 +1080,11 @@ export class OperationsService {
         jobCards: {
           orderBy: { createdAt: 'desc' },
         },
+        qcChecklists: {
+          select: { id: true, outcome: true, defects: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
       },
     });
 
@@ -1030,12 +1094,15 @@ export class OperationsService {
       throw new BadRequestException('Cannot assign operator to completed or cancelled order');
     }
 
-    if (order.status === OrderStatus.ON_HOLD) {
-      throw new BadRequestException('Cannot assign operator while order is ON HOLD');
-    }
+    const isQcReworkOrDefect =
+      order.status === OrderStatus.ON_HOLD ||
+      order.status === OrderStatus.QUALITY_CHECK ||
+      order.jobCards?.some((jc) => jc.status === JobCardStatus.FAILED_REWORK || jc.currentStation === 'REWORK') ||
+      order.qcChecklists?.some((q) => q.outcome === QCOutcome.FAIL);
 
     // 3. Workflow Rule: Immediate Step Prerequisite Check
     // If artwork requires design or customer approval and is not approved yet, block operator assignment
+    // (unless order is in QC rework / defect state where rework reprint is authorized)
     const primaryItem = order.items?.[0];
     let latestArtwork: any = null;
     let isArtworkApproved = false;
@@ -1064,7 +1131,7 @@ export class OperationsService {
       order.status === OrderStatus.ARTWORK_REVIEW ||
       order.status === OrderStatus.CUSTOMER_APPROVAL_REQUIRED;
 
-    if (requiresDesignFirst && !isArtworkApproved) {
+    if (requiresDesignFirst && !isArtworkApproved && !isQcReworkOrDefect) {
       throw new BadRequestException(
         `Cannot assign production operator: Artwork is still pending approval (${order.status}). Prepress design must be completed and approved before production assignment.`,
       );
@@ -1143,30 +1210,40 @@ export class OperationsService {
         },
       });
 
-      // Update all Job Cards for this order with the assigned operator
+      // Update all Job Cards for this order with the assigned operator and activate for press
       if (order.jobCards && order.jobCards.length > 0) {
         for (const jc of order.jobCards) {
           await tx.jobCard.update({
             where: { id: jc.id },
-            data: { operatorId: targetUserId },
+            data: {
+              operatorId: targetUserId,
+              status: JobCardStatus.ASSIGNED,
+              currentStation: 'PRINTING',
+            },
           });
         }
       } else {
         await tx.jobCard.updateMany({
           where: { orderId: order.id },
-          data: { operatorId: targetUserId },
+          data: {
+            operatorId: targetUserId,
+            status: JobCardStatus.ASSIGNED,
+            currentStation: 'PRINTING',
+          },
         });
       }
 
-      // If order is in intake / artwork / approved stages, transition to PRODUCTION_QUEUE
-      const preProdStatuses: OrderStatus[] = [
+      // If order is in intake / artwork / approved / hold / QC stages, transition to PRODUCTION_QUEUE
+      const eligibleOperatorTransitionStatuses: OrderStatus[] = [
         OrderStatus.ORDER_CREATED,
         OrderStatus.PAYMENT_CONFIRMED,
         OrderStatus.ORDER_REVIEW,
         OrderStatus.ARTWORK_APPROVED,
+        OrderStatus.ON_HOLD,
+        OrderStatus.QUALITY_CHECK,
       ];
 
-      if (preProdStatuses.includes(order.status)) {
+      if (eligibleOperatorTransitionStatuses.includes(order.status)) {
         await tx.order.update({
           where: { id: order.id },
           data: {
@@ -1181,7 +1258,9 @@ export class OperationsService {
             fromStatus: order.status,
             toStatus: OrderStatus.PRODUCTION_QUEUE,
             changedById: user.sub,
-            reason: wasOverridden
+            reason: isQcReworkOrDefect
+              ? `OE Reassigned Production Operator ${operator.fullName} for QC Rework / Repress Run`
+              : wasOverridden
               ? `OE Assigned Production Operator ${operator.fullName} with Size Override: ${dto.managerOverrideReason}`
               : `OE Assigned Production Operator ${operator.fullName}. Released to Production Queue.`,
             notes: dto.reason,
@@ -1489,6 +1568,15 @@ export class OperationsService {
       !order.assignments?.some((a) => a.taskType === 'DESIGN' && a.status === 'ACTIVE')
     ) {
       blockers.push({ type: 'DESIGNER_NOT_ASSIGNED', label: 'Designer Not Assigned', severity: 'WARNING' });
+    }
+
+    // QC Defect / Rework Flagged
+    if (order.qcChecklists?.some((qc) => qc.outcome === 'FAIL')) {
+      blockers.push({
+        type: 'QC_REWORK_DEFECT',
+        label: 'QC Defect Flagged (Rework / Reassignment Needed)',
+        severity: 'CRITICAL',
+      });
     }
 
     // Production operator not assigned

@@ -76,9 +76,9 @@ export class PaymentsController {
 
   @Post('manual')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ACCOUNTS, UserRole.ADMIN_MANAGER)
+  @Roles(UserRole.ACCOUNTS, UserRole.ADMIN_MANAGER, UserRole.OPERATIONAL_MANAGER)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Record manual offline counter / bank transfer payment (Accounts only)' })
+  @ApiOperation({ summary: 'Record manual offline counter / bank transfer payment' })
   async recordManualPayment(
     @Body() body: ManualPaymentDto,
     @CurrentUser() user: JwtPayload,
